@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-
+from app.admin.router import router as admin_router
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.exceptions import register_exception_handlers
@@ -49,3 +49,4 @@ async def health_check():
 # ─── Routers ──────────────────────────────────────────────────────────────────
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(tenants_router, prefix="/admin/tenants", tags=["admin"])
+app.include_router(admin_router, prefix="/admin", tags=["admin"])

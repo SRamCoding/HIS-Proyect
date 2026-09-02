@@ -3,7 +3,7 @@ from logging.config import fileConfig
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import pool
 from alembic import context
-
+from app.admin.models import SystemRole, HospitalLevel, ModuleDependency, AuditLog
 from app.core.config import settings
 from app.core.database import Base
 
