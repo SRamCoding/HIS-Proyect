@@ -1,25 +1,17 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from redis.asyncio import Redis
 
 from app.core.tenancy import get_current_tenant
 from app.core.redis import get_redis, cache_set, cache_get
+from app.core.dependencies import get_current_user
 import json
 
 
 def require_module(module_code: str):
     """
     Dependency factory — verifica que el tenant tenga el módulo activo.
-    Equivalente exacto al HasModuleGate + shouldRegisterNavigation() de Laravel.
-
-    Uso en cualquier router:
-        @router.get("/stock", dependencies=[Depends(require_module("farmacia"))])
-        async def get_stock():
-            ...
-
-    O con acceso al tenant:
-        @router.get("/stock")
-        async def get_stock(tenant=Depends(require_module("farmacia"))):
-            ...
+    Usa el dominio del request para identificar el tenant.
+    Para panel Admin y rutas por subdominio.
     """
     async def dependency(
         tenant: dict = Depends(get_current_tenant),
@@ -32,8 +24,6 @@ def require_module(module_code: str):
             )
 
         active_modules = tenant.get("active_modules", [])
-
-        # active_modules puede venir como string JSON desde Redis
         if isinstance(active_modules, str):
             active_modules = json.loads(active_modules)
 
@@ -48,10 +38,56 @@ def require_module(module_code: str):
     return dependency
 
 
+def require_module_jwt(module_code: str):
+    """
+    Versión de require_module para paneles SIGARH y hospitalario.
+    Lee el tenant_id del JWT en vez del dominio del request.
+    """
+    async def dependency(
+        request: Request,
+        current_user: dict = Depends(get_current_user),
+    ) -> dict:
+        from app.core.database import AsyncSessionLocal
+        from sqlalchemy import text
+
+        # Obtener tenant_id del JWT o del header X-Tenant-ID
+        tenant_id = current_user.get("tenant_id")
+        if not tenant_id:
+            tenant_id = request.headers.get("X-Tenant-ID")
+        if not tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Sin tenant asignado"
+            )
+
+        # Verificar que el módulo está activo para ese tenant
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                text("""
+                    SELECT tm.module_code
+                    FROM tenant_modules tm
+                    JOIN tenants t ON t.id = tm.tenant_id
+                    WHERE t.id = :tenant_id
+                    AND tm.module_code = :module_code
+                    AND tm.is_active = true
+                    AND t.is_active = true
+                """),
+                {"tenant_id": tenant_id, "module_code": module_code}
+            )
+            if not result.first():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"El módulo '{module_code}' no está activo para este hospital"
+                )
+
+        return current_user
+
+    return dependency
+
+
 def require_any_module(*module_codes: str):
     """
     Verifica que el tenant tenga AL MENOS UNO de los módulos indicados.
-    Útil para endpoints compartidos entre módulos (ej: búsqueda de pacientes).
     """
     async def dependency(
         tenant: dict = Depends(get_current_tenant),
@@ -80,7 +116,6 @@ def require_any_module(*module_codes: str):
 def require_all_modules(*module_codes: str):
     """
     Verifica que el tenant tenga TODOS los módulos indicados.
-    Útil para endpoints que dependen de varios módulos simultáneamente.
     """
     async def dependency(
         tenant: dict = Depends(get_current_tenant),

@@ -1,17 +1,19 @@
-// composables/useApi.ts
 export const useApi = () => {
   const authStore = useAuthStore()
   const config = useRuntimeConfig()
 
   const api = async <T = any>(endpoint: string, options: any = {}): Promise<T> => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(authStore.token && { Authorization: `Bearer ${authStore.token}` }),
+      ...(authStore.user?.tenant_id && { 'X-Tenant-ID': authStore.user.tenant_id }),
+      ...options.headers,
+    }
+
     try {
       return await $fetch<T>(`${config.public.apiUrl}${endpoint}`, {
         ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authStore.token && { Authorization: `Bearer ${authStore.token}` }),
-          ...options.headers,
-        },
+        headers,
       })
     } catch (error: any) {
       if (error?.response?.status === 401) {
@@ -20,9 +22,8 @@ export const useApi = () => {
           return await $fetch<T>(`${config.public.apiUrl}${endpoint}`, {
             ...options,
             headers: {
-              'Content-Type': 'application/json',
+              ...headers,
               Authorization: `Bearer ${authStore.token}`,
-              ...options.headers,
             },
           })
         }

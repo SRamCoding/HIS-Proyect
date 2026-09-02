@@ -10,6 +10,8 @@ from app.tenants.router import router as tenants_router
 from app.modules.admision.router import router as admision_router
 from app.sigarh.mantenimiento.router import router as sigarh_mant_router
 
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()

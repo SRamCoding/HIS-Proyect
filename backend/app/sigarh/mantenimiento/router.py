@@ -1,10 +1,10 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.tenants.entitlements import require_module
+from app.tenants.entitlements import require_module_jwt
 from app.sigarh.mantenimiento.models import (
     Departamento, Servicio, TipoTrabajador, TipoGuardia,
     NivelRemunerativo, HorarioGuardia, GrupoOcupacional,
@@ -34,14 +34,14 @@ from app.sigarh.mantenimiento.service import (
 router = APIRouter()
 
 
-def get_tenant_id(current_user: dict) -> uuid.UUID:
+def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
     tid = current_user.get("tenant_id")
+    if not tid:
+        tid = request.headers.get("X-Tenant-ID")
     if not tid:
         raise HTTPException(403, detail="Sin tenant asignado")
     return uuid.UUID(tid)
 
-
-# ─── Macro para generar rutas CRUD de catálogos simples ──────────────────────
 
 def make_crud(
     subrouter: APIRouter,
@@ -50,94 +50,99 @@ def make_crud(
     schema_create,
     schema_response,
     modulo: str,
-    tag: str,
 ):
-    @subrouter.get(f"/{prefix}", response_model=list[schema_response], tags=[tag])
+    @subrouter.get(f"/{prefix}", response_model=list[schema_response])
     async def listar_items(
+        request: Request,
         db: AsyncSession = Depends(get_db),
-        tenant=Depends(require_module(modulo)),
+        tenant=Depends(require_module_jwt(modulo)),
         current_user: dict = Depends(get_current_user),
     ):
-        return await listar(db, modelo, get_tenant_id(current_user))
+        return await listar(db, modelo, get_tenant_id(current_user, request))
 
-    @subrouter.post(f"/{prefix}", response_model=schema_response, status_code=201, tags=[tag])
+    @subrouter.post(f"/{prefix}", response_model=schema_response, status_code=201)
     async def crear_item(
+        request: Request,
         data: schema_create,
         db: AsyncSession = Depends(get_db),
-        tenant=Depends(require_module(modulo)),
+        tenant=Depends(require_module_jwt(modulo)),
         current_user: dict = Depends(get_current_user),
     ):
-        return await crud_crear(db, modelo, get_tenant_id(current_user), data)
+        return await crud_crear(db, modelo, get_tenant_id(current_user, request), data)
 
-    @subrouter.get(f"/{prefix}/{{id}}", response_model=schema_response, tags=[tag])
+    @subrouter.get(f"/{prefix}/{{id}}", response_model=schema_response)
     async def obtener_item(
+        request: Request,
         id: uuid.UUID,
         db: AsyncSession = Depends(get_db),
-        tenant=Depends(require_module(modulo)),
+        tenant=Depends(require_module_jwt(modulo)),
         current_user: dict = Depends(get_current_user),
     ):
-        item = await obtener(db, modelo, id, get_tenant_id(current_user))
+        item = await obtener(db, modelo, id, get_tenant_id(current_user, request))
         if not item:
             raise HTTPException(404, detail="No encontrado")
         return item
 
-    @subrouter.patch(f"/{prefix}/{{id}}", response_model=schema_response, tags=[tag])
+    @subrouter.patch(f"/{prefix}/{{id}}", response_model=schema_response)
     async def actualizar_item(
+        request: Request,
         id: uuid.UUID,
         data: schema_create,
         db: AsyncSession = Depends(get_db),
-        tenant=Depends(require_module(modulo)),
+        tenant=Depends(require_module_jwt(modulo)),
         current_user: dict = Depends(get_current_user),
     ):
-        item = await crud_actualizar(db, modelo, id, get_tenant_id(current_user), data)
+        item = await crud_actualizar(db, modelo, id, get_tenant_id(current_user, request), data)
         if not item:
             raise HTTPException(404, detail="No encontrado")
         return item
 
-    @subrouter.delete(f"/{prefix}/{{id}}", tags=[tag])
+    @subrouter.delete(f"/{prefix}/{{id}}")
     async def eliminar_item(
+        request: Request,
         id: uuid.UUID,
         db: AsyncSession = Depends(get_db),
-        tenant=Depends(require_module(modulo)),
+        tenant=Depends(require_module_jwt(modulo)),
         current_user: dict = Depends(get_current_user),
     ):
-        ok = await eliminar(db, modelo, id, get_tenant_id(current_user))
+        ok = await eliminar(db, modelo, id, get_tenant_id(current_user, request))
         if not ok:
             raise HTTPException(404, detail="No encontrado")
         return {"ok": True}
 
 
-# ─── Registrar todos los CRUDs ───────────────────────────────────────────────
+# ─── Registrar CRUDs ──────────────────────────────────────────────────────────
+make_crud(router, "departamentos", Departamento, DepartamentoCreate, DepartamentoResponse, "sigarh_mantenimiento")
+make_crud(router, "servicios", Servicio, ServicioCreate, ServicioResponse, "sigarh_mantenimiento")
+make_crud(router, "tipos-trabajador", TipoTrabajador, TipoTrabajadorCreate, TipoTrabajadorResponse, "sigarh_mantenimiento")
+make_crud(router, "tipos-guardia", TipoGuardia, TipoGuardiaCreate, TipoGuardiaResponse, "sigarh_mantenimiento")
+make_crud(router, "niveles-remunerativos", NivelRemunerativo, NivelRemunerativoCreate, NivelRemunerativoResponse, "sigarh_mantenimiento")
+make_crud(router, "horarios-guardia", HorarioGuardia, HorarioGuardiaCreate, HorarioGuardiaResponse, "sigarh_mantenimiento")
+make_crud(router, "grupos-ocupacionales", GrupoOcupacional, GrupoOcupacionalCreate, GrupoOcupacionalResponse, "sigarh_mantenimiento")
+make_crud(router, "tipos-actividad", TipoActividad, TipoActividadCreate, TipoActividadResponse, "sigarh_mantenimiento")
+make_crud(router, "actividades", Actividad, ActividadCreate, ActividadResponse, "sigarh_mantenimiento")
+make_crud(router, "guardias-valorizadas", GuardiaValorizada, GuardiaValorizadaCreate, GuardiaValorizadaResponse, "sigarh_mantenimiento")
+make_crud(router, "roles-sistema", RolSistema, RolSistemaCreate, RolSistemaResponse, "sigarh_mantenimiento")
 
-make_crud(router, "departamentos", Departamento, DepartamentoCreate, DepartamentoResponse, "sigarh_mantenimiento", "sigarh-mantenimiento")
-make_crud(router, "servicios", Servicio, ServicioCreate, ServicioResponse, "sigarh_mantenimiento", "sigarh-mantenimiento")
-make_crud(router, "tipos-trabajador", TipoTrabajador, TipoTrabajadorCreate, TipoTrabajadorResponse, "sigarh_mantenimiento", "sigarh-mantenimiento")
-make_crud(router, "tipos-guardia", TipoGuardia, TipoGuardiaCreate, TipoGuardiaResponse, "sigarh_mantenimiento", "sigarh-mantenimiento")
-make_crud(router, "niveles-remunerativos", NivelRemunerativo, NivelRemunerativoCreate, NivelRemunerativoResponse, "sigarh_mantenimiento", "sigarh-mantenimiento")
-make_crud(router, "horarios-guardia", HorarioGuardia, HorarioGuardiaCreate, HorarioGuardiaResponse, "sigarh_mantenimiento", "sigarh-mantenimiento")
-make_crud(router, "grupos-ocupacionales", GrupoOcupacional, GrupoOcupacionalCreate, GrupoOcupacionalResponse, "sigarh_mantenimiento", "sigarh-mantenimiento")
-make_crud(router, "tipos-actividad", TipoActividad, TipoActividadCreate, TipoActividadResponse, "sigarh_mantenimiento", "sigarh-mantenimiento")
-make_crud(router, "actividades", Actividad, ActividadCreate, ActividadResponse, "sigarh_mantenimiento", "sigarh-mantenimiento")
-make_crud(router, "guardias-valorizadas", GuardiaValorizada, GuardiaValorizadaCreate, GuardiaValorizadaResponse, "sigarh_mantenimiento", "sigarh-mantenimiento")
-make_crud(router, "roles-sistema", RolSistema, RolSistemaCreate, RolSistemaResponse, "sigarh_mantenimiento", "sigarh-mantenimiento")
 
+# ─── Perfiles ─────────────────────────────────────────────────────────────────
 
-# ─── Perfiles (custom por JSON de módulos) ────────────────────────────────────
-
-@router.get("/perfiles-usuario", response_model=list[PerfilUsuarioResponse], tags=["sigarh-mantenimiento"])
+@router.get("/perfiles-usuario", response_model=list[PerfilUsuarioResponse])
 async def listar_perfiles(
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module("sigarh_mantenimiento")),
+    tenant=Depends(require_module_jwt("sigarh_mantenimiento")),
     current_user: dict = Depends(get_current_user),
 ):
-    return await listar(db, PerfilUsuario, get_tenant_id(current_user))
+    return await listar(db, PerfilUsuario, get_tenant_id(current_user, request))
 
 
-@router.post("/perfiles-usuario", response_model=PerfilUsuarioResponse, status_code=201, tags=["sigarh-mantenimiento"])
+@router.post("/perfiles-usuario", response_model=PerfilUsuarioResponse, status_code=201)
 async def crear_perfil_usuario(
+    request: Request,
     data: PerfilUsuarioCreate,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module("sigarh_mantenimiento")),
+    tenant=Depends(require_module_jwt("sigarh_mantenimiento")),
     current_user: dict = Depends(get_current_user),
 ):
-    return await crear_perfil(db, get_tenant_id(current_user), data)
+    return await crear_perfil(db, get_tenant_id(current_user, request), data)
