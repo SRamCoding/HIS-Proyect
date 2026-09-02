@@ -234,3 +234,148 @@ async def modulos_por_nivel(
         "color": level.color,
         "default_modules": level.default_modules or {"app": [], "sigarh": []},
     }
+
+@router.get("/modulos/catalogo", summary="Catalogo de modulos")
+async def catalogo_modulos(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    from sqlalchemy import select
+    from app.tenants.models import Module
+    result = await db.execute(select(Module).order_by(Module.category, Module.name))
+    return [
+        {"id": str(m.id), "code": m.code, "name": m.name, "category": m.category, "is_active": m.is_active}
+        for m in result.scalars().all()
+    ]
+
+@router.get("/usuarios/con-hospital", summary="Usuarios con datos de hospital")
+async def usuarios_con_hospital(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    from sqlalchemy import select
+    from app.auth.models import User
+    from app.tenants.models import Tenant
+
+    result = await db.execute(
+        select(User, Tenant.name.label("tenant_name"))
+        .outerjoin(Tenant, User.tenant_id == Tenant.id)
+        .where(User.email != "admin@erp.local")  # excluir super admin
+        .order_by(User.created_at.desc())
+    )
+    rows = result.all()
+    return [
+        {
+            "id": str(u.id),
+            "name": u.name,
+            "email": u.email,
+            "role": u.role,
+            "panel": u.panel,
+            "is_active": u.is_active,
+            "tenant_name": tenant_name or "—",
+            "tenant_id": str(u.tenant_id) if u.tenant_id else None,
+            "created_at": u.created_at.strftime("%d/%m/%Y"),
+        }
+        for u, tenant_name in rows
+    ]
+
+@router.get("/hospitales/{tenant_id}", summary="Obtener hospital por ID")
+async def obtener_hospital(
+    tenant_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from app.tenants.models import Tenant
+
+    result = await db.execute(
+        select(Tenant)
+        .options(selectinload(Tenant.modules))
+        .where(Tenant.id == tenant_id)
+    )
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(404, detail="Hospital no encontrado")
+    return {
+        "id": str(tenant.id),
+        "name": tenant.name,
+        "domain": tenant.domain,
+        "hospital_level": tenant.hospital_level,
+        "ruc": tenant.ruc,
+        "phone": tenant.phone,
+        "email": tenant.email,
+        "address": tenant.address,
+        "mission": tenant.mission,
+        "vision": tenant.vision,
+        "values": tenant.values,
+        "is_active": tenant.is_active,
+        "active_modules": tenant.active_module_codes,
+        "created_at": tenant.created_at.isoformat(),
+    }
+
+
+@router.patch("/hospitales/{tenant_id}", summary="Actualizar hospital")
+async def actualizar_hospital(
+    tenant_id: uuid.UUID,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    from sqlalchemy import select
+    from app.tenants.models import Tenant
+
+    result = await db.execute(
+        select(Tenant).where(Tenant.id == tenant_id)
+    )
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(404, detail="Hospital no encontrado")
+    for field, value in data.items():
+        if hasattr(tenant, field):
+            setattr(tenant, field, value)
+    await db.commit()
+    return {"ok": True}
+
+@router.get("/niveles-hospitalarios/{nivel_id}", summary="Obtener nivel por ID")
+async def obtener_nivel(
+    nivel_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    from sqlalchemy import select
+    from app.admin.models import HospitalLevel
+    result = await db.execute(select(HospitalLevel).where(HospitalLevel.id == nivel_id))
+    nivel = result.scalar_one_or_none()
+    if not nivel:
+        raise HTTPException(404, detail="Nivel no encontrado")
+    return {
+        "id": str(nivel.id),
+        "code": nivel.code,
+        "name": nivel.name,
+        "description": nivel.description,
+        "color": nivel.color,
+        "sort_order": nivel.sort_order,
+        "is_active": nivel.is_active,
+        "default_modules": nivel.default_modules or {"app": [], "sigarh": []},
+    }
+
+
+@router.patch("/niveles-hospitalarios/{nivel_id}", summary="Actualizar nivel")
+async def actualizar_nivel(
+    nivel_id: uuid.UUID,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    from sqlalchemy import select
+    from app.admin.models import HospitalLevel
+    result = await db.execute(select(HospitalLevel).where(HospitalLevel.id == nivel_id))
+    nivel = result.scalar_one_or_none()
+    if not nivel:
+        raise HTTPException(404, detail="Nivel no encontrado")
+    for field, value in data.items():
+        if hasattr(nivel, field):
+            setattr(nivel, field, value)
+    await db.commit()
+    return {"ok": True}

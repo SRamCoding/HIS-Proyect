@@ -7,7 +7,7 @@ from app.core.logging import setup_logging
 from app.core.exceptions import register_exception_handlers
 from app.auth.router import router as auth_router
 from app.tenants.router import router as tenants_router
-
+from app.modules.admision.router import router as admision_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -50,3 +50,4 @@ async def health_check():
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(tenants_router, prefix="/admin/tenants", tags=["admin"])
 app.include_router(admin_router, prefix="/admin", tags=["admin"])
+app.include_router(admision_router, prefix="/app/admision", tags=["admision"])

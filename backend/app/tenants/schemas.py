@@ -20,8 +20,13 @@ class TenantBase(BaseModel):
 
 
 class TenantCreate(TenantBase):
-    active_modules: list[str] = []  # códigos de módulos a activar
-
+    active_modules: list[str] = []
+    admin_name: str | None = None
+    admin_email: str | None = None
+    admin_password: str | None = None
+    sigarh_name: str | None = None
+    sigarh_email: str | None = None
+    sigarh_password: str | None = None
 
 class TenantUpdate(TenantBase):
     name: str | None = None

@@ -6,7 +6,7 @@ from alembic import context
 from app.admin.models import SystemRole, HospitalLevel, ModuleDependency, AuditLog
 from app.core.config import settings
 from app.core.database import Base
-
+from app.modules.admision.models import Patient, ClinicalRecord, ClinicalRecordMovement
 # Importar todos los modelos para que Alembic los detecte
 from app.tenants.models import Tenant, TenantModule, Module
 from app.auth.models import User

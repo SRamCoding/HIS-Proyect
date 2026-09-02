@@ -1,17 +1,13 @@
-// nuxt.config.ts
 export default defineNuxtConfig({
   srcDir: '.',
   compatibilityDate: '2026-09-02',
   devtools: { enabled: true },
-
   modules: [
     '@nuxt/ui',
     '@pinia/nuxt',
     '@pinia-plugin-persistedstate/nuxt',
   ],
-
   css: ['~/assets/css/main.css'],
-
   app: {
     head: {
       link: [
@@ -22,10 +18,15 @@ export default defineNuxtConfig({
       ],
     },
   },
-
-  runtimeConfig: {
-    public: {
-      apiUrl: process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8000',
-    },
+runtimeConfig: {
+  public: {
+    apiUrl: 'http://localhost:8000',
+  },
+},
+  routeRules: {
+    '/admin/**': { ssr: false },
+    '/app/**': { ssr: false },
+    '/sigarh/**': { ssr: false },
+    '/portal/**': { ssr: false },
   },
 })

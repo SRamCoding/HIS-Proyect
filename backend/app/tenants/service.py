@@ -23,7 +23,9 @@ async def create_tenant(
     db: AsyncSession,
     data: TenantCreate,
 ) -> Tenant:
-    """Crea un nuevo hospital y su schema en PostgreSQL."""
+    import bcrypt
+    from app.auth.models import User
+
     schema_name = generate_schema_name(data.domain)
 
     tenant = Tenant(
@@ -39,7 +41,7 @@ async def create_tenant(
         vision=data.vision,
     )
     db.add(tenant)
-    await db.flush()  # para obtener el ID antes del commit
+    await db.flush()
 
     # Crear schema en PostgreSQL
     await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
@@ -53,10 +55,39 @@ async def create_tenant(
         )
         db.add(module)
 
+    # Crear usuario Administrador del hospital
+    if data.admin_email and data.admin_password:
+        admin_user = User(
+            name=data.admin_name or "Administrador",
+            email=data.admin_email,
+            password=bcrypt.hashpw(
+                data.admin_password.encode(), bcrypt.gensalt()
+            ).decode(),
+            role="administrador",
+            panel="app",
+            tenant_id=tenant.id,
+            is_active=True,
+        )
+        db.add(admin_user)
+
+    # Crear usuario SIGARH
+    if data.sigarh_email and data.sigarh_password:
+        sigarh_user = User(
+            name=data.sigarh_name or "Usuario SIGARH",
+            email=data.sigarh_email,
+            password=bcrypt.hashpw(
+                data.sigarh_password.encode(), bcrypt.gensalt()
+            ).decode(),
+            role="sigarh",
+            panel="sigarh",
+            tenant_id=tenant.id,
+            is_active=True,
+        )
+        db.add(sigarh_user)
+
     await db.commit()
     await db.refresh(tenant)
     return tenant
-
 
 from sqlalchemy.orm import selectinload
 

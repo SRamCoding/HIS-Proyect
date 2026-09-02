@@ -147,23 +147,60 @@
       </div>
     </div>
 
-    <!-- Step 3: Usuarios (placeholder) -->
+    <!-- Step 3: Usuarios -->
     <div v-if="stepActual === 2" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px">
-      <h2 class="font-semibold mb-4" style="color: var(--ink)">Usuarios del hospital</h2>
-      <div class="space-y-4">
+    
+    <!-- Administrador del hospital -->
+    <div class="mb-6 p-4 rounded" style="border: 1px solid var(--line)">
+        <p class="text-sm font-semibold mb-1 flex items-center gap-2" style="color: var(--ink)">
+        👤 Administrador del hospital
+        </p>
+        <p class="text-xs mb-4" style="color: var(--ink-soft)">Acceso al panel de admisiones, caja y operaciones clínicas.</p>
+        <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="block text-sm font-medium mb-1.5" style="color: var(--ink)">Nombre del administrador</label>
-          <input v-model="form.admin_name" class="input-clinical" placeholder="Juan Perez" />
+            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Nombre completo*</label>
+            <input v-model="form.admin_name" class="input-clinical" placeholder="Lic. Carmen Flores Medina" />
         </div>
         <div>
-          <label class="block text-sm font-medium mb-1.5" style="color: var(--ink)">Email del administrador</label>
-          <input v-model="form.admin_email" class="input-clinical" type="email" placeholder="admin@hospital.pe" />
+            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Correo electrónico*</label>
+            <input v-model="form.admin_email" type="email" class="input-clinical" placeholder="admin@hospital.pe" />
         </div>
         <div>
-          <label class="block text-sm font-medium mb-1.5" style="color: var(--ink)">Contrasena temporal</label>
-          <input v-model="form.admin_password" class="input-clinical" type="password" placeholder="Min. 8 caracteres" />
+            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Contraseña*</label>
+            <input v-model="form.admin_password" type="password" class="input-clinical" />
         </div>
-      </div>
+        <div>
+            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Confirmar contraseña*</label>
+            <input v-model="form.admin_password_confirm" type="password" class="input-clinical" />
+        </div>
+        </div>
+    </div>
+
+    <!-- Usuario SIGARH -->
+    <div class="p-4 rounded" style="border: 1px solid var(--line)">
+        <p class="text-sm font-semibold mb-1 flex items-center gap-2" style="color: var(--ink)">
+        🗂 Usuario SIGARH
+        </p>
+        <p class="text-xs mb-4" style="color: var(--ink-soft)">Acceso a configuración: médicos, turnos, recursos humanos.</p>
+        <div class="grid grid-cols-2 gap-3">
+        <div>
+            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Nombre completo*</label>
+            <input v-model="form.sigarh_name" class="input-clinical" placeholder="Ing. Marco Quispe Huanca" />
+        </div>
+        <div>
+            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Correo electrónico*</label>
+            <input v-model="form.sigarh_email" type="email" class="input-clinical" placeholder="sigarh@hospital.pe" />
+        </div>
+        <div>
+            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Contraseña*</label>
+            <input v-model="form.sigarh_password" type="password" class="input-clinical" />
+        </div>
+        <div>
+            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Confirmar contraseña*</label>
+            <input v-model="form.sigarh_password_confirm" type="password" class="input-clinical" />
+        </div>
+        </div>
+    </div>
     </div>
 
     <!-- Step 4: Modulos (placeholder) -->
@@ -279,15 +316,27 @@ const form = reactive({
   name: '',
   subdomain: '',
   ruc: '',
+  // Admin
   admin_name: '',
   admin_email: '',
   admin_password: '',
+  admin_password_confirm: '',
+  // SIGARH
+  sigarh_name: '',
+  sigarh_email: '',
+  sigarh_password: '',
+  sigarh_password_confirm: '',
 })
 
 const puedeAvanzar = computed(() => {
   if (stepActual.value === 0) return !!form.nivel_code
   if (stepActual.value === 1) return !!form.name && !!form.subdomain
-  if (stepActual.value === 2) return !!form.admin_email
+  if (stepActual.value === 2) {
+    return !!form.admin_email && !!form.admin_password &&
+           form.admin_password === form.admin_password_confirm &&
+           !!form.sigarh_email && !!form.sigarh_password &&
+           form.sigarh_password === form.sigarh_password_confirm
+  }
   return true
 })
 
@@ -337,6 +386,12 @@ const handleCreate = async () => {
         ruc: form.ruc || null,
         hospital_level: form.nivel_code,
         active_modules: activeModules,
+        admin_name: form.admin_name,
+        admin_email: form.admin_email,
+        admin_password: form.admin_password,
+        sigarh_name: form.sigarh_name,
+        sigarh_email: form.sigarh_email,
+        sigarh_password: form.sigarh_password,
       },
     })
 
