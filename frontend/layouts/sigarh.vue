@@ -1,4 +1,3 @@
-<!-- layouts/sigarh.vue -->
 <template>
   <div class="min-h-screen flex" style="background: var(--mist)">
     <aside class="w-64 flex flex-col shrink-0" style="background: var(--navy); color: white">
@@ -9,30 +8,32 @@
         <span class="font-semibold text-sm">SIGARH</span>
       </div>
 
-      <nav class="flex-1 px-3 py-4 overflow-y-auto space-y-4">
-        <NuxtLink :to="`/sigarh?tenant=${tenantId}`" class="nav-link">
+      <nav class="flex-1 px-3 py-4 overflow-y-auto space-y-3">
+        <NuxtLink :to="link('/sigarh')" class="nav-link" :class="activo('/sigarh')">
           Escritorio
         </NuxtLink>
 
-        <div>
-          <p class="nav-group-label">Recursos Humanos</p>
+        <div v-for="grupo in gruposVisibles" :key="grupo.label">
+          <p class="nav-group-label">{{ grupo.label }}</p>
           <div class="space-y-0.5">
-            <NuxtLink :to="`/sigarh/rrhh?tenant=${tenantId}`" class="nav-link nav-sub">Personal</NuxtLink>
-            <NuxtLink :to="`/sigarh/roles-turno?tenant=${tenantId}`" class="nav-link nav-sub">Roles de Turno</NuxtLink>
-            <NuxtLink :to="`/sigarh/asistencia?tenant=${tenantId}`" class="nav-link nav-sub">Asistencia</NuxtLink>
-            <NuxtLink :to="`/sigarh/movimientos?tenant=${tenantId}`" class="nav-link nav-sub">Movimientos</NuxtLink>
-          </div>
-        </div>
-
-        <div>
-          <p class="nav-group-label">Mantenimiento</p>
-          <div class="space-y-0.5">
-            <NuxtLink :to="`/sigarh/mantenimiento?tenant=${tenantId}`" class="nav-link nav-sub">Configuracion</NuxtLink>
+            <NuxtLink
+              v-for="item in grupo.items"
+              :key="item.path"
+              :to="link(item.path)"
+              class="nav-link nav-sub"
+              :class="activo(item.path)"
+            >
+              {{ item.label }}
+            </NuxtLink>
           </div>
         </div>
       </nav>
 
       <div class="p-3 border-t" style="border-color: rgba(255,255,255,0.1)">
+        <div class="px-3 py-2 rounded mb-1" style="background: rgba(255,255,255,0.05)">
+          <p class="text-sm font-medium truncate">{{ authStore.user?.name }}</p>
+          <p class="text-xs truncate" style="color: #7fa1b3">{{ authStore.user?.email }}</p>
+        </div>
         <button @click="handleLogout" class="nav-link w-full text-left">Cerrar sesion</button>
       </div>
     </aside>
@@ -49,9 +50,8 @@
 </template>
 
 <script setup lang="ts">
-const route = useRoute()
 const authStore = useAuthStore()
-const tenantId = computed(() => route.query.tenant as string || '')
+const { link, activo, gruposVisibles } = useSigarhNav()
 
 const handleLogout = async () => {
   await authStore.logout()

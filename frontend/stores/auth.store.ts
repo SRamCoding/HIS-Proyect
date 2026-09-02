@@ -1,11 +1,12 @@
 // stores/auth.store.ts
 interface User {
-  sub: string
+  id: string
   email: string
   name: string
   role: string
-  panel: 'admin' | 'app' | 'sigarh'
+  panel: 'admin' | 'app' | 'sigarh' | 'portal'
   tenant_id: string | null
+  active_modules: string[]  // ← línea 8: módulos activos del tenant
 }
 
 interface LoginPayload {
@@ -20,9 +21,12 @@ export const useAuthStore = defineStore('auth', {
     refreshToken: null as string | null,
     user: null as User | null,
   }),
-
   getters: {
     isAuthenticated: (state) => !!state.token,
+    // ← línea 23: helper para verificar si el módulo está activo
+    hasModule: (state) => (moduleCode: string) => {
+      return state.user?.active_modules?.includes(moduleCode) ?? false
+    },
     panelRoute: (state) => {
       switch (state.user?.panel) {
         case 'admin': return '/admin'
@@ -32,7 +36,6 @@ export const useAuthStore = defineStore('auth', {
       }
     },
   },
-
   actions: {
     async login(payload: LoginPayload) {
       const config = useRuntimeConfig()
@@ -44,19 +47,16 @@ export const useAuthStore = defineStore('auth', {
         method: 'POST',
         body: payload,
       })
-
       this.token = response.access_token
       this.refreshToken = response.refresh_token
       this.user = response.user
-
       return response
     },
-
     async refresh() {
       if (!this.refreshToken) return false
       const config = useRuntimeConfig()
       try {
-        const response = await $fetch<{ access_token: string }>(
+        const response = await $fetch<{ access_token: string; user: User }>(
           `${config.public.apiUrl}/auth/refresh`,
           {
             method: 'POST',
@@ -64,12 +64,12 @@ export const useAuthStore = defineStore('auth', {
           }
         )
         this.token = response.access_token
+        if (response.user) this.user = response.user
         return true
       } catch {
         return false
       }
     },
-
     async logout() {
       const config = useRuntimeConfig()
       try {
@@ -77,14 +77,11 @@ export const useAuthStore = defineStore('auth', {
           method: 'POST',
           headers: { Authorization: `Bearer ${this.token}` },
         })
-      } catch {
-        // ignore errors on logout
-      }
+      } catch {}
       this.token = null
       this.refreshToken = null
       this.user = null
     },
   },
-
   persist: true,
 })

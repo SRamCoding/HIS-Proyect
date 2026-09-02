@@ -10,6 +10,12 @@ from app.modules.admision.models import Patient, ClinicalRecord, ClinicalRecordM
 # Importar todos los modelos para que Alembic los detecte
 from app.tenants.models import Tenant, TenantModule, Module
 from app.auth.models import User
+from app.sigarh.mantenimiento.models import (
+    Departamento, Servicio, TipoTrabajador, TipoGuardia,
+    NivelRemunerativo, HorarioGuardia, GrupoOcupacional,
+    TipoActividad, Actividad, GuardiaValorizada,
+    RolSistema, PerfilUsuario
+)
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)

@@ -22,18 +22,12 @@ async def login(
     data: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Login por panel.
-    Equivalente al CustomLogin de Laravel que diferenciaba
-    el acceso según el panel (admin, app, sigarh).
-    """
     result = await db.execute(
         select(User).where(User.email == data.email)
     )
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(data.password, user.password):
-        # Registrar intento fallido
         await _log_audit(
             db=db,
             user_id=None,
@@ -61,7 +55,6 @@ async def login(
             detail=f"No tienes acceso al panel '{data.panel}'"
         )
 
-    # Registrar login exitoso
     await _log_audit(
         db=db,
         user_id=str(user.id),
@@ -73,6 +66,19 @@ async def login(
         ip_address=request.client.host if request.client else None,
     )
 
+    # ── LÍNEA 67: obtener módulos activos del tenant ──────────────────────────
+    active_modules = []
+    if user.tenant_id:
+        from app.tenants.models import TenantModule
+        mods_result = await db.execute(
+            select(TenantModule).where(
+                TenantModule.tenant_id == user.tenant_id,
+                TenantModule.is_active == True
+            )
+        )
+        active_modules = [m.module_code for m in mods_result.scalars().all()]
+    # ── FIN LÍNEA 67 ──────────────────────────────────────────────────────────
+
     token_data = {
         "sub": str(user.id),
         "email": user.email,
@@ -80,6 +86,7 @@ async def login(
         "role": user.role,
         "panel": user.panel,
         "tenant_id": str(user.tenant_id) if user.tenant_id else None,
+        "active_modules": active_modules,  # ← línea 80
     }
 
     return TokenResponse(
@@ -92,7 +99,7 @@ async def login(
             "role": user.role,
             "panel": user.panel,
             "tenant_id": str(user.tenant_id) if user.tenant_id else None,
-            "active_modules": [],
+            "active_modules": active_modules,  # ← línea 91
         }
     )
 
@@ -102,7 +109,6 @@ async def refresh_token(
     data: RefreshRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Refresca el access token usando el refresh token."""
     payload = verify_token(data.refresh_token)
 
     if not payload or payload.get("type") != "refresh":
@@ -122,6 +128,18 @@ async def refresh_token(
             detail="Usuario no encontrado o inactivo"
         )
 
+    # obtener módulos activos del tenant en refresh también
+    active_modules = []
+    if user.tenant_id:
+        from app.tenants.models import TenantModule
+        mods_result = await db.execute(
+            select(TenantModule).where(
+                TenantModule.tenant_id == user.tenant_id,
+                TenantModule.is_active == True
+            )
+        )
+        active_modules = [m.module_code for m in mods_result.scalars().all()]
+
     token_data = {
         "sub": str(user.id),
         "email": user.email,
@@ -129,6 +147,7 @@ async def refresh_token(
         "role": user.role,
         "panel": user.panel,
         "tenant_id": str(user.tenant_id) if user.tenant_id else None,
+        "active_modules": active_modules,
     }
 
     return TokenResponse(
@@ -141,7 +160,7 @@ async def refresh_token(
             "role": user.role,
             "panel": user.panel,
             "tenant_id": str(user.tenant_id) if user.tenant_id else None,
-            "active_modules": [],
+            "active_modules": active_modules,
         }
     )
 
@@ -164,8 +183,6 @@ async def logout(
     return {"ok": True, "message": "Sesión cerrada correctamente"}
 
 
-# ─── Helper interno ────────────────────────────────────────────────────────────
-
 async def _log_audit(
     db: AsyncSession,
     user_id: str | None,
@@ -176,9 +193,7 @@ async def _log_audit(
     description: str | None = None,
     ip_address: str | None = None,
 ) -> None:
-    """Registra un evento en la tabla audit_logs."""
     import uuid
-    from datetime import datetime
     from app.admin.models import AuditLog
 
     log = AuditLog(
