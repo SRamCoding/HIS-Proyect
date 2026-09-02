@@ -58,15 +58,15 @@ async def create_tenant(
     return tenant
 
 
-async def get_tenant_by_domain(
-    db: AsyncSession,
-    domain: str,
-) -> Tenant | None:
+from sqlalchemy.orm import selectinload
+
+async def get_tenant_by_domain(db: AsyncSession, domain: str) -> Tenant | None:
     result = await db.execute(
-        select(Tenant).where(Tenant.domain == domain)
+        select(Tenant)
+        .options(selectinload(Tenant.modules))
+        .where(Tenant.domain == domain)
     )
     return result.scalar_one_or_none()
-
 
 async def update_tenant_modules(
     db: AsyncSession,

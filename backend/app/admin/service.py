@@ -38,10 +38,15 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
 
 # ─── Hospitales ───────────────────────────────────────────────────────────────
 
-async def get_all_hospitals(db: AsyncSession) -> list[Tenant]:
-    result = await db.execute(select(Tenant).order_by(Tenant.created_at.desc()))
-    return result.scalars().all()
+from sqlalchemy.orm import selectinload
 
+async def get_all_hospitals(db: AsyncSession) -> list[Tenant]:
+    result = await db.execute(
+        select(Tenant)
+        .options(selectinload(Tenant.modules))
+        .order_by(Tenant.created_at.desc())
+    )
+    return result.scalars().all()
 
 async def toggle_tenant_active(
     db: AsyncSession, tenant_id: uuid.UUID, is_active: bool

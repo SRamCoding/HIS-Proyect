@@ -1,4 +1,3 @@
-<!-- pages/admin/hospitales/index.vue -->
 <template>
   <div>
     <div class="flex items-center justify-between mb-6">
@@ -6,22 +5,22 @@
         <h1 class="text-lg font-semibold" style="color: var(--ink)">Hospitales</h1>
         <p class="text-sm" style="color: var(--ink-soft)">Establecimientos registrados en la plataforma</p>
       </div>
-      <button class="btn-primary" @click="showCreateModal = true">
+      <NuxtLink to="/admin/hospitales/create" class="btn-primary">
         + Nuevo hospital
-      </button>
+      </NuxtLink>
     </div>
 
     <div class="mb-4">
       <input
         v-model="search"
         type="text"
-        placeholder="Buscar por nombre…"
+        placeholder="Buscar por nombre..."
         class="input-clinical max-w-xs"
       />
     </div>
 
     <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-      <div v-if="loading" class="p-6 text-sm" style="color: var(--ink-soft)">Cargando…</div>
+      <div v-if="loading" class="p-6 text-sm" style="color: var(--ink-soft)">Cargando...</div>
 
       <div v-else-if="error" class="p-6 text-sm" style="color: var(--alert)">
         No se pudo cargar la lista: {{ error }}
@@ -31,8 +30,9 @@
         <thead>
           <tr style="border-bottom: 1px solid var(--line)">
             <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Nombre</th>
+            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Dominio</th>
             <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Nivel MINSA</th>
-            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Módulos</th>
+            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Modulos</th>
             <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Estado</th>
             <th class="text-right font-medium px-5 py-3" style="color: var(--ink-soft)">Acciones</th>
           </tr>
@@ -45,71 +45,35 @@
           >
             <td class="px-5 py-3" style="color: var(--ink)">
               <NuxtLink :to="`/admin/hospitales/${h.id}`" class="font-medium hover:underline" style="color: var(--ink)">
-                {{ h.nombre }}
+                {{ h.name }}
               </NuxtLink>
             </td>
-            <td class="px-5 py-3 font-mono-data" style="color: var(--ink-soft)">{{ h.nivel_minsa ?? '—' }}</td>
-            <td class="px-5 py-3" style="color: var(--ink-soft)">{{ h.modulos_count ?? 0 }}</td>
+            <td class="px-5 py-3 text-xs" style="color: var(--ink-soft)">{{ h.domain }}</td>
+            <td class="px-5 py-3" style="color: var(--ink-soft)">{{ h.hospital_level ?? '—' }}</td>
+            <td class="px-5 py-3" style="color: var(--ink-soft)">{{ h.active_modules?.length ?? 0 }}</td>
             <td class="px-5 py-3">
-              <span class="badge" :class="h.activo ? 'badge--ok' : 'badge--neutral'">
-                {{ h.activo ? 'Activo' : 'Inactivo' }}
+              <span class="badge" :class="h.is_active ? 'badge--ok' : 'badge--neutral'">
+                {{ h.is_active ? 'Activo' : 'Inactivo' }}
               </span>
             </td>
             <td class="px-5 py-3 text-right">
               <button
                 class="text-sm font-medium"
-                :style="{ color: h.activo ? 'var(--alert)' : 'var(--teal)' }"
+                :style="{ color: h.is_active ? 'var(--alert)' : 'var(--teal)' }"
                 :disabled="togglingId === h.id"
                 @click="handleToggle(h)"
               >
-                {{ togglingId === h.id ? '...' : h.activo ? 'Desactivar' : 'Activar' }}
+                {{ togglingId === h.id ? '...' : h.is_active ? 'Desactivar' : 'Activar' }}
               </button>
             </td>
           </tr>
           <tr v-if="!filteredHospitales.length">
-            <td colspan="5" class="px-5 py-8 text-center text-sm" style="color: var(--ink-soft)">
-              {{ search ? 'Sin resultados para tu búsqueda.' : 'Sin hospitales registrados todavía.' }}
+            <td colspan="6" class="px-5 py-8 text-center text-sm" style="color: var(--ink-soft)">
+              {{ search ? 'Sin resultados para tu busqueda.' : 'Sin hospitales registrados todavia.' }}
             </td>
           </tr>
         </tbody>
       </table>
-    </div>
-
-    <!-- Modal crear hospital -->
-    <div
-      v-if="showCreateModal"
-      class="fixed inset-0 flex items-center justify-center p-4 z-50"
-      style="background: rgba(16, 28, 36, 0.5)"
-      @click.self="showCreateModal = false"
-    >
-      <div class="w-full max-w-md p-6" style="background: var(--paper); border-radius: var(--radius)">
-        <h3 class="text-base font-semibold mb-4" style="color: var(--ink)">Nuevo hospital</h3>
-
-        <form @submit.prevent="handleCreate" class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium mb-1.5" style="color: var(--ink)">Nombre</label>
-            <input v-model="newHospital.nombre" required class="input-clinical" />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium mb-1.5" style="color: var(--ink)">Nivel MINSA</label>
-            <input v-model="newHospital.nivel_minsa" class="input-clinical" placeholder="Ej: II-1" />
-          </div>
-
-          <div v-if="createError" class="text-sm rounded px-3 py-2" style="background: var(--alert-soft); color: var(--alert)">
-            {{ createError }}
-          </div>
-
-          <div class="flex gap-2 justify-end pt-2">
-            <button type="button" class="text-sm font-medium px-3 py-2" style="color: var(--ink-soft)" @click="showCreateModal = false">
-              Cancelar
-            </button>
-            <button type="submit" :disabled="creating" class="btn-primary">
-              {{ creating ? 'Creando…' : 'Crear hospital' }}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   </div>
 </template>
@@ -119,10 +83,12 @@ definePageMeta({ layout: 'admin', middleware: ['auth', 'panel'] })
 
 interface Hospital {
   id: string
-  nombre: string
-  nivel_minsa?: string
-  modulos_count?: number
-  activo: boolean
+  name: string
+  domain: string
+  hospital_level?: string
+  active_modules: string[]
+  is_active: boolean
+  created_at: string
 }
 
 const { api } = useApi()
@@ -133,15 +99,10 @@ const error = ref('')
 const search = ref('')
 const togglingId = ref<string | null>(null)
 
-const showCreateModal = ref(false)
-const creating = ref(false)
-const createError = ref('')
-const newHospital = reactive({ nombre: '', nivel_minsa: '' })
-
 const filteredHospitales = computed(() => {
   if (!search.value.trim()) return hospitales.value
   const q = search.value.toLowerCase()
-  return hospitales.value.filter((h) => h.nombre.toLowerCase().includes(q))
+  return hospitales.value.filter((h) => h.name.toLowerCase().includes(q))
 })
 
 const loadHospitales = async () => {
@@ -150,7 +111,7 @@ const loadHospitales = async () => {
   try {
     hospitales.value = await api<Hospital[]>('/admin/hospitales')
   } catch (e: any) {
-    error.value = e?.data?.detail || 'error de conexión'
+    error.value = e?.data?.detail || 'error de conexion'
   } finally {
     loading.value = false
   }
@@ -159,31 +120,12 @@ const loadHospitales = async () => {
 const handleToggle = async (h: Hospital) => {
   togglingId.value = h.id
   try {
-    await api(`/admin/hospitales/${h.id}/toggle`, { method: 'PATCH' })
-    h.activo = !h.activo
+    await api(`/admin/hospitales/${h.id}/toggle?is_active=${!h.is_active}`, { method: 'PATCH' })
+    h.is_active = !h.is_active
   } catch (e: any) {
     error.value = e?.data?.detail || 'no se pudo actualizar el estado'
   } finally {
     togglingId.value = null
-  }
-}
-
-const handleCreate = async () => {
-  creating.value = true
-  createError.value = ''
-  try {
-    const created = await api<Hospital>('/admin/hospitales', {
-      method: 'POST',
-      body: newHospital,
-    })
-    hospitales.value.unshift(created)
-    showCreateModal.value = false
-    newHospital.nombre = ''
-    newHospital.nivel_minsa = ''
-  } catch (e: any) {
-    createError.value = e?.data?.detail || 'no se pudo crear el hospital'
-  } finally {
-    creating.value = false
   }
 }
 
