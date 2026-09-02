@@ -1,0 +1,44 @@
+# Entorno virtual
+venv/
+.venv/
+env/
+
+# Variables de entorno — NUNCA subir
+.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Logs
+*.log
+logs/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node (frontend)
+node_modules/
+.nuxt/
+.output/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

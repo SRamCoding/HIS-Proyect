@@ -1,0 +1,90 @@
+services:
+
+  postgres:
+    image: postgres:15
+    container_name: erp_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: erp_user
+      POSTGRES_PASSWORD: erp_password
+      POSTGRES_DB: erp_central
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - erp_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: erp_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - erp_network
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: erp_rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: erp_user
+      RABBITMQ_DEFAULT_PASS: erp_password
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # panel web en http://localhost:15672
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - erp_network
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: erp_backend
+    restart: unless-stopped
+    env_file:
+      - ../backend/.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../backend:/app   # hot reload en desarrollo
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - erp_network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: erp_worker
+    restart: unless-stopped
+    env_file:
+      - ../backend/.env
+    volumes:
+      - ../backend:/app
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - erp_network
+    command: celery -A workers.celery_app worker --loglevel=info
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+
+networks:
+  erp_network:
+    driver: bridge
