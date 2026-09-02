@@ -1,0 +1,86 @@
+﻿
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+:root {
+  --ink: #101c24;
+  --ink-soft: #4a5c66;
+  --navy: #123a52;
+  --navy-hover: #0d2c3f;
+  --teal: #0c7c74;
+  --teal-soft: #e3f2f0;
+  --mist: #eef3f4;
+  --paper: #ffffff;
+  --line: #dce5e7;
+  --alert: #c13f2c;
+  --alert-soft: #fbeae7;
+  --warn: #b8862b;
+  --warn-soft: #faf1e0;
+  --ok: #1e7d4f;
+  --ok-soft: #e6f3ec;
+  --radius: 6px;
+}
+
+html, body {
+  background: var(--mist);
+  color: var(--ink);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.font-mono-data {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-primary {
+  background: var(--navy);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 0.6rem 1.1rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: background 0.15s ease;
+}
+.btn-primary:hover:not(:disabled) { background: var(--navy-hover); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.input-clinical {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.9rem;
+  background: var(--paper);
+  color: var(--ink);
+  transition: border-color 0.15s ease;
+}
+.input-clinical:focus {
+  outline: none;
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px var(--teal-soft);
+}
+
+.stat-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--teal);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+}
+.stat-card--alert { border-left-color: var(--alert); }
+.stat-card--warn { border-left-color: var(--warn); }
+.stat-card--ok { border-left-color: var(--ok); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+}
+.badge--ok { background: var(--ok-soft); color: var(--ok); }
+.badge--warn { background: var(--warn-soft); color: var(--warn); }
+.badge--alert { background: var(--alert-soft); color: var(--alert); }
+.badge--neutral { background: var(--mist); color: var(--ink-soft); }

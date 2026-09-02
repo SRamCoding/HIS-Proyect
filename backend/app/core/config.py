@@ -1,5 +1,6 @@
+from typing import Annotated
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict, NoDecode
 from functools import lru_cache
 
 
@@ -8,7 +9,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "ERP Hospitalario"
     APP_ENV: str = "development"
     DEBUG: bool = True
-    ALLOWED_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8000"]
+    ALLOWED_ORIGINS: Annotated[list[str], NoDecode] = ["http://localhost:3000", "http://localhost:8000"]
 
     # Base de datos
     DATABASE_URL: str
