@@ -206,3 +206,31 @@ async def reporte_hospitales_modulos(
     current_user: dict = Depends(get_admin_user),
 ):
     return await get_hospitals_modules_report(db)
+
+# ─── Niveles — módulos por defecto ────────────────────────────────────────────
+
+@router.get("/niveles-hospitalarios/{code}/modulos", summary="Módulos por defecto de un nivel")
+async def modulos_por_nivel(
+    code: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    """
+    Dado un código de nivel (II-2, III-1, etc.), retorna los módulos
+    que se activarán automáticamente — equivalente al wizard de Laravel.
+    """
+    from sqlalchemy import select
+    from app.admin.models import HospitalLevel
+    result = await db.execute(
+        select(HospitalLevel).where(HospitalLevel.code == code)
+    )
+    level = result.scalar_one_or_none()
+    if not level:
+        raise HTTPException(404, detail=f"Nivel '{code}' no encontrado")
+
+    return {
+        "code": level.code,
+        "name": level.name,
+        "color": level.color,
+        "default_modules": level.default_modules or {"app": [], "sigarh": []},
+    }
