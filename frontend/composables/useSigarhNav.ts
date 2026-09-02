@@ -20,6 +20,7 @@ export const useSigarhNav = () => {
         { label: 'Tolerancias', path: '/sigarh/rrhh/tolerancias' },
         { label: 'Motivos de Justificacion', path: '/sigarh/rrhh/motivos-justificacion' },
         { label: 'Justificaciones e Inasistencias', path: '/sigarh/rrhh/justificaciones' },
+        { label: 'Dependencias', path: '/sigarh/mantenimiento/dependencias' },
         ]
     },
     {

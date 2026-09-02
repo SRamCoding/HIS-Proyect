@@ -157,3 +157,9 @@ class PerfilUsuarioResponse(PerfilUsuarioCreate):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+class DependenciaCreate(CatalogoBase):
+    pass
+
+class DependenciaResponse(CatalogoResponse):
+    pass

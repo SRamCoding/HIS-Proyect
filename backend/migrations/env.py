@@ -14,7 +14,7 @@ from app.sigarh.mantenimiento.models import (
     Departamento, Servicio, TipoTrabajador, TipoGuardia,
     NivelRemunerativo, HorarioGuardia, GrupoOcupacional,
     TipoActividad, Actividad, GuardiaValorizada,
-    RolSistema, PerfilUsuario
+    RolSistema, PerfilUsuario, Dependencia 
 )
 
 config = context.config

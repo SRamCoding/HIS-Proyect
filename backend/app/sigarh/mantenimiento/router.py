@@ -9,7 +9,7 @@ from app.sigarh.mantenimiento.models import (
     Departamento, Servicio, TipoTrabajador, TipoGuardia,
     NivelRemunerativo, HorarioGuardia, GrupoOcupacional,
     TipoActividad, Actividad, GuardiaValorizada,
-    RolSistema, PerfilUsuario
+    RolSistema, PerfilUsuario,Dependencia
 )
 from app.sigarh.mantenimiento.schemas import (
     DepartamentoCreate, DepartamentoResponse,
@@ -23,7 +23,7 @@ from app.sigarh.mantenimiento.schemas import (
     ActividadCreate, ActividadResponse,
     GuardiaValorizadaCreate, GuardiaValorizadaResponse,
     RolSistemaCreate, RolSistemaResponse,
-    PerfilUsuarioCreate, PerfilUsuarioResponse,
+    PerfilUsuarioCreate, PerfilUsuarioResponse,DependenciaCreate, DependenciaResponse,
 )
 from app.sigarh.mantenimiento.service import (
     listar, obtener, eliminar,
@@ -123,6 +123,7 @@ make_crud(router, "tipos-actividad", TipoActividad, TipoActividadCreate, TipoAct
 make_crud(router, "actividades", Actividad, ActividadCreate, ActividadResponse, "sigarh_mantenimiento")
 make_crud(router, "guardias-valorizadas", GuardiaValorizada, GuardiaValorizadaCreate, GuardiaValorizadaResponse, "sigarh_mantenimiento")
 make_crud(router, "roles-sistema", RolSistema, RolSistemaCreate, RolSistemaResponse, "sigarh_mantenimiento")
+make_crud(router, "dependencias", Dependencia, DependenciaCreate, DependenciaResponse, "sigarh_mantenimiento")
 
 
 # ─── Perfiles ─────────────────────────────────────────────────────────────────
