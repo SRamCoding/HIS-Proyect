@@ -224,3 +224,26 @@ class Dependencia(Base):
 
     def __repr__(self) -> str:
         return f"<Dependencia {self.nombre}>"
+
+class UsuarioSigarh(Base):
+    """
+    Usuarios del sistema SIGARH del hospital.
+    Se crean a partir de empleados con un perfil asignado.
+    """
+    __tablename__ = "sigarh_usuarios"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    empleado_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    perfil_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_perfiles_usuario.id", ondelete="SET NULL"), nullable=True)
+    username: Mapped[str] = mapped_column(String(100))
+    email: Mapped[str] = mapped_column(String(255))
+    password: Mapped[str] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    perfil: Mapped["PerfilUsuario"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<UsuarioSigarh {self.username}>"

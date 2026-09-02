@@ -163,3 +163,23 @@ class DependenciaCreate(CatalogoBase):
 
 class DependenciaResponse(CatalogoResponse):
     pass
+
+class UsuarioSigarhCreate(BaseModel):
+    empleado_id: uuid.UUID | None = None
+    perfil_id: uuid.UUID | None = None
+    username: str
+    email: str
+    password: str
+    is_active: bool = True
+
+class UsuarioSigarhResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    empleado_id: uuid.UUID | None
+    perfil_id: uuid.UUID | None
+    username: str
+    email: str
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
