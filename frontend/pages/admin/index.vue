@@ -104,14 +104,10 @@
             <div>
               <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)">Hospitales Activos</p>
               <p class="text-2xl font-bold font-mono-data leading-tight" style="color: var(--ink)">
-                {{ stats?.hospitales_activos ?? '—' }}
+                {{ stats?.active_hospitals ?? '—' }}
               </p>
             </div>
           </div>
-          <span class="text-xs font-medium flex items-center gap-0.5 px-2 py-1 rounded-full" style="background: var(--ok-soft); color: var(--ok)">
-            <UIcon name="i-heroicons-arrow-trending-up" class="w-3.5 h-3.5" />
-            {{ stats?.hospitales_activos_delta ?? 0 }}%
-          </span>
         </div>
         <div class="mt-2">
           <div class="h-1 rounded-full overflow-hidden" style="background: var(--mist)">
@@ -129,23 +125,23 @@
             <div>
               <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)">Usuarios Totales</p>
               <p class="text-2xl font-bold font-mono-data leading-tight" style="color: var(--ink)">
-                {{ stats?.usuarios_totales ?? '—' }}
+                {{ stats?.total_users ?? '—' }}
               </p>
             </div>
           </div>
           <span class="text-xs font-medium flex items-center gap-0.5 px-2 py-1 rounded-full" style="background: var(--ok-soft); color: var(--ok)">
             <UIcon name="i-heroicons-arrow-trending-up" class="w-3.5 h-3.5" />
-            {{ stats?.usuarios_delta ?? 0 }}%
+            {{ stats?.active_users ?? 0 }} activos
           </span>
         </div>
         <div class="flex items-center gap-3 mt-1 text-xs" style="color: var(--ink-soft)">
           <span class="flex items-center gap-1">
             <UIcon name="i-heroicons-user-group" class="w-3.5 h-3.5" style="color: #6366f1" />
-            Médicos: 1,247
+            Panel APP: {{ usuariosPorPanel.app }}
           </span>
           <span class="flex items-center gap-1">
             <UIcon name="i-heroicons-user" class="w-3.5 h-3.5" style="color: var(--teal)" />
-            Admin: 856
+            SIGARH: {{ usuariosPorPanel.sigarh }}
           </span>
         </div>
       </div>
@@ -157,20 +153,24 @@
               <UIcon name="i-heroicons-squares-plus" class="w-5 h-5" style="color: var(--warn)" />
             </div>
             <div>
-              <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)">Módulos Activos</p>
+              <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)">Módulos habilitados</p>
               <p class="text-2xl font-bold font-mono-data leading-tight" style="color: var(--ink)">
-                {{ stats?.modulos_activos ?? '—' }}
+                {{ stats?.active_module_assignments ?? '—' }}
               </p>
             </div>
           </div>
           <span class="text-xs font-medium flex items-center gap-0.5 px-2 py-1 rounded-full" style="background: var(--mist); color: var(--ink-soft)">
             <UIcon name="i-heroicons-minus" class="w-3.5 h-3.5" />
-            0%
+            asignaciones
           </span>
         </div>
-        <div class="flex flex-wrap gap-1.5 mt-1">
-          <span class="text-xs px-2.5 py-0.5 rounded" style="background: var(--mist); color: var(--teal)">APP 68%</span>
-          <span class="text-xs px-2.5 py-0.5 rounded" style="background: var(--mist); color: var(--navy)">SIGARH 45%</span>
+        <div class="mt-2">
+          <p class="text-xs truncate" style="color: var(--ink-soft)">
+            {{ tiposDeModulo }} tipos en {{ stats?.active_hospitals ?? 0 }} hospitales
+          </p>
+          <div class="h-1 rounded-full overflow-hidden mt-2" style="background: var(--mist)">
+            <div class="h-full rounded-full" :style="{ width: `${coberturaModulos}%`, background: 'var(--warn)' }" />
+          </div>
         </div>
       </div>
 
@@ -183,23 +183,23 @@
             <div>
               <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)">Eventos Auditoría</p>
               <p class="text-2xl font-bold font-mono-data leading-tight" style="color: var(--ink)">
-                {{ stats?.eventos_auditoria_24h ?? '—' }}
+                {{ stats?.audit_events_24h ?? 0 }}
               </p>
             </div>
           </div>
           <span class="text-xs font-medium flex items-center gap-0.5 px-2 py-1 rounded-full" style="background: var(--alert-soft); color: var(--alert)">
             <UIcon name="i-heroicons-arrow-trending-down" class="w-3.5 h-3.5" />
-            {{ stats?.eventos_delta ?? 0 }}%
+            últimas 24 h
           </span>
         </div>
         <div class="mt-1 flex items-center gap-3 text-xs" style="color: var(--ink-soft)">
           <span class="flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full" style="background: var(--ok)"></span>
-            Críticos: 2
+            Eventos reales
           </span>
           <span class="flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full" style="background: var(--warn)"></span>
-            Advertencias: 7
+            Registrados
           </span>
         </div>
       </div>
@@ -217,7 +217,7 @@
           <div class="flex items-center gap-2">
             <span class="text-xs font-medium px-2.5 py-1 rounded" style="background: var(--mist); color: var(--teal)">
               <UIcon name="i-heroicons-arrow-trending-up" class="w-3 h-3 inline mr-0.5" />
-              +12%
+              Datos reales
             </span>
           </div>
         </div>
@@ -231,9 +231,9 @@
         </ClientOnly>
       </div>
 
-      <!-- Anillo: uso de módulos -->
+      <!-- Anillo: distribución de usuarios por panel -->
       <div style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px">
-        <p class="text-sm font-semibold mb-3" style="color: var(--ink)">Uso de módulos</p>
+        <p class="text-sm font-semibold mb-3" style="color: var(--ink)">Usuarios por panel</p>
         <ClientOnly>
           <ApexChart
             type="radialBar"
@@ -263,35 +263,35 @@
 
     <!-- Fila: Gráficos adicionales -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-      <!-- Donut: Distribución de usuarios por rol -->
+      <!-- Donut: Distribución de usuarios por panel -->
       <div style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px">
         <div class="flex items-center justify-between mb-3">
-          <p class="text-sm font-semibold" style="color: var(--ink)">Usuarios por rol</p>
-          <span class="text-xs" style="color: var(--ink-soft)">Total: 2,103</span>
+          <p class="text-sm font-semibold" style="color: var(--ink)">Usuarios por panel</p>
+          <span class="text-xs" style="color: var(--ink-soft)">Total: {{ stats?.total_users ?? 0 }}</span>
         </div>
         <ClientOnly>
           <ApexChart
             type="donut"
             height="200"
             :options="donutChartOptions"
-            :series="[1247, 856]"
+            :series="usuariosPorPanelSeries"
           />
         </ClientOnly>
         <div class="flex flex-wrap justify-center gap-4 mt-1">
           <div class="flex items-center gap-1.5 text-xs">
             <span class="w-2 h-2 rounded-full" style="background: #0891b2"></span>
-            <span style="color: var(--ink-soft)">Médicos 59%</span>
+            <span style="color: var(--ink-soft)">APP {{ usuariosPorPanel.app }}</span>
           </div>
           <div class="flex items-center gap-1.5 text-xs">
             <span class="w-2 h-2 rounded-full" style="background: #6366f1"></span>
-            <span style="color: var(--ink-soft)">Admin 41%</span>
+            <span style="color: var(--ink-soft)">SIGARH {{ usuariosPorPanel.sigarh }}</span>
           </div>
         </div>
       </div>
 
-      <!-- Columnas: Solicitudes por tipo -->
+      <!-- Columnas: Eventos de auditoría por acción -->
       <div style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px">
-        <p class="text-sm font-semibold mb-3" style="color: var(--ink)">Solicitudes pendientes</p>
+        <p class="text-sm font-semibold mb-3" style="color: var(--ink)">Eventos de auditoría</p>
         <ClientOnly>
           <ApexChart
             type="bar"
@@ -300,22 +300,9 @@
             :series="barChartSeries"
           />
         </ClientOnly>
-        <div class="flex justify-between text-xs mt-1 px-1" style="color: var(--ink-soft)">
-          <span class="flex items-center gap-1">
-            <span class="w-2 h-2 rounded-full" style="background: #0891b2"></span>
-            Citas: 45
-          </span>
-          <span class="flex items-center gap-1">
-            <span class="w-2 h-2 rounded-full" style="background: #6366f1"></span>
-            Medicamentos: 28
-          </span>
-          <span class="flex items-center gap-1">
-            <span class="w-2 h-2 rounded-full" style="background: #f59e0b"></span>
-            Exámenes: 32
-          </span>
-          <span class="flex items-center gap-1">
-            <span class="w-2 h-2 rounded-full" style="background: #ef4444"></span>
-            Urgencias: 12
+        <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs mt-1 px-1" style="color: var(--ink-soft)">
+          <span v-for="(total, accion) in accionesAuditoria" :key="accion" class="flex items-center gap-1">
+            {{ accion }}: {{ total }}
           </span>
         </div>
       </div>
@@ -327,22 +314,22 @@
           <span class="text-xs" style="color: var(--ink-soft)">hoy</span>
         </div>
         <div class="grid grid-cols-6 gap-1.5">
-          <div v-for="(hora, idx) in actividadHoras" :key="idx" class="text-center">
+          <div v-for="hora in actividadHoras" :key="hora.label" class="text-center">
             <div class="h-10 rounded-md transition-all duration-300 hover:scale-110 cursor-pointer" 
-                 :style="{ background: `rgba(8, 145, 178, ${hora / 100})`, height: `${20 + (hora / 100) * 40}px` }"
-                 :title="`${hora}%`">
+                 :style="{ background: `rgba(8, 145, 178, ${hora.opacidad})`, height: `${20 + hora.altura}px` }"
+                 :title="`${hora.value} eventos`">
             </div>
-            <span class="text-[10px]" style="color: var(--ink-soft)">{{ ['6a','8a','10a','12p','2p','4p','6p','8p'][idx] || '' }}</span>
+            <span class="text-[10px]" style="color: var(--ink-soft)">{{ hora.label }}</span>
           </div>
         </div>
         <div class="flex items-center justify-between text-xs mt-2" style="color: var(--ink-soft)">
           <span class="flex items-center gap-1">
             <UIcon name="i-heroicons-clock" class="w-3.5 h-3.5" />
-            Pico: 12:00
+            Pico: {{ horaPico.label }}
           </span>
           <span class="flex items-center gap-1">
             <UIcon name="i-heroicons-users" class="w-3.5 h-3.5" />
-            156 usuarios
+            {{ horaPico.value }} eventos
           </span>
         </div>
       </div>
@@ -396,14 +383,14 @@
               <UIcon name="i-heroicons-building-office-2" class="w-4 h-4" style="color: var(--navy)" />
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium truncate" style="color: var(--ink)">{{ h.nombre }}</p>
+              <p class="text-sm font-medium truncate" style="color: var(--ink)">{{ h.name }}</p>
               <div class="h-1.5 rounded-full overflow-hidden" style="background: var(--mist)">
-                <div class="h-full rounded-full transition-all duration-500" :style="{ width: `${(h.modulos / maxModulosTop) * 100}%`, background: 'var(--teal)' }" />
+                <div class="h-full rounded-full transition-all duration-500" :style="{ width: `${(h.modules / maxModulosTop) * 100}%`, background: 'var(--teal)' }" />
               </div>
             </div>
             <span class="text-sm font-mono-data font-semibold shrink-0 flex items-center gap-1" style="color: var(--teal)">
               <UIcon name="i-heroicons-cube" class="w-3.5 h-3.5" />
-              {{ h.modulos }}
+              {{ h.modules }}
             </span>
           </div>
         </div>
@@ -417,11 +404,11 @@
           <UIcon name="i-heroicons-calendar-days" class="w-6 h-6" style="color: var(--teal)" />
         </div>
         <div>
-          <p class="text-xs" style="color: var(--ink-soft)">Citas hoy</p>
-          <p class="text-xl font-bold" style="color: var(--ink)">156</p>
+          <p class="text-xs" style="color: var(--ink-soft)">Hospitales registrados</p>
+          <p class="text-xl font-bold" style="color: var(--ink)">{{ stats?.total_hospitals ?? 0 }}</p>
           <p class="text-xs flex items-center gap-0.5" style="color: var(--ok)">
             <UIcon name="i-heroicons-arrow-trending-up" class="w-3 h-3" />
-            +8% vs ayer
+            Total histórico
           </p>
         </div>
       </div>
@@ -430,11 +417,11 @@
           <UIcon name="i-heroicons-prescription" class="w-6 h-6" style="color: #6366f1" />
         </div>
         <div>
-          <p class="text-xs" style="color: var(--ink-soft)">Medicamentos recetados</p>
-          <p class="text-xl font-bold" style="color: var(--ink)">342</p>
+          <p class="text-xs" style="color: var(--ink-soft)">Hospitales activos</p>
+          <p class="text-xl font-bold" style="color: var(--ink)">{{ stats?.active_hospitals ?? 0 }}</p>
           <p class="text-xs flex items-center gap-0.5" style="color: var(--ok)">
             <UIcon name="i-heroicons-arrow-trending-up" class="w-3 h-3" />
-            +5% vs ayer
+            Disponibles
           </p>
         </div>
       </div>
@@ -443,11 +430,11 @@
           <UIcon name="i-heroicons-clock" class="w-6 h-6" style="color: var(--warn)" />
         </div>
         <div>
-          <p class="text-xs" style="color: var(--ink-soft)">Tiempo promedio</p>
-          <p class="text-xl font-bold" style="color: var(--ink)">23 min</p>
+          <p class="text-xs" style="color: var(--ink-soft)">Usuarios activos</p>
+          <p class="text-xl font-bold" style="color: var(--ink)">{{ stats?.active_users ?? 0 }}</p>
           <p class="text-xs flex items-center gap-0.5" style="color: var(--alert)">
             <UIcon name="i-heroicons-arrow-trending-up" class="w-3 h-3" />
-            +2 min vs meta
+            Con acceso vigente
           </p>
         </div>
       </div>
@@ -456,11 +443,11 @@
           <UIcon name="i-heroicons-heart" class="w-6 h-6" style="color: var(--alert)" />
         </div>
         <div>
-          <p class="text-xs" style="color: var(--ink-soft)">Pacientes críticos</p>
-          <p class="text-xl font-bold" style="color: var(--ink)">8</p>
+          <p class="text-xs" style="color: var(--ink-soft)">Eventos hoy</p>
+          <p class="text-xl font-bold" style="color: var(--ink)">{{ stats?.audit_events_24h ?? 0 }}</p>
           <p class="text-xs flex items-center gap-0.5" style="color: var(--ok)">
             <UIcon name="i-heroicons-arrow-trending-down" class="w-3 h-3" />
-            -2 vs ayer
+            Últimas 24 horas
           </p>
         </div>
       </div>
@@ -511,18 +498,18 @@
                 <div class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style="background: var(--mist)">
                   <UIcon name="i-heroicons-building-office-2" class="w-3.5 h-3.5" style="color: var(--navy)" />
                 </div>
-                <span style="color: var(--ink)">{{ h.nombre }}</span>
+                <span style="color: var(--ink)">{{ h.name }}</span>
               </div>
             </td>
-            <td class="px-5 py-3 font-mono-data" style="color: var(--ink-soft)">{{ h.nivel_minsa ?? '—' }}</td>
+            <td class="px-5 py-3 font-mono-data" style="color: var(--ink-soft)">{{ h.hospital_level ?? '—' }}</td>
             <td class="px-5 py-3">
-              <span class="badge" :class="h.activo ? 'badge--ok' : 'badge--neutral'">
-                {{ h.activo ? 'Activo' : 'Inactivo' }}
+              <span class="badge" :class="h.is_active ? 'badge--ok' : 'badge--neutral'">
+                {{ h.is_active ? 'Activo' : 'Inactivo' }}
               </span>
             </td>
             <td class="px-5 py-3">
               <span class="text-xs font-mono-data" style="color: var(--ink-soft)">
-                {{ h.modulos ?? Math.floor(Math.random() * 12) + 3 }}
+                {{ h.active_modules.length }}
               </span>
             </td>
           </tr>
@@ -551,21 +538,27 @@
 definePageMeta({ layout: 'admin', middleware: ['auth', 'panel'] })
 
 interface DashboardStats {
-  hospitales_activos: number
-  hospitales_activos_delta?: number
-  usuarios_totales: number
-  usuarios_delta?: number
-  modulos_activos: number
-  eventos_auditoria_24h: number
-  eventos_delta?: number
+  total_hospitals: number
+  active_hospitals: number
+  total_users: number
+  active_users: number
+  active_module_assignments: number
+  audit_events_24h: number
+  modules_distribution: Record<string, number>
+  hospitals_by_month: { label: string; value: number }[]
+  users_by_panel: Record<string, number>
+  hospitals_by_level: { code: string; count: number }[]
+  top_hospitals_by_modules: { id: string; name: string; modules: number }[]
+  audit_events_by_hour: { label: string; value: number }[]
+  audit_actions: Record<string, number>
 }
 
 interface Hospital {
   id: string
-  nombre: string
-  nivel_minsa?: string
-  activo: boolean
-  modulos?: number
+  name: string
+  hospital_level?: string
+  is_active: boolean
+  active_modules: string[]
 }
 
 const { api } = useApi()
@@ -587,45 +580,39 @@ const saludoHora = computed(() => {
   return 'Buenas noches, aquí tienes el panorama completo de la plataforma.'
 })
 
-// ── DATOS MOCK ──
-// Endpoints pendientes para conectar con backend:
-// GET /admin/dashboard/registros-por-mes
-// GET /admin/dashboard/uso-modulos
-// GET /admin/dashboard/distribucion-niveles
-// GET /admin/dashboard/top-hospitales-modulos
-// GET /admin/dashboard/actividad-por-hora
-// GET /admin/dashboard/solicitudes-pendientes
-// GET /admin/dashboard/usuarios-por-rol
-
-const registrosPorMes = ref([
-  { label: 'Abr', valor: 10 },
-  { label: 'May', valor: 50 },
-  { label: 'Jun', valor: 13 },
-  { label: 'Jul', valor: 42 },
-  { label: 'Ago', valor: 32 },
-  { label: 'Sep', valor: 51 },
-])
-
-const usoModulos = ref({ app: 68, sigarh: 45 })
-
-const distribucionNiveles = ref([
-  { code: 'I-1', cantidad: 4, color: 'var(--teal)' },
-  { code: 'I-4', cantidad: 3, color: 'var(--navy)' },
-  { code: 'II-1', cantidad: 5, color: '#6366f1' },
-  { code: 'II-2', cantidad: 2, color: 'var(--warn)' },
-  { code: 'III-1', cantidad: 1, color: 'var(--alert)' },
-])
+const registrosPorMes = computed(() => stats.value?.hospitals_by_month.map(item => ({ label: item.label, valor: item.value })) ?? [])
+const usuariosPorPanel = computed(() => ({
+  app: stats.value?.users_by_panel.app ?? 0,
+  sigarh: stats.value?.users_by_panel.sigarh ?? 0,
+}))
+const usuariosPorPanelSeries = computed(() => [usuariosPorPanel.value.app, usuariosPorPanel.value.sigarh])
+const tiposDeModulo = computed(() => Object.keys(stats.value?.modules_distribution ?? {}).length)
+const coberturaModulos = computed(() => Math.min(100, Math.round(
+  ((stats.value?.active_module_assignments ?? 0) / Math.max((stats.value?.active_hospitals ?? 0) * Math.max(tiposDeModulo.value, 1), 1)) * 100,
+)))
+const usoModulos = computed(() => ({
+  app: stats.value?.total_users ? Math.round((usuariosPorPanel.value.app / stats.value.total_users) * 100) : 0,
+  sigarh: stats.value?.total_users ? Math.round((usuariosPorPanel.value.sigarh / stats.value.total_users) * 100) : 0,
+}))
+const distribucionNiveles = computed(() => (stats.value?.hospitals_by_level ?? []).map((nivel, index) => ({
+  code: nivel.code,
+  cantidad: nivel.count,
+  color: ['var(--teal)', 'var(--navy)', '#6366f1', 'var(--warn)', 'var(--alert)'][index % 5],
+})))
 const maxNivel = computed(() => Math.max(...distribucionNiveles.value.map(n => n.cantidad), 1))
 
-const topHospitalesModulos = ref([
-  { id: '1', nombre: 'Hospital Regional Lambayeque', modulos: 22 },
-  { id: '2', nombre: 'Hospital Túmán', modulos: 18 },
-  { id: '3', nombre: 'Hospital Naylamp', modulos: 15 },
-  { id: '4', nombre: 'Centro de Salud Pátapo', modulos: 9 },
-])
-const maxModulosTop = computed(() => Math.max(...topHospitalesModulos.value.map(h => h.modulos), 1))
-
-const actividadHoras = ref([45, 78, 92, 100, 85, 65, 40, 25])
+const topHospitalesModulos = computed(() => stats.value?.top_hospitals_by_modules ?? [])
+const maxModulosTop = computed(() => Math.max(...topHospitalesModulos.value.map(h => h.modules), 1))
+const actividadHoras = computed(() => {
+  const eventos = stats.value?.audit_events_by_hour ?? []
+  const maximo = Math.max(...eventos.map(item => item.value), 1)
+  return eventos.map(item => ({ ...item, altura: (item.value / maximo) * 40, opacidad: 0.2 + (item.value / maximo) * 0.8 }))
+})
+const horaPico = computed(() => actividadHoras.value.reduce(
+  (pico, hora) => hora.value > pico.value ? hora : pico,
+  { label: '—', value: 0, altura: 0, opacidad: 0.2 },
+))
+const accionesAuditoria = computed(() => stats.value?.audit_actions ?? {})
 
 // ── ApexCharts ──
 
@@ -685,7 +672,7 @@ const radialChartOptions = computed(() => ({
       },
     },
   },
-  labels: ['Panel admin', 'Panel SIGARH'],
+  labels: ['Panel APP', 'Panel SIGARH'],
   legend: { show: false },
   stroke: { lineCap: 'round' },
 }))
@@ -711,7 +698,7 @@ const donutChartOptions = computed(() => ({
 }))
 
 const barChartSeries = computed(() => [
-  { name: 'Solicitudes', data: [45, 28, 32, 12] },
+  { name: 'Eventos', data: Object.values(accionesAuditoria.value) },
 ])
 
 const barChartOptions = computed(() => ({
@@ -730,7 +717,7 @@ const barChartOptions = computed(() => ({
   },
   dataLabels: { enabled: false },
   xaxis: {
-    categories: ['Citas', 'Medicamentos', 'Exámenes', 'Urgencias'],
+    categories: Object.keys(accionesAuditoria.value),
     labels: { style: { colors: '#4a5c66', fontSize: '11px' } },
   },
   yaxis: {

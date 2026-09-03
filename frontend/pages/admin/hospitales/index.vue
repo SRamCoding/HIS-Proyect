@@ -139,15 +139,29 @@
                 </span>
               </td>
               <td class="px-5 py-3.5 text-right">
-                <UDropdown :items="accionesDropdown(h)" :popper="{ placement: 'bottom-end' }">
-                  <UButton
-                    icon="i-heroicons-ellipsis-horizontal"
-                    color="gray"
-                    variant="ghost"
-                    square
-                    size="sm"
-                  />
-                </UDropdown>
+                <td class="px-5 py-3.5 text-right" style="position: relative">
+                  <button
+                    class="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                    @click.stop="toggleMenu(h.id)"
+                  >
+                    <UIcon name="i-heroicons-ellipsis-horizontal" class="w-5 h-5" style="color: var(--ink-soft)" />
+                  </button>
+
+                  <div
+                    v-if="menuAbierto === h.id"
+                    style="position: absolute; right: 16px; top: 40px; z-index: 50; width: 180px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 4px 12px rgba(0,0,0,0.1)"
+                  >
+                    <button class="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50" style="color: var(--ink)" @click="irA(h, ''); menuAbierto = null">Ver landing</button>
+                    <button class="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50" style="color: var(--ink)" @click="irA(h, '/app'); menuAbierto = null">Panel admin</button>
+                    <button class="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50" style="color: var(--ink)" @click="irA(h, '/sigarh'); menuAbierto = null">Panel SIGARH</button>
+                    <div style="height: 1px; background: var(--line); margin: 4px 0"></div>
+                    <button class="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50" style="color: var(--teal)" @click="navigateTo(`/admin/hospitales/${h.id}`); menuAbierto = null">Editar</button>
+                    <div style="height: 1px; background: var(--line); margin: 4px 0"></div>
+                    <button class="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50" style="color: var(--alert)" @click="handleToggle(h); menuAbierto = null">
+                      {{ h.is_active ? 'Desactivar' : 'Activar' }}
+                    </button>
+                  </div>
+                </td>
               </td>
             </tr>
             <tr v-if="!filteredHospitales.length">
@@ -201,6 +215,7 @@
       </div>
     </template>
   </div>
+  <div v-if="menuAbierto" style="position: fixed; inset: 0; z-index: 40" @click="menuAbierto = null" />
 </template>
 
 <script setup lang="ts">
@@ -215,7 +230,11 @@ interface Hospital {
   is_active: boolean
   created_at: string
 }
+const menuAbierto = ref<string | null>(null)
 
+const toggleMenu = (id: string) => {
+  menuAbierto.value = menuAbierto.value === id ? null : id
+}
 const { api } = useApi()
 const hospitales = ref<Hospital[]>([])
 const loading = ref(true)

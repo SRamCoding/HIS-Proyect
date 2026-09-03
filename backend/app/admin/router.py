@@ -18,6 +18,7 @@ from app.admin.schemas import (
 )
 from app.admin.service import (
     get_dashboard_stats, get_all_hospitals, toggle_tenant_active,
+    get_hospitals_registered_by_day,
     get_all_users, get_users_by_tenant, create_user,
     get_all_hospital_levels, create_hospital_level,
     get_module_dependencies, create_module_dependency,
@@ -36,6 +37,18 @@ async def dashboard(
     current_user: dict = Depends(get_admin_user),
 ):
     return await get_dashboard_stats(db)
+
+
+@router.get("/dashboard/hospitales-por-dia", summary="Hospitales registrados por día")
+async def hospitales_por_dia(
+    month: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    try:
+        return await get_hospitals_registered_by_day(db, month)
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
 
 
 # ─── Hospitales ───────────────────────────────────────────────────────────────

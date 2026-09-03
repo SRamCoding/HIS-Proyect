@@ -12,139 +12,80 @@
         :class="collapsed ? 'justify-center px-0' : 'gap-2.5 px-5'"
         style="border-color: rgba(255,255,255,0.08)"
       >
-        <img
-          src="/logo.png"
-          alt="ERP Hospitalario"
-          class="w-8 h-8 rounded-md object-contain shrink-0"
-        />
-        <span v-if="!collapsed" class="font-semibold text-sm tracking-tight truncate">
-          ERP Hospitalario
-        </span>
+        <img src="/logo.png" alt="ERP Hospitalario" class="w-8 h-8 rounded-md object-contain shrink-0" />
+        <span v-if="!collapsed" class="font-semibold text-sm tracking-tight truncate">ERP Hospitalario</span>
       </div>
 
       <!-- Nav -->
-      <nav class="flex-1 px-3 py-4 overflow-y-auto overflow-x-hidden space-y-5">
+      <nav class="sidebar-nav flex-1 px-3 py-4 overflow-y-auto overflow-x-hidden space-y-5">
 
-        <!-- Escritorio -->
-        <NuxtLink
-          to="/admin"
-          class="nav-link"
-          :class="{ 'nav-active': route.path === '/admin', 'nav-collapsed': collapsed }"
-        >
+        <NuxtLink to="/admin" class="nav-link" :class="{ 'nav-active': route.path === '/admin', 'nav-collapsed': collapsed }">
           <UIcon name="i-heroicons-squares-2x2" class="nav-icon" />
           <span v-if="!collapsed">Escritorio</span>
         </NuxtLink>
 
-        <!-- Administración Global -->
         <div>
-          <p v-if="!collapsed" class="nav-group-label">Administración Global</p>
+          <p v-if="!collapsed" class="nav-group-label">Administracion Global</p>
           <div class="space-y-0.5">
-            <NuxtLink
-              to="/admin/hospitales"
-              class="nav-link nav-sub"
-              :class="{ 'nav-active': route.path.startsWith('/admin/hospitales'), 'nav-collapsed': collapsed }"
-            >
+            <NuxtLink to="/admin/hospitales" class="nav-link nav-sub" :class="{ 'nav-active': route.path.startsWith('/admin/hospitales'), 'nav-collapsed': collapsed }">
               <UIcon name="i-heroicons-building-office-2" class="nav-icon" />
               <span v-if="!collapsed">Hospitales</span>
             </NuxtLink>
-            <NuxtLink
-              to="/admin/usuarios?tipo=admin"
-              class="nav-link nav-sub"
-              :class="{ 'nav-active': route.path === '/admin/usuarios' && route.query.tipo === 'admin', 'nav-collapsed': collapsed }"
-            >
+            <NuxtLink to="/admin/usuarios?tipo=admin" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/usuarios' && route.query.tipo === 'admin', 'nav-collapsed': collapsed }">
               <UIcon name="i-heroicons-user-circle" class="nav-icon" />
               <span v-if="!collapsed">Administradores</span>
             </NuxtLink>
-            <NuxtLink
-              to="/admin/usuarios"
-              class="nav-link nav-sub"
-              :class="{ 'nav-active': route.path === '/admin/usuarios' && !route.query.tipo, 'nav-collapsed': collapsed }"
-            >
+            <NuxtLink to="/admin/usuarios" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/usuarios' && !route.query.tipo, 'nav-collapsed': collapsed }">
               <UIcon name="i-heroicons-users" class="nav-icon" />
               <span v-if="!collapsed">Usuarios por Hospital</span>
             </NuxtLink>
           </div>
         </div>
 
-        <!-- Administración de Módulos -->
         <div>
-          <p v-if="!collapsed" class="nav-group-label">Administración de Módulos</p>
+          <p v-if="!collapsed" class="nav-group-label">Administracion de Modulos</p>
           <div class="space-y-0.5">
-            <NuxtLink
-              to="/admin/modulos"
-              class="nav-link nav-sub"
-              :class="{ 'nav-active': route.path === '/admin/modulos', 'nav-collapsed': collapsed }"
-            >
+            <NuxtLink to="/admin/modulos" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/modulos', 'nav-collapsed': collapsed }">
               <UIcon name="i-heroicons-squares-plus" class="nav-icon" />
-              <span v-if="!collapsed">Catálogo de Módulos</span>
+              <span v-if="!collapsed">Catalogo de Modulos</span>
             </NuxtLink>
-            <NuxtLink
-              to="/admin/modulos/dependencias"
-              class="nav-link nav-sub"
-              :class="{ 'nav-active': route.path === '/admin/modulos/dependencias', 'nav-collapsed': collapsed }"
-            >
+            <NuxtLink to="/admin/modulos/dependencias" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/modulos/dependencias', 'nav-collapsed': collapsed }">
               <UIcon name="i-heroicons-link" class="nav-icon" />
-              <span v-if="!collapsed">Dependencias entre Módulos</span>
+              <span v-if="!collapsed">Dependencias entre Modulos</span>
             </NuxtLink>
-            <NuxtLink
-              to="/admin/niveles-hospitalarios"
-              class="nav-link nav-sub"
-              :class="{ 'nav-active': route.path.startsWith('/admin/niveles-hospitalarios'), 'nav-collapsed': collapsed }"
-            >
+            <NuxtLink to="/admin/niveles-hospitalarios" class="nav-link nav-sub" :class="{ 'nav-active': route.path.startsWith('/admin/niveles-hospitalarios'), 'nav-collapsed': collapsed }">
               <UIcon name="i-heroicons-building-library" class="nav-icon" />
               <span v-if="!collapsed">Niveles Hospitalarios</span>
             </NuxtLink>
           </div>
         </div>
 
-        <!-- Reportes del Sistema -->
         <div>
           <p v-if="!collapsed" class="nav-group-label">Reportes del Sistema</p>
           <div class="space-y-0.5">
-            <NuxtLink
-              to="/admin/reportes/mensuales"
-              class="nav-link nav-sub"
-              :class="{ 'nav-active': route.path === '/admin/reportes/mensuales', 'nav-collapsed': collapsed }"
-            >
+            <NuxtLink to="/admin/reportes/mensuales" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/reportes/mensuales', 'nav-collapsed': collapsed }">
               <UIcon name="i-heroicons-chart-bar" class="nav-icon" />
               <span v-if="!collapsed">Reportes Mensuales</span>
             </NuxtLink>
-            <NuxtLink
-              to="/admin/reportes/exportar"
-              class="nav-link nav-sub"
-              :class="{ 'nav-active': route.path === '/admin/reportes/exportar', 'nav-collapsed': collapsed }"
-            >
+            <NuxtLink to="/admin/reportes/exportar" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/reportes/exportar', 'nav-collapsed': collapsed }">
               <UIcon name="i-heroicons-arrow-down-tray" class="nav-icon" />
               <span v-if="!collapsed">Exportar Datos</span>
             </NuxtLink>
           </div>
         </div>
 
-        <!-- Auditorías -->
         <div>
-          <p v-if="!collapsed" class="nav-group-label">Auditorías</p>
+          <p v-if="!collapsed" class="nav-group-label">Auditorias</p>
           <div class="space-y-0.5">
-            <NuxtLink
-              to="/admin/auditoria"
-              class="nav-link nav-sub"
-              :class="{ 'nav-active': route.path === '/admin/auditoria', 'nav-collapsed': collapsed }"
-            >
+            <NuxtLink to="/admin/auditoria" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/auditoria', 'nav-collapsed': collapsed }">
               <UIcon name="i-heroicons-magnifying-glass" class="nav-icon" />
-              <span v-if="!collapsed">Auditoría del ERP</span>
+              <span v-if="!collapsed">Auditoria del ERP</span>
             </NuxtLink>
-            <NuxtLink
-              to="/admin/auditoria/hospital"
-              class="nav-link nav-sub"
-              :class="{ 'nav-active': route.path === '/admin/auditoria/hospital', 'nav-collapsed': collapsed }"
-            >
+            <NuxtLink to="/admin/auditoria/hospital" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/auditoria/hospital', 'nav-collapsed': collapsed }">
               <UIcon name="i-heroicons-building-office" class="nav-icon" />
-              <span v-if="!collapsed">Auditoría por Hospital</span>
+              <span v-if="!collapsed">Auditoria por Hospital</span>
             </NuxtLink>
-            <NuxtLink
-              to="/admin/auditoria/logs"
-              class="nav-link nav-sub"
-              :class="{ 'nav-active': route.path === '/admin/auditoria/logs', 'nav-collapsed': collapsed }"
-            >
+            <NuxtLink to="/admin/auditoria/logs" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/auditoria/logs', 'nav-collapsed': collapsed }">
               <UIcon name="i-heroicons-clipboard-document-list" class="nav-icon" />
               <span v-if="!collapsed">Logs de la BD del sistema</span>
             </NuxtLink>
@@ -153,7 +94,7 @@
 
       </nav>
 
-      <!-- Footer / usuario -->
+      <!-- Footer -->
       <div class="p-3 border-t shrink-0" style="border-color: rgba(255,255,255,0.08)">
         <div
           class="flex items-center gap-2.5 rounded-lg mb-1"
@@ -168,55 +109,52 @@
         </div>
         <button @click="handleLogout" class="nav-link w-full text-left" :class="{ 'nav-collapsed': collapsed }">
           <UIcon name="i-heroicons-arrow-left-on-rectangle" class="nav-icon" />
-          <span v-if="!collapsed">Cerrar sesión</span>
+          <span v-if="!collapsed">Cerrar sesion</span>
         </button>
       </div>
     </aside>
 
     <!-- Contenido -->
     <div class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-      <header
-        class="h-16 flex items-center gap-4 px-6 shrink-0"
-        style="background: var(--paper); border-bottom: 1px solid var(--line)"
-      >
-        <UButton
-          :icon="collapsed ? 'i-heroicons-bars-3' : 'i-heroicons-chevron-double-left'"
-          color="gray"
-          variant="ghost"
-          square
-          size="sm"
-          @click="collapsed = !collapsed"
+  <header
+    class="h-16 flex items-center gap-4 px-6 shrink-0"
+    style="background: var(--navy); border-bottom: 1px solid rgba(255,255,255,0.08)"
+  >
+    <button
+      class="p-2 rounded-lg hover:bg-white/10 transition-colors"
+      @click="collapsed = !collapsed"
+    >
+      <UIcon
+        :name="collapsed ? 'i-heroicons-bars-3' : 'i-heroicons-chevron-double-left'"
+        class="w-5 h-5"
+        style="color: rgba(255,255,255,0.6)"
+      />
+    </button>
+
+    <h2 class="text-sm font-medium shrink-0" style="color: rgba(255,255,255,0.5)">
+      {{ route.meta.title || 'Panel Administrativo' }}
+    </h2>
+
+    <div class="flex-1 max-w-sm ml-4">
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12)">
+        <UIcon name="i-heroicons-magnifying-glass" class="w-4 h-4 shrink-0" style="color: rgba(255,255,255,0.4)" />
+        <input
+          placeholder="Buscar..."
+          class="bg-transparent border-none outline-none text-sm w-full"
+          style="color: white;"
         />
+      </div>
+    </div>
 
-        <h2 class="text-sm font-medium shrink-0" style="color: var(--ink-soft)">
-          {{ route.meta.title || 'Panel Administrativo' }}
-        </h2>
-
-        <UInput
-          icon="i-heroicons-magnifying-glass"
-          placeholder="Buscar…"
-          size="sm"
-          class="max-w-sm ml-4"
-          :ui="{ rounded: 'rounded-full' }"
-        />
-
-        <div class="ml-auto flex items-center gap-2">
-          <UButton
-            icon="i-heroicons-bell"
-            color="gray"
-            variant="ghost"
-            square
-            :ui="{ rounded: 'rounded-full' }"
-          />
-          <UButton
-            icon="i-heroicons-cog-6-tooth"
-            color="gray"
-            variant="ghost"
-            square
-            :ui="{ rounded: 'rounded-full' }"
-          />
-        </div>
-      </header>
+    <div class="ml-auto flex items-center gap-1">
+      <button class="p-2 rounded-lg hover:bg-white/10 transition-colors">
+        <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
+      </button>
+      <button class="p-2 rounded-lg hover:bg-white/10 transition-colors">
+        <UIcon name="i-heroicons-cog-6-tooth" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
+      </button>
+    </div>
+  </header>
       <main class="flex-1 overflow-y-auto p-6">
         <slot />
       </main>
@@ -236,6 +174,13 @@ const handleLogout = async () => {
 </script>
 
 <style scoped>
+.sidebar-nav {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.sidebar-nav::-webkit-scrollbar {
+  display: none;
+}
 .nav-group-label {
   padding: 0 0.75rem;
   font-size: 0.68rem;
