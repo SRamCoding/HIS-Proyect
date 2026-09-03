@@ -11,6 +11,13 @@ from app.modules.admision.router import router as admision_router
 from app.sigarh.mantenimiento.router import router as sigarh_mant_router
 from app.sigarh.rrhh.router import router as sigarh_rrhh_router
 from app.sigarh.movimientos.router import router as sigarh_mov_router
+from app.sigarh.infraestructura.router import router as sigarh_infra_router
+from app.sigarh.infraestructura_hosp.router import router as sigarh_infra_hosp_router
+from app.sigarh.config_farmacia.router import router as sigarh_farmacia_router
+from app.sigarh.config_financiera.router import router as sigarh_financiera_router
+from app.sigarh.imagenologia.router import router as sigarh_img_router
+from app.sigarh.laboratorio.router import router as sigarh_lab_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -57,3 +64,9 @@ app.include_router(admision_router, prefix="/app/admision", tags=["admision"])
 app.include_router(sigarh_mant_router, prefix="/sigarh/mantenimiento", tags=["sigarh-mantenimiento"])
 app.include_router(sigarh_rrhh_router, prefix="/sigarh/rrhh", tags=["sigarh-rrhh"])
 app.include_router(sigarh_mov_router, prefix="/sigarh/movimientos", tags=["sigarh-movimientos"])
+app.include_router(sigarh_infra_router, prefix="/sigarh/infraestructura", tags=["sigarh-infraestructura"])
+app.include_router(sigarh_infra_hosp_router, prefix="/sigarh/infraestructura-hosp", tags=["sigarh-infraestructura-hosp"])
+app.include_router(sigarh_farmacia_router, prefix="/sigarh/config-farmacia", tags=["sigarh-config-farmacia"])
+app.include_router(sigarh_financiera_router, prefix="/sigarh/config-financiera", tags=["sigarh-config-financiera"])
+app.include_router(sigarh_img_router, prefix="/sigarh/imagenologia", tags=["sigarh-imagenologia"])
+app.include_router(sigarh_lab_router, prefix="/sigarh/laboratorio", tags=["sigarh-laboratorio"])

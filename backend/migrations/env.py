@@ -23,6 +23,14 @@ from app.sigarh.rrhh.models import (
 )
 
 from app.sigarh.movimientos.models import Vacacion, Licencia, CambioTurno, Papeleta
+from app.sigarh.infraestructura.models import Catalogo, Consultorio
+from app.sigarh.infraestructura_hosp.models import Piso, Sala, Cama
+from app.sigarh.config_farmacia.models import Almacen, Medicamento
+from app.sigarh.config_financiera.models import Seguro, PlanSeguro, Caja, Tarifario
+from app.sigarh.imagenologia.models import ExamenImagenologia
+from app.sigarh.laboratorio.models import ExamenLaboratorio
+
+
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
