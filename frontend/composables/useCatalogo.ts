@@ -1,10 +1,9 @@
-// composables/useCatalogo.ts
 export const useCatalogo = <T extends { id: string }>(endpoint: string) => {
   const { api } = useApi()
   const route = useRoute()
   const tenantId = computed(() => route.query.tenant as string || '')
 
-  const items = ref<T[]>([])
+  const items = ref<any[]>([])
   const loading = ref(true)
   const error = ref('')
   const saving = ref(false)
@@ -16,9 +15,7 @@ export const useCatalogo = <T extends { id: string }>(endpoint: string) => {
     loading.value = true
     error.value = ''
     try {
-      items.value = await api<T[]>(endpoint, {
-        headers: { 'X-Tenant-ID': tenantId.value }
-      })
+      items.value = await api<any[]>(endpoint)
     } catch (e: any) {
       error.value = e?.data?.detail || 'Error de conexion'
     } finally {
@@ -26,23 +23,23 @@ export const useCatalogo = <T extends { id: string }>(endpoint: string) => {
     }
   }
 
-  const guardar = async (form: Record<string, any>) => {
+  const guardar = async (form: Record<string, any>): Promise<boolean> => {
     saving.value = true
     saveError.value = ''
     try {
       if (editingId.value) {
-        const updated = await api<T>(`${endpoint}/${editingId.value}`, {
+        const updated = await api<any>(`${endpoint}/${editingId.value}`, {
           method: 'PATCH',
           body: form,
         })
-        const idx = items.value.findIndex(i => i.id === editingId.value)
+        const idx = items.value.findIndex((i: any) => i.id === editingId.value)
         if (idx !== -1) items.value[idx] = updated
       } else {
-        const created = await api<T>(endpoint, {
+        const created = await api<any>(endpoint, {
           method: 'POST',
           body: form,
         })
-        items.value.unshift(created)
+        items.value = [created, ...items.value]
       }
       showModal.value = false
       editingId.value = null
@@ -59,7 +56,7 @@ export const useCatalogo = <T extends { id: string }>(endpoint: string) => {
     if (!confirm('¿Eliminar este registro?')) return
     try {
       await api(`${endpoint}/${id}`, { method: 'DELETE' })
-      items.value = items.value.filter(i => i.id !== id)
+      items.value = items.value.filter((i: any) => i.id !== id)
     } catch (e: any) {
       error.value = e?.data?.detail || 'No se pudo eliminar'
     }
@@ -80,7 +77,8 @@ export const useCatalogo = <T extends { id: string }>(endpoint: string) => {
   onMounted(cargar)
 
   return {
-    items, loading, error,
+    items: items as Ref<T[]>,
+    loading, error,
     saving, saveError, showModal, editingId,
     cargar, guardar, eliminar,
     abrirCrear, abrirEditar,
