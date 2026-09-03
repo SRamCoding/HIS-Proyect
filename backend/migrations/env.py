@@ -16,6 +16,11 @@ from app.sigarh.mantenimiento.models import (
     TipoActividad, Actividad, GuardiaValorizada,
     RolSistema, PerfilUsuario, Dependencia, UsuarioSigarh
 )
+from app.sigarh.rrhh.models import (
+    Empleado, Especialidad, EmpleadoEspecialidad,
+    DiasFeriado, MotivoJustificacion, Tolerancia,
+    RegistroAsistencia, Justificacion
+)
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
