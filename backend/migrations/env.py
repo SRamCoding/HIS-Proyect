@@ -22,6 +22,8 @@ from app.sigarh.rrhh.models import (
     RegistroAsistencia, Justificacion
 )
 
+from app.sigarh.movimientos.models import Vacacion, Licencia, CambioTurno, Papeleta
+
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 

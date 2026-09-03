@@ -27,8 +27,14 @@ export const useSigarhNav = () => {
       modulo: 'sigarh_movimientos',
       items: [
         { label: 'Justificacion y Vacaciones', path: '/sigarh/movimientos/vacaciones' },
-        { label: 'Tramitar Licencia',          path: '/sigarh/movimientos/licencias' },
-        { label: 'Estado Licencia',            path: '/sigarh/movimientos/estado-licencia' },
+        { label: 'Tramitar Licencia',          path: '/sigarh/movimientos/licencias/create' },
+        { label: 'Estado Licencia',            path: '/sigarh/movimientos/licencias' },
+        { label: '— Cambio de Turno',          path: '', header: true },
+        { label: 'Tramitar Cambio de Turno',   path: '/sigarh/movimientos/cambio-turno/create', sub: true },
+        { label: 'Estado Cambio Turno',        path: '/sigarh/movimientos/cambio-turno', sub: true },
+        { label: '— Papeletas',                path: '', header: true },
+        { label: 'Tramitar Papeleta',          path: '/sigarh/movimientos/papeletas/create', sub: true },
+        { label: 'Estado de Papeletas',        path: '/sigarh/movimientos/papeletas', sub: true },
       ]
     },
     {

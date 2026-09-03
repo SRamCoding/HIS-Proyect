@@ -10,7 +10,7 @@ from app.tenants.router import router as tenants_router
 from app.modules.admision.router import router as admision_router
 from app.sigarh.mantenimiento.router import router as sigarh_mant_router
 from app.sigarh.rrhh.router import router as sigarh_rrhh_router
-
+from app.sigarh.movimientos.router import router as sigarh_mov_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -56,3 +56,4 @@ app.include_router(admin_router, prefix="/admin", tags=["admin"])
 app.include_router(admision_router, prefix="/app/admision", tags=["admision"])
 app.include_router(sigarh_mant_router, prefix="/sigarh/mantenimiento", tags=["sigarh-mantenimiento"])
 app.include_router(sigarh_rrhh_router, prefix="/sigarh/rrhh", tags=["sigarh-rrhh"])
+app.include_router(sigarh_mov_router, prefix="/sigarh/movimientos", tags=["sigarh-movimientos"])

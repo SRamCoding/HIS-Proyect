@@ -16,15 +16,24 @@
         <div v-for="grupo in gruposVisibles" :key="grupo.label">
           <p class="nav-group-label">{{ grupo.label }}</p>
           <div class="space-y-0.5">
-            <NuxtLink
-              v-for="item in grupo.items"
-              :key="item.path"
-              :to="link(item.path)"
-              class="nav-link nav-sub"
-              :class="activo(item.path)"
-            >
-              {{ item.label }}
-            </NuxtLink>
+            <template v-for="item in grupo.items" :key="item.label">
+              <!-- Cabecera de subgrupo -->
+              <p
+                v-if="item.header"
+                class="nav-sub-header"
+              >
+                {{ item.label }}
+              </p>
+              <!-- Link normal -->
+              <NuxtLink
+                v-else
+                :to="link(item.path)"
+                class="nav-link nav-sub"
+                :class="[activo(item.path), { 'nav-sub-deep': item.sub }]"
+              >
+                {{ item.label }}
+              </NuxtLink>
+            </template>
           </div>
         </div>
       </nav>
@@ -69,6 +78,14 @@ const handleLogout = async () => {
   text-transform: uppercase;
   margin-bottom: 0.25rem;
 }
+.nav-sub-header {
+  padding: 0.4rem 0.75rem 0.1rem 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #5a8fa8;
+  letter-spacing: 0.03em;
+  margin-top: 0.25rem;
+}
 .nav-link {
   display: flex;
   align-items: center;
@@ -92,5 +109,9 @@ const handleLogout = async () => {
 .nav-sub {
   padding-left: 1rem;
   font-size: 0.8rem;
+}
+.nav-sub-deep {
+  padding-left: 1.5rem;
+  font-size: 0.78rem;
 }
 </style>
