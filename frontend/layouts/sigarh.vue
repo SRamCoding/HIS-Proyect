@@ -1,57 +1,168 @@
 <template>
   <div class="min-h-screen flex" style="background: var(--mist)">
-    <aside class="w-64 flex flex-col shrink-0" style="background: var(--navy); color: white">
-      <div class="h-16 flex items-center gap-2 px-5 border-b" style="border-color: rgba(255,255,255,0.1)">
-        <div class="w-7 h-7 rounded flex items-center justify-center" style="background: var(--teal)">
+
+    <!-- SIDEBAR -->
+    <aside
+      class="flex flex-col shrink-0 transition-all duration-300"
+      :style="{ width: collapsed ? '64px' : '240px', background: 'var(--navy)', color: 'white' }"
+    >
+      <!-- Logo -->
+      <div class="h-16 flex items-center gap-2 px-4 shrink-0 border-b" style="border-color: rgba(255,255,255,0.08)">
+        <div class="w-7 h-7 rounded flex items-center justify-center shrink-0" style="background: var(--teal)">
           <span class="text-xs font-bold">S</span>
         </div>
-        <span class="font-semibold text-sm">SIGARH</span>
+        <span v-if="!collapsed" class="font-semibold text-sm tracking-wide">SIGARH</span>
       </div>
 
-      <nav class="flex-1 px-3 py-4 overflow-y-auto space-y-3">
-        <NuxtLink :to="link('/sigarh')" class="nav-link" :class="activo('/sigarh')">
-          Escritorio
+      <!-- Nav -->
+      <nav class="flex-1 overflow-y-auto overflow-x-hidden py-3 space-y-0.5 px-2">
+
+  <!-- Escritorio -->
+  <NuxtLink :to="link('/sigarh')" class="nav-link" :class="activo('/sigarh')">
+    <UIcon name="i-heroicons-home" class="w-4 h-4 shrink-0" />
+    <span v-if="!collapsed" class="truncate">Escritorio</span>
+  </NuxtLink>
+
+  <!-- Grupos -->
+  <div v-for="grupo in gruposVisibles" :key="grupo.label" class="pt-1">
+
+    <!-- Cabecera grupo principal -->
+    <button
+      v-if="!collapsed"
+      class="w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-colors hover:bg-white/5"
+      style="color: #7fa1b3"
+      @click="toggleGrupo(grupo.label)"
+    >
+      <div class="flex items-center gap-2">
+        <UIcon :name="grupo.icon || 'i-heroicons-folder'" class="w-3.5 h-3.5" />
+        <span class="text-xs font-semibold uppercase tracking-widest">{{ grupo.label }}</span>
+      </div>
+      <UIcon
+        :name="grupoAbierto(grupo.label) ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'"
+        class="w-3 h-3"
+      />
+    </button>
+    <div v-else class="mx-3 my-1 border-t" style="border-color: rgba(255,255,255,0.08)" />
+
+    <!-- Items del grupo -->
+    <div v-show="grupoAbierto(grupo.label) || collapsed" class="space-y-0.5 mt-0.5">
+      <template v-for="item in grupo.items" :key="item.label">
+
+        <!-- SUBGRUPO colapsable (Cambio de Turno, Papeletas) -->
+        <template v-if="item.subgrupo">
+          <button
+            v-if="!collapsed"
+            class="w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-colors hover:bg-white/5 nav-sub"
+            style="color: #5a8fa8"
+            @click="toggleSubgrupo(grupo.label + item.label)"
+          >
+            <div class="flex items-center gap-2">
+              <UIcon :name="item.icon || 'i-heroicons-folder'" class="w-3.5 h-3.5" />
+              <span class="text-xs font-semibold">{{ item.label }}</span>
+            </div>
+            <UIcon
+              :name="subgrupoAbierto(grupo.label + item.label) ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'"
+              class="w-3 h-3"
+            />
+          </button>
+
+          <!-- Children del subgrupo -->
+          <div v-show="subgrupoAbierto(grupo.label + item.label) || collapsed" class="space-y-0.5">
+            <NuxtLink
+              v-for="child in item.children"
+              :key="child.path"
+              :to="link(child.path)"
+              class="nav-link nav-sub-deep"
+              :class="activo(child.path)"
+            >
+              <UIcon :name="child.icon || 'i-heroicons-chevron-right'" class="w-3 h-3 shrink-0 opacity-60" />
+              <span v-if="!collapsed" class="truncate">{{ child.label }}</span>
+            </NuxtLink>
+          </div>
+        </template>
+
+        <!-- Item normal -->
+        <NuxtLink
+          v-else
+          :to="link(item.path)"
+          class="nav-link nav-sub"
+          :class="activo(item.path)"
+        >
+          <UIcon :name="item.icon || 'i-heroicons-chevron-right'" class="w-3.5 h-3.5 shrink-0 opacity-60" />
+          <span v-if="!collapsed" class="truncate">{{ item.label }}</span>
         </NuxtLink>
 
-        <div v-for="grupo in gruposVisibles" :key="grupo.label">
-          <p class="nav-group-label">{{ grupo.label }}</p>
-          <div class="space-y-0.5">
-            <template v-for="item in grupo.items" :key="item.label">
-              <!-- Cabecera de subgrupo -->
-              <p
-                v-if="item.header"
-                class="nav-sub-header"
-              >
-                {{ item.label }}
-              </p>
-              <!-- Link normal -->
-              <NuxtLink
-                v-else
-                :to="link(item.path)"
-                class="nav-link nav-sub"
-                :class="[activo(item.path), { 'nav-sub-deep': item.sub }]"
-              >
-                {{ item.label }}
-              </NuxtLink>
-            </template>
-          </div>
-        </div>
-      </nav>
+      </template>
+    </div>
+  </div>
+</nav>
 
-      <div class="p-3 border-t" style="border-color: rgba(255,255,255,0.1)">
-        <div class="px-3 py-2 rounded mb-1" style="background: rgba(255,255,255,0.05)">
+      <!-- Footer usuario -->
+      <div class="p-2 border-t shrink-0" style="border-color: rgba(255,255,255,0.08)">
+        <div v-if="!collapsed" class="px-3 py-2 rounded-lg mb-1" style="background: rgba(255,255,255,0.05)">
           <p class="text-sm font-medium truncate">{{ authStore.user?.name }}</p>
           <p class="text-xs truncate" style="color: #7fa1b3">{{ authStore.user?.email }}</p>
         </div>
-        <button @click="handleLogout" class="nav-link w-full text-left">Cerrar sesion</button>
+        <button @click="handleLogout"
+          class="nav-link w-full justify-center gap-2"
+          :class="collapsed ? 'px-0' : ''">
+          <UIcon name="i-heroicons-arrow-right-on-rectangle" class="w-4 h-4 shrink-0" />
+          <span v-if="!collapsed">Cerrar sesión</span>
+        </button>
       </div>
     </aside>
 
+    <!-- CONTENIDO -->
     <div class="flex-1 flex flex-col min-w-0">
-      <header class="h-16 flex items-center px-6 shrink-0" style="background: var(--paper); border-bottom: 1px solid var(--line)">
-        <h2 class="text-sm font-medium" style="color: var(--ink-soft)">Panel SIGARH</h2>
+
+      <!-- Header -->
+      <header
+        class="h-16 flex items-center gap-4 px-6 shrink-0"
+        style="background: var(--navy); border-bottom: 1px solid rgba(255,255,255,0.08)"
+      >
+        <!-- Toggle sidebar -->
+        <button
+          class="p-2 rounded-lg hover:bg-white/10 transition-colors shrink-0"
+          @click="collapsed = !collapsed"
+        >
+          <UIcon
+            :name="collapsed ? 'i-heroicons-bars-3' : 'i-heroicons-chevron-double-left'"
+            class="w-5 h-5"
+            style="color: rgba(255,255,255,0.6)"
+          />
+        </button>
+
+        <!-- Título página -->
+        <h2 class="text-sm font-medium" style="color: rgba(255,255,255,0.5)">
+          {{ route.meta.title || 'Panel SIGARH' }}
+        </h2>
+
+        <!-- Buscador -->
+        <div class="flex-1 max-w-sm ml-2">
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-full"
+            style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12)">
+            <UIcon name="i-heroicons-magnifying-glass" class="w-4 h-4 shrink-0" style="color: rgba(255,255,255,0.4)" />
+            <input
+              placeholder="Buscar..."
+              class="bg-transparent border-none outline-none text-sm w-full"
+              style="color: white"
+            />
+          </div>
+        </div>
+
+        <!-- Acciones derecha -->
+        <div class="ml-auto flex items-center gap-1">
+          <button class="p-2 rounded-lg hover:bg-white/10 transition-colors">
+            <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
+          </button>
+          <button class="p-2 rounded-lg hover:bg-white/10 transition-colors">
+            <UIcon name="i-heroicons-cog-6-tooth" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
+          </button>
+        </div>
       </header>
-      <main class="flex-1 overflow-y-auto p-6">
+
+      <!-- Página -->
+      <main class="flex-1 overflow-y-auto">
         <slot />
       </main>
     </div>
@@ -61,6 +172,71 @@
 <script setup lang="ts">
 const authStore = useAuthStore()
 const { link, activo, gruposVisibles } = useSigarhNav()
+const route = useRoute()
+// Estado subgrupos (Cambio de Turno, Papeletas, etc.)
+const subgruposAbiertos = ref<Record<string, boolean>>({})
+
+function subgrupoAbierto(key: string): boolean {
+  return subgruposAbiertos.value[key] !== false // abierto por defecto
+}
+
+function toggleSubgrupo(key: string) {
+  subgruposAbiertos.value[key] = !subgrupoAbierto(key)
+}
+// Sidebar colapsado
+const collapsed = ref(false)
+
+// Estado de grupos abiertos — todos abiertos por defecto
+const gruposAbiertos = ref<Record<string, boolean>>({})
+
+function grupoAbierto(label: string): boolean {
+  return gruposAbiertos.value[label] !== false // abierto por defecto
+}
+
+function toggleGrupo(label: string) {
+  gruposAbiertos.value[label] = !grupoAbierto(label)
+}
+
+// Icono por nombre de item
+function iconoItem(label: string): string {
+  const mapa: Record<string, string> = {
+    'Empleados': 'i-heroicons-users',
+    'Especialidades': 'i-heroicons-academic-cap',
+    'Dias Feriados': 'i-heroicons-calendar',
+    'Registro de Asistencia': 'i-heroicons-clipboard-document-check',
+    'Tolerancias': 'i-heroicons-clock',
+    'Motivos de Justificacion': 'i-heroicons-document-text',
+    'Justificaciones e Inasistencias': 'i-heroicons-exclamation-circle',
+    'Justificacion y Vacaciones': 'i-heroicons-sun',
+    'Tramitar Licencia': 'i-heroicons-paper-airplane',
+    'Estado Licencia': 'i-heroicons-list-bullet',
+    'Tramitar Cambio de Turno': 'i-heroicons-arrows-right-left',
+    'Estado Cambio Turno': 'i-heroicons-list-bullet',
+    'Tramitar Papeleta': 'i-heroicons-paper-airplane',
+    'Estado de Papeletas': 'i-heroicons-list-bullet',
+    'Prof. Salud - Medicos': 'i-heroicons-user-group',
+    'Otros Prof. de la Salud': 'i-heroicons-user-group',
+    'Examenes de Laboratorio': 'i-heroicons-beaker',
+    'Examenes de Imagenologia': 'i-heroicons-photo',
+    'Diagnosticos CIE-10': 'i-heroicons-document-magnifying-glass',
+    'Paquetes': 'i-heroicons-archive-box',
+    'Tiempos Procedimientos': 'i-heroicons-clock',
+    'Registro de Raciones': 'i-heroicons-clipboard-document-list',
+    'Generar Reportes': 'i-heroicons-chart-bar',
+    'Entrega de Raciones': 'i-heroicons-check-circle',
+    'Cambios de Turno': 'i-heroicons-arrows-right-left',
+    'Pisos': 'i-heroicons-building-office',
+    'Salas': 'i-heroicons-building-office-2',
+    'Camas': 'i-heroicons-home',
+    'Consultorios': 'i-heroicons-building-storefront',
+    'Almacenes / Farmacias': 'i-heroicons-archive-box',
+    'Medicamentos e Insumos': 'i-heroicons-beaker',
+    'Seguros': 'i-heroicons-shield-check',
+    'Cajas': 'i-heroicons-banknotes',
+    'Tarifario': 'i-heroicons-currency-dollar',
+  }
+  return mapa[label] || 'i-heroicons-chevron-right'
+}
 
 const handleLogout = async () => {
   await authStore.logout()
@@ -69,33 +245,17 @@ const handleLogout = async () => {
 </script>
 
 <style scoped>
-.nav-group-label {
-  padding: 0 0.75rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  color: #7fa1b3;
-  text-transform: uppercase;
-  margin-bottom: 0.25rem;
-}
-.nav-sub-header {
-  padding: 0.4rem 0.75rem 0.1rem 0.75rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: #5a8fa8;
-  letter-spacing: 0.03em;
-  margin-top: 0.25rem;
-}
 .nav-link {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  color: #c3d6df;
-  transition: background 0.15s ease;
+  padding: 0.45rem 0.75rem;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.65);
+  transition: background 0.15s ease, color 0.15s ease;
   text-decoration: none;
+  width: 100%;
 }
 .nav-link:hover {
   background: rgba(255, 255, 255, 0.08);
@@ -111,7 +271,7 @@ const handleLogout = async () => {
   font-size: 0.8rem;
 }
 .nav-sub-deep {
-  padding-left: 1.5rem;
+  padding-left: 1.75rem;
   font-size: 0.78rem;
 }
 </style>

@@ -12,137 +12,166 @@ export const useSigarhNav = () => {
     {
       label: 'Recursos Humanos',
       modulo: 'sigarh_recursos_humanos',
+      icon: 'i-heroicons-users',
       items: [
-        { label: 'Empleados',                       path: '/sigarh/rrhh/empleados' },
-        { label: 'Especialidades',                  path: '/sigarh/rrhh/especialidades' },
-        { label: 'Dias Feriados',                   path: '/sigarh/rrhh/feriados' },
-        { label: 'Registro de Asistencia',          path: '/sigarh/rrhh/asistencia' },
-        { label: 'Tolerancias',                     path: '/sigarh/rrhh/tolerancias' },
-        { label: 'Motivos de Justificacion',        path: '/sigarh/rrhh/motivos-justificacion' },
-        { label: 'Justificaciones e Inasistencias', path: '/sigarh/rrhh/justificaciones' },
+        { label: 'Empleados',                       path: '/sigarh/rrhh/empleados',              icon: 'i-heroicons-user' },
+        { label: 'Especialidades',                  path: '/sigarh/rrhh/especialidades',          icon: 'i-heroicons-academic-cap' },
+        { label: 'Dias Feriados',                   path: '/sigarh/rrhh/feriados',                icon: 'i-heroicons-calendar' },
+        { label: 'Registro de Asistencia',          path: '/sigarh/rrhh/asistencia',              icon: 'i-heroicons-clipboard-document-check' },
+        { label: 'Tolerancias',                     path: '/sigarh/rrhh/tolerancias',             icon: 'i-heroicons-clock' },
+        { label: 'Motivos de Justificacion',        path: '/sigarh/rrhh/motivos-justificacion',   icon: 'i-heroicons-document-text' },
+        { label: 'Justificaciones e Inasistencias', path: '/sigarh/rrhh/justificaciones',         icon: 'i-heroicons-exclamation-circle' },
       ]
     },
     {
       label: 'Movimientos',
       modulo: 'sigarh_movimientos',
+      icon: 'i-heroicons-arrows-right-left',
       items: [
-        { label: '— Cambio de Turno',        path: '', header: true },
-        { label: 'Tramitar Cambio de Turno', path: '/sigarh/movimientos/cambio-turno/tramitar', sub: true },
-        { label: 'Estado Cambio Turno',      path: '/sigarh/movimientos/cambio-turno/estado', sub: true },
-        { label: '— Papeletas',              path: '', header: true },
-        { label: 'Tramitar Papeleta',        path: '/sigarh/movimientos/papeletas/tramitar', sub: true },
-        { label: 'Estado de Papeletas',      path: '/sigarh/movimientos/papeletas/estado', sub: true },
+        { label: 'Justificacion y Vacaciones', path: '/sigarh/movimientos/vacaciones',          icon: 'i-heroicons-sun' },
+        { label: 'Tramitar Licencia',          path: '/sigarh/movimientos/licencias/create',    icon: 'i-heroicons-paper-airplane' },
+        { label: 'Estado Licencia',            path: '/sigarh/movimientos/licencias',            icon: 'i-heroicons-list-bullet' },
+        {
+          label: 'Cambio de Turno',
+          subgrupo: true,
+          icon: 'i-heroicons-arrows-right-left',
+          children: [
+            { label: 'Tramitar Cambio de Turno', path: '/sigarh/movimientos/cambio-turno/tramitar', icon: 'i-heroicons-paper-airplane' },
+            { label: 'Estado Cambio Turno',      path: '/sigarh/movimientos/cambio-turno/estado',   icon: 'i-heroicons-list-bullet' },
+          ]
+        },
+        {
+          label: 'Papeletas',
+          subgrupo: true,
+          icon: 'i-heroicons-document-duplicate',
+          children: [
+            { label: 'Tramitar Papeleta',   path: '/sigarh/movimientos/papeletas/tramitar', icon: 'i-heroicons-paper-airplane' },
+            { label: 'Estado de Papeletas', path: '/sigarh/movimientos/papeletas/estado',   icon: 'i-heroicons-list-bullet' },
+          ]
+        },
       ]
     },
     {
       label: 'Creacion de Roles',
       modulo: 'sigarh_creacion_roles',
+      icon: 'i-heroicons-calendar-days',
       items: [
-        { label: 'Prof. Salud - Medicos',      path: '/sigarh/roles-turno/crear/medicos' },
-        { label: 'Otros Prof. de la Salud',    path: '/sigarh/roles-turno/crear/otros-profesionales' },
-        { label: 'Residentes de Medicina',     path: '/sigarh/roles-turno/crear/residentes' },
-        { label: 'Tecnicos y Auxiliares',      path: '/sigarh/roles-turno/crear/tecnicos' },
-        { label: 'Internos de Medicina',       path: '/sigarh/roles-turno/crear/internos' },
+        { label: 'Prof. Salud - Medicos',   path: '/sigarh/roles-turno/crear/medicos',             icon: 'i-heroicons-user-group' },
+        { label: 'Otros Prof. de la Salud', path: '/sigarh/roles-turno/crear/otros-profesionales', icon: 'i-heroicons-user-group' },
+        { label: 'Residentes de Medicina',  path: '/sigarh/roles-turno/crear/residentes',          icon: 'i-heroicons-user-group' },
+        { label: 'Tecnicos y Auxiliares',   path: '/sigarh/roles-turno/crear/tecnicos',            icon: 'i-heroicons-user-group' },
+        { label: 'Internos de Medicina',    path: '/sigarh/roles-turno/crear/internos',            icon: 'i-heroicons-user-group' },
       ]
     },
     {
       label: 'Roles Pendientes',
       modulo: 'sigarh_roles_pendientes',
+      icon: 'i-heroicons-clock',
       items: [
-        { label: 'Roles por Aprobar', path: '/sigarh/roles-turno/pendientes' },
+        { label: 'Roles por Aprobar', path: '/sigarh/roles-turno/pendientes', icon: 'i-heroicons-list-bullet' },
       ]
     },
     {
       label: 'Roles Aprobados',
       modulo: 'sigarh_roles_aprobados',
+      icon: 'i-heroicons-check-badge',
       items: [
-        { label: 'Roles Aprobados', path: '/sigarh/roles-turno/aprobados' },
+        { label: 'Roles Aprobados', path: '/sigarh/roles-turno/aprobados', icon: 'i-heroicons-check-circle' },
       ]
     },
     {
       label: 'Infraestructura',
       modulo: 'sigarh_infraestructura',
+      icon: 'i-heroicons-building-office',
       items: [
-        { label: 'Catalogos',    path: '/sigarh/mantenimiento/catalogos' },
-        { label: 'Consultorios', path: '/sigarh/mantenimiento/consultorios' },
+        { label: 'Catalogos',    path: '/sigarh/infraestructura/catalogos',    icon: 'i-heroicons-squares-2x2' },
+        { label: 'Consultorios', path: '/sigarh/infraestructura/consultorios', icon: 'i-heroicons-building-storefront' },
       ]
     },
     {
       label: 'Infraestructura Hospitalaria',
       modulo: 'sigarh_infraestructura_hosp',
+      icon: 'i-heroicons-building-office-2',
       items: [
-        { label: 'Pisos', path: '/sigarh/mantenimiento/pisos' },
-        { label: 'Salas', path: '/sigarh/mantenimiento/salas' },
-        { label: 'Camas', path: '/sigarh/mantenimiento/camas' },
+        { label: 'Pisos', path: '/sigarh/infraestructura-hosp/pisos', icon: 'i-heroicons-building-office-2' },
+        { label: 'Salas', path: '/sigarh/infraestructura-hosp/salas', icon: 'i-heroicons-rectangle-group' },
+        { label: 'Camas', path: '/sigarh/infraestructura-hosp/camas', icon: 'i-heroicons-home' },
       ]
     },
     {
-      label: 'Configuracion Farmacia',
+      label: 'Config. Farmacia',
       modulo: 'sigarh_config_farmacia',
+      icon: 'i-heroicons-beaker',
       items: [
-        { label: 'Almacenes / Farmacias',  path: '/sigarh/mantenimiento/almacenes' },
-        { label: 'Medicamentos e Insumos', path: '/sigarh/mantenimiento/medicamentos' },
+        { label: 'Almacenes / Farmacias',  path: '/sigarh/config-farmacia/almacenes',    icon: 'i-heroicons-archive-box' },
+        { label: 'Medicamentos e Insumos', path: '/sigarh/config-farmacia/medicamentos',  icon: 'i-heroicons-beaker' },
       ]
     },
     {
-      label: 'Configuracion Financiera',
+      label: 'Config. Financiera',
       modulo: 'sigarh_config_financiera',
+      icon: 'i-heroicons-banknotes',
       items: [
-        { label: 'Seguros',   path: '/sigarh/mantenimiento/seguros' },
-        { label: 'Cajas',     path: '/sigarh/mantenimiento/cajas' },
-        { label: 'Tarifario', path: '/sigarh/mantenimiento/tarifario' },
+        { label: 'Seguros',   path: '/sigarh/config-financiera/seguros',   icon: 'i-heroicons-shield-check' },
+        { label: 'Cajas',     path: '/sigarh/config-financiera/cajas',     icon: 'i-heroicons-banknotes' },
+        { label: 'Tarifario', path: '/sigarh/config-financiera/tarifario', icon: 'i-heroicons-currency-dollar' },
       ]
     },
     {
       label: 'Laboratorio',
       modulo: 'sigarh_laboratorio',
+      icon: 'i-heroicons-beaker',
       items: [
-        { label: 'Examenes de Laboratorio', path: '/sigarh/mantenimiento/examenes-laboratorio' },
+        { label: 'Examenes de Laboratorio', path: '/sigarh/laboratorio/examenes', icon: 'i-heroicons-beaker' },
       ]
     },
     {
       label: 'Imagenologia',
       modulo: 'sigarh_imagenologia',
+      icon: 'i-heroicons-photo',
       items: [
-        { label: 'Examenes de Imagenologia', path: '/sigarh/mantenimiento/examenes-imagenologia' },
+        { label: 'Examenes de Imagenologia', path: '/sigarh/imagenologia/examenes', icon: 'i-heroicons-photo' },
       ]
     },
     {
       label: 'Nutricion',
       modulo: 'sigarh_nutricion',
+      icon: 'i-heroicons-clipboard-document-list',
       items: [
-        { label: 'Registro de Raciones', path: '/sigarh/nutricion/raciones' },
-        { label: 'Generar Reportes',     path: '/sigarh/nutricion/reportes' },
-        { label: 'Entrega de Raciones',  path: '/sigarh/nutricion/entrega' },
-        { label: 'Cambios de Turno',     path: '/sigarh/nutricion/cambio-turno' },
+        { label: 'Registro de Raciones', path: '/sigarh/nutricion/raciones',     icon: 'i-heroicons-clipboard-document-list' },
+        { label: 'Generar Reportes',     path: '/sigarh/nutricion/reportes',     icon: 'i-heroicons-chart-bar' },
+        { label: 'Entrega de Raciones',  path: '/sigarh/nutricion/entrega',      icon: 'i-heroicons-check-circle' },
+        { label: 'Cambios de Turno',     path: '/sigarh/nutricion/cambio-turno', icon: 'i-heroicons-arrows-right-left' },
       ]
     },
     {
       label: 'General',
       modulo: 'sigarh_general',
+      icon: 'i-heroicons-globe-alt',
       items: [
-        { label: 'Diagnosticos CIE-10',    path: '/sigarh/general/cie10' },
-        { label: 'Paquetes',               path: '/sigarh/general/paquetes' },
-        { label: 'Tiempos Procedimientos', path: '/sigarh/general/tiempos' },
+        { label: 'Diagnosticos CIE-10',    path: '/sigarh/general/cie10',    icon: 'i-heroicons-document-magnifying-glass' },
+        { label: 'Paquetes',               path: '/sigarh/general/paquetes', icon: 'i-heroicons-archive-box' },
+        { label: 'Tiempos Procedimientos', path: '/sigarh/general/tiempos',  icon: 'i-heroicons-clock' },
       ]
     },
     {
       label: 'Mantenimiento',
       modulo: 'sigarh_mantenimiento',
+      icon: 'i-heroicons-wrench-screwdriver',
       items: [
-        { label: 'Usuarios',               path: '/sigarh/mantenimiento/usuarios' },
-        { label: 'Departamentos',          path: '/sigarh/mantenimiento/departamentos' },
-        { label: 'Servicios',              path: '/sigarh/mantenimiento/servicios' },
-        { label: 'Dependencias',           path: '/sigarh/mantenimiento/dependencias' },
-        { label: 'Tipos de Trabajador',    path: '/sigarh/mantenimiento/tipos-trabajador' },
-        { label: 'Tipos de Guardia',       path: '/sigarh/mantenimiento/tipos-guardia' },
-        { label: 'Niveles Remunerativos',  path: '/sigarh/mantenimiento/niveles-remunerativos' },
-        { label: 'Horarios de Guardia',    path: '/sigarh/mantenimiento/horarios-guardia' },
-        { label: 'Tipos de Actividad',     path: '/sigarh/mantenimiento/tipos-actividad' },
-        { label: 'Actividades',            path: '/sigarh/mantenimiento/actividades' },
-        { label: 'Guardias Valorizadas',   path: '/sigarh/mantenimiento/guardias-valorizadas' },
-        { label: 'Roles del Sistema',      path: '/sigarh/mantenimiento/roles-sistema' },
-        { label: 'Perfiles de Usuario',    path: '/sigarh/mantenimiento/perfiles-usuario' },
+        { label: 'Usuarios',              path: '/sigarh/mantenimiento/usuarios',              icon: 'i-heroicons-users' },
+        { label: 'Departamentos',         path: '/sigarh/mantenimiento/departamentos',         icon: 'i-heroicons-building-office' },
+        { label: 'Servicios',             path: '/sigarh/mantenimiento/servicios',             icon: 'i-heroicons-squares-2x2' },
+        { label: 'Dependencias',          path: '/sigarh/mantenimiento/dependencias',          icon: 'i-heroicons-link' },
+        { label: 'Tipos de Trabajador',   path: '/sigarh/mantenimiento/tipos-trabajador',      icon: 'i-heroicons-identification' },
+        { label: 'Tipos de Guardia',      path: '/sigarh/mantenimiento/tipos-guardia',         icon: 'i-heroicons-shield-check' },
+        { label: 'Niveles Remunerativos', path: '/sigarh/mantenimiento/niveles-remunerativos', icon: 'i-heroicons-currency-dollar' },
+        { label: 'Horarios de Guardia',   path: '/sigarh/mantenimiento/horarios-guardia',      icon: 'i-heroicons-clock' },
+        { label: 'Tipos de Actividad',    path: '/sigarh/mantenimiento/tipos-actividad',       icon: 'i-heroicons-tag' },
+        { label: 'Actividades',           path: '/sigarh/mantenimiento/actividades',           icon: 'i-heroicons-bolt' },
+        { label: 'Guardias Valorizadas',  path: '/sigarh/mantenimiento/guardias-valorizadas',  icon: 'i-heroicons-star' },
+        { label: 'Roles del Sistema',     path: '/sigarh/mantenimiento/roles-sistema',         icon: 'i-heroicons-key' },
+        { label: 'Perfiles de Usuario',   path: '/sigarh/mantenimiento/perfiles-usuario',      icon: 'i-heroicons-user-circle' },
       ]
     },
   ])
