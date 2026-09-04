@@ -1,5 +1,4 @@
-﻿
-@import "tailwindcss";
+﻿@import "tailwindcss";
 @import "@nuxt/ui";
 
 :root {
@@ -18,9 +17,22 @@
   --warn-soft: #faf1e0;
   --ok: #1e7d4f;
   --ok-soft: #e6f3ec;
+
+  /* Añadidos: usados en DashboardStats / getUserColor / badges */
+  --green: #1e7d4f;
+  --green-soft: #e6f3ec;
+  --amber: #b8862b;
+  --amber-soft: #faf1e0;
+  --purple: #6d4aa8;
+  --purple-soft: #efe9f7;
+  --pink-soft: #fbe7f0;
+  --blue-soft: #e3edfb;
+  --orange-soft: #fdece0;
+
   --radius: 6px;
-   --radius-lg: 14px;
+  --radius-lg: 14px;
   --shadow-card: 0 1px 2px rgba(15, 31, 46, 0.04), 0 1px 3px rgba(15, 31, 46, 0.06);
+  --shadow-lg: 0 10px 25px rgba(15, 31, 46, 0.12), 0 4px 10px rgba(15, 31, 46, 0.08);
 }
 
 html, body {
@@ -42,9 +54,45 @@ html, body {
   font-weight: 500;
   font-size: 0.9rem;
   transition: background 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 .btn-primary:hover:not(:disabled) { background: var(--navy-hover); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Añadido: usado en el modal de confirmación de eliminación */
+.btn-secondary {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.6rem 1.1rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--mist);
+  border-color: var(--ink-soft);
+}
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Añadido: usado en el modal de confirmación de eliminación */
+.btn-danger {
+  background: var(--alert);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 0.6rem 1.1rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: background 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.btn-danger:hover:not(:disabled) { background: #a3331f; }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .input-clinical {
   width: 100%;
@@ -81,6 +129,14 @@ html, body {
   font-weight: 500;
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem 1.5rem;
+}
+@media (max-width: 640px) {
+  .form-grid { grid-template-columns: 1fr; }
 }
 .badge--ok { background: var(--ok-soft); color: var(--ok); }
 .badge--warn { background: var(--warn-soft); color: var(--warn); }

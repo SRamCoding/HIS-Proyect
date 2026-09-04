@@ -1,155 +1,184 @@
 <!-- pages/sigarh/login.vue -->
 <template>
-  <div class="h-screen w-screen overflow-hidden flex" style="background: var(--mist)">
+  <div class="flex" style="position: fixed; inset: 0; font-family: var(--font-sans, 'Inter', sans-serif)">
 
-    <!-- Panel izquierdo: imagen a sangre completa -->
-    <div class="hidden lg:block lg:w-[56%] h-full shrink-0">
+    <!-- Columna izquierda: imagen (ocupa todo el alto, de borde a borde, con desvanecido hacia el celeste del fondo derecho) -->
+    <div
+      class="hidden lg:block relative overflow-hidden"
+      style="width: 60%; background: #dfeef9"
+    >
       <img
         src="/sigarh.png"
-        alt="Sistema Integral de Gestión y Administración de Recursos Humanos"
-        class="w-full h-full object-cover block"
+        alt="SIGARH"
+        class="w-full h-full object-cover"
+        style="
+          mask-image: linear-gradient(to right, black 0%, black 88%, transparent 100%);
+          -webkit-mask-image: linear-gradient(to right, black 0%, black 88%, transparent 100%);
+        "
       />
     </div>
 
-    <!-- Panel derecho: card completa con fondo decorativo -->
-    <div class="flex-1 min-h-0 flex items-center justify-center p-4 lg:p-6 relative overflow-hidden">
+    <!-- Columna derecha: formulario con imagen de fondo -->
+    <div
+      class="relative flex flex-col items-center justify-between w-full lg:w-[40%] overflow-hidden"
+      style="background-image: url('/fondo.png'); background-size: cover; background-position: center; background-color: #dfeef9;"
+    >
+      <!-- Cruz decorativa superior -->
+      <svg width="28" height="28" viewBox="0 0 28 28" class="absolute top-6 left-1/2 -translate-x-1/2 pointer-events-none" style="opacity: 0.4">
+        <rect x="11" y="0" width="6" height="28" rx="2" fill="#c3cedb" />
+        <rect x="0" y="11" width="28" height="6" rx="2" fill="#c3cedb" />
+      </svg>
 
-      <!-- Cruces decorativas de fondo -->
-      <svg class="absolute inset-0 w-full h-full pointer-events-none" style="opacity: 0.5" xmlns="http://www.w3.org/2000/svg">
-        <g fill="var(--line)">
-          <g transform="translate(60,50)"><rect x="-4" y="-16" width="8" height="32" rx="2"/><rect x="-16" y="-4" width="32" height="8" rx="2"/></g>
-          <g transform="translate(90%,15%)" style="transform-box: fill-box"><rect x="-6" y="-22" width="12" height="44" rx="3"/><rect x="-22" y="-6" width="44" height="12" rx="3"/></g>
-          <g transform="translate(85%,85%)" style="transform-box: fill-box"><rect x="-5" y="-18" width="10" height="36" rx="2"/><rect x="-18" y="-5" width="36" height="10" rx="2"/></g>
-          <g transform="translate(8%,88%)"><rect x="-3.5" y="-13" width="7" height="26" rx="2"/><rect x="-13" y="-3.5" width="26" height="7" rx="2"/></g>
+      <!-- Patrón de puntos superior derecho -->
+      <svg width="120" height="120" viewBox="0 0 120 120" class="absolute top-10 right-0 pointer-events-none" style="opacity: 0.5">
+        <g fill="#c3cedb">
+          <circle cx="10" cy="10" r="2" /><circle cx="30" cy="10" r="2" /><circle cx="50" cy="10" r="2" /><circle cx="70" cy="10" r="2" /><circle cx="90" cy="10" r="2" />
+          <circle cx="10" cy="30" r="2" /><circle cx="30" cy="30" r="2" /><circle cx="50" cy="30" r="2" /><circle cx="70" cy="30" r="2" /><circle cx="90" cy="30" r="2" />
+          <circle cx="10" cy="50" r="2" /><circle cx="30" cy="50" r="2" /><circle cx="50" cy="50" r="2" /><circle cx="70" cy="50" r="2" /><circle cx="90" cy="50" r="2" />
+          <circle cx="10" cy="70" r="2" /><circle cx="30" cy="70" r="2" /><circle cx="50" cy="70" r="2" /><circle cx="70" cy="70" r="2" /><circle cx="90" cy="70" r="2" />
+          <circle cx="10" cy="90" r="2" /><circle cx="30" cy="90" r="2" /><circle cx="50" cy="90" r="2" /><circle cx="70" cy="90" r="2" /><circle cx="90" cy="90" r="2" />
         </g>
       </svg>
 
-      <div
-        class="relative z-10 w-full max-w-lg px-9 py-8"
-        style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card)"
-      >
-        <!-- Logo SIGARH -->
-        <div class="flex items-center gap-2.5 mb-7">
-          <div
-            class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-            style="background: linear-gradient(135deg, var(--teal) 0%, var(--navy) 100%)"
-          >
-            <span class="text-sm font-bold text-white">S</span>
-          </div>
-          <span class="text-lg font-bold tracking-tight" style="color: var(--navy)">SIGARH</span>
-        </div>
+      <!-- Triángulo decorativo inferior izquierdo -->
+      <svg width="420" height="260" viewBox="0 0 420 260" class="absolute bottom-0 left-0 pointer-events-none" style="opacity: 0.5">
+        <polygon points="0,260 0,120 260,260" fill="#dbe4ee" />
+      </svg>
 
-        <!-- Título -->
-        <h1 class="text-2xl font-bold leading-tight mb-1.5" style="color: var(--navy)">Iniciar sesión</h1>
-        <p class="text-sm leading-snug mb-7" style="color: var(--ink-soft)">
-          Sistema Integral de Gestión y Administración de Recursos Humanos
-        </p>
-
-        <!-- Formulario -->
-        <div class="space-y-4">
-          <div>
-            <label class="block text-xs font-semibold mb-1.5" style="color: var(--ink)">Correo electrónico</label>
-            <div class="relative">
-              <UIcon
-                name="i-heroicons-envelope"
-                class="w-4.5 h-4.5 absolute pointer-events-none"
-                style="color: var(--ink-soft); left: 14px; top: 50%; transform: translateY(-50%)"
-              />
-              <input
-                v-model="form.email"
-                type="email"
-                class="input-clinical"
-                style="padding-left: 2.75rem"
-                placeholder="tu.correo@hospital.pe"
-                @keyup.enter="handleLogin"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-xs font-semibold mb-1.5" style="color: var(--ink)">Contraseña</label>
-            <div class="relative">
-              <UIcon
-                name="i-heroicons-lock-closed"
-                class="w-4.5 h-4.5 absolute pointer-events-none"
-                style="color: var(--ink-soft); left: 14px; top: 50%; transform: translateY(-50%)"
-              />
-              <input
-                v-model="form.password"
-                :type="showPassword ? 'text' : 'password'"
-                class="input-clinical"
-                style="padding-left: 2.75rem; padding-right: 2.75rem"
-                placeholder="Ingresa tu contraseña"
-                @keyup.enter="handleLogin"
-              />
-              <button
-                type="button"
-                class="absolute"
-                style="color: var(--ink-soft); right: 14px; top: 50%; transform: translateY(-50%)"
-                @click="showPassword = !showPassword"
-              >
-                <UIcon :name="showPassword ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'" class="w-4.5 h-4.5" />
-              </button>
-            </div>
-          </div>
-
-          <div class="flex items-center justify-between pt-1">
-            <label class="flex items-center gap-2 text-sm cursor-pointer select-none" style="color: var(--ink)">
-              <input type="checkbox" v-model="form.remember" class="checkbox-clinical" />
-              Recordarme
-            </label>
-            <NuxtLink to="/sigarh/recuperar" class="text-sm font-medium hover:underline" style="color: var(--teal)">
-              ¿Olvidaste tu contraseña?
-            </NuxtLink>
-          </div>
-        </div>
-
-        <!-- Error -->
+      <!-- Contenido central -->
+      <div class="flex-1 flex items-center justify-center w-full px-4 relative z-10">
         <div
-          v-if="error"
-          class="mt-4 text-sm rounded-lg px-3.5 py-2.5 flex items-center gap-2"
-          style="background: var(--alert-soft); color: var(--alert)"
+          class="w-full max-w-[480px] px-10 py-9"
+          style="background: #ffffff; border-radius: 20px; box-shadow: 0 20px 50px -12px rgba(15, 42, 67, 0.15)"
         >
-          <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
-          {{ error }}
+          <!-- Logo (visible solo cuando la columna de imagen está oculta, en mobile/tablet) -->
+          <div class="flex items-center gap-2 mb-8 lg:hidden">
+            <div
+              class="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+              style="background: #123a52"
+            >
+              <UIcon name="i-heroicons-plus" class="w-3.5 h-3.5 text-white" />
+            </div>
+            <span class="text-[15px] font-semibold" style="color: #111827">ERP Hospitalario</span>
+          </div>
+
+          <!-- Título -->
+          <h1
+            class="text-[32px] leading-tight mb-2"
+            style="color: #111827; font-family: 'Lora', serif; font-weight: 500"
+          >
+            Iniciar sesión
+          </h1>
+          <p class="text-[15px] leading-snug mb-8" style="color: #64748b">
+            Ingresa tus credenciales para acceder al sistema.
+          </p>
+
+          <!-- Formulario -->
+          <div class="space-y-5">
+            <div>
+              <label class="block text-sm font-semibold mb-2" style="color: #111827">Correo electrónico</label>
+              <div class="relative">
+                <UIcon
+                  name="i-heroicons-envelope"
+                  class="w-4.5 h-4.5 absolute pointer-events-none"
+                  style="color: #94a3b8; left: 14px; top: 50%; transform: translateY(-50%)"
+                />
+                <input
+                  v-model="form.email"
+                  type="email"
+                  class="login-input"
+                  placeholder="nombre@hospital.pe"
+                  @keyup.enter="handleLogin"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <label class="text-sm font-semibold" style="color: #111827">Contraseña</label>
+                <NuxtLink to="/sigarh/recuperar" class="text-sm font-medium hover:underline" style="color: #0f766e">
+                  ¿Olvidaste tu contraseña?
+                </NuxtLink>
+              </div>
+              <div class="relative">
+                <UIcon
+                  name="i-heroicons-lock-closed"
+                  class="w-4.5 h-4.5 absolute pointer-events-none"
+                  style="color: #94a3b8; left: 14px; top: 50%; transform: translateY(-50%)"
+                />
+                <input
+                  v-model="form.password"
+                  :type="showPassword ? 'text' : 'password'"
+                  class="login-input"
+                  style="padding-right: 2.75rem"
+                  placeholder="Ingresa tu contraseña"
+                  @keyup.enter="handleLogin"
+                />
+                <button
+                  type="button"
+                  class="absolute"
+                  style="color: #94a3b8; right: 14px; top: 50%; transform: translateY(-50%)"
+                  @click="showPassword = !showPassword"
+                >
+                  <UIcon :name="showPassword ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'" class="w-4.5 h-4.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Error -->
+          <div
+            v-if="error"
+            class="mt-4 text-sm rounded-lg px-3.5 py-2.5 flex items-center gap-2"
+            style="background: #fef2f2; color: #b91c1c"
+          >
+            <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
+            {{ error }}
+          </div>
+
+          <!-- Botón principal -->
+          <button
+            class="w-full mt-7 py-3.5 rounded-xl text-[15px] font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-70"
+            style="background: #123a52"
+            :disabled="loading"
+            @click="handleLogin"
+          >
+            <UIcon v-if="loading" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
+            <template v-else>
+              Ingresar
+              <UIcon name="i-heroicons-arrow-right" class="w-4 h-4" />
+            </template>
+          </button>
+
+          <!-- Ayuda -->
+          <p class="text-center text-sm mt-6" style="color: #64748b">
+            ¿Necesitas ayuda?
+            <NuxtLink to="/soporte" class="font-semibold hover:underline" style="color: #0f766e">
+              Contacta a soporte
+            </NuxtLink>
+          </p>
         </div>
+      </div>
 
-        <!-- Botón principal -->
-        <button
-          class="w-full mt-6 py-3 rounded-lg text-sm font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-70"
-          style="background: linear-gradient(90deg, var(--teal) 0%, var(--navy) 100%)"
-          :disabled="loading"
-          @click="handleLogin"
-        >
-          <UIcon v-if="loading" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
-          <template v-else>
-            Ingresar
-            <UIcon name="i-heroicons-arrow-right" class="w-4 h-4" />
-          </template>
-        </button>
-
-        <!-- Divisor -->
-        <div class="flex items-center gap-3 my-5">
-          <div class="flex-1 h-px" style="background: var(--line)" />
-          <span class="text-xs shrink-0" style="color: var(--ink-soft)">o continúa con</span>
-          <div class="flex-1 h-px" style="background: var(--line)" />
+      <!-- Footer -->
+      <div class="relative z-10 pb-8 text-center">
+        <div class="flex items-center justify-center gap-6 text-sm mb-2" style="color: #94a3b8">
+          <span class="flex items-center gap-1.5">
+            <UIcon name="i-heroicons-shield-check" class="w-4 h-4" />
+            Datos cifrados
+          </span>
+          <span class="flex items-center gap-1.5">
+            <UIcon name="i-heroicons-server" class="w-4 h-4" />
+            Infraestructura en la nube
+          </span>
+          <span class="flex items-center gap-1.5">
+            <UIcon name="i-heroicons-clock" class="w-4 h-4" />
+            Soporte 24/7
+          </span>
         </div>
-
-        <!-- Microsoft -->
-        <button
-          class="w-full py-3 rounded-lg text-sm font-medium flex items-center justify-center gap-2.5 transition-colors hover:bg-black/[0.02]"
-          style="border: 1px solid var(--line); color: var(--ink)"
-          type="button"
-          @click="handleMicrosoftLogin"
-        >
-          <svg width="16" height="16" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
-            <rect x="1" y="1" width="9" height="9" fill="#f25022" />
-            <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
-            <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
-            <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
-          </svg>
-          Iniciar sesión con Microsoft
-        </button>
+        <p class="text-xs" style="color: #cbd5e1">
+          © 2026 ERP Hospitalario · <NuxtLink to="/terminos" class="hover:underline">Términos de uso</NuxtLink> · <NuxtLink to="/privacidad" class="hover:underline">Privacidad</NuxtLink>
+        </p>
       </div>
     </div>
   </div>
@@ -157,6 +186,14 @@
 
 <script setup lang="ts">
 definePageMeta({ layout: false })
+
+useHead({
+  link: [
+    { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+    { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
+    { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap' },
+  ],
+})
 
 const { api } = useApi()
 const authStore = useAuthStore()
@@ -168,12 +205,16 @@ const tenantId = computed(() => (route.query.tenant as string) || '')
 const form = reactive({
   email: '',
   password: '',
-  remember: false,
 })
 
 const loading = ref(false)
 const error = ref('')
 const showPassword = ref(false)
+
+onUnmounted(() => {
+  document.documentElement.style.overflow = ''
+  document.body.style.overflow = ''
+})
 
 const handleLogin = async () => {
   loading.value = true
@@ -199,19 +240,35 @@ const handleLogin = async () => {
     loading.value = false
   }
 }
-
-const handleMicrosoftLogin = () => {
-  // TODO: integrar flujo OAuth de Microsoft
-}
 </script>
 
 <style scoped>
-.checkbox-clinical {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  border: 1px solid var(--line);
-  accent-color: var(--teal);
-  cursor: pointer;
+.login-input {
+  width: 100%;
+  height: 46px;
+  padding-left: 2.75rem;
+  padding-right: 1rem;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 14px;
+  color: #111827;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.login-input::placeholder {
+  color: #94a3b8;
+}
+.login-input:focus {
+  border-color: #123a52;
+}
+</style>
+
+<style>
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 </style>
