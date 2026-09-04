@@ -29,7 +29,8 @@ from app.sigarh.config_farmacia.models import Almacen, Medicamento
 from app.sigarh.config_financiera.models import Seguro, PlanSeguro, Caja, Tarifario
 from app.sigarh.imagenologia.models import ExamenImagenologia
 from app.sigarh.laboratorio.models import ExamenLaboratorio
-
+from app.sigarh.general.models import DiagnosticoCIE10, Paquete, TiempoProcedimiento
+from app.sigarh.nutricion.models import RacionNutricion, CambioTurnoNutricion
 
 
 config = context.config
