@@ -3,12 +3,16 @@ from logging.config import fileConfig
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import pool
 from alembic import context
-from app.admin.models import SystemRole, HospitalLevel, ModuleDependency, AuditLog
+from app.admin.roles.models import SystemRole
+from app.admin.niveles_hospitalarios.models import HospitalLevel
+from app.admin.modulos.models import ModuleDependency
+from app.admin.auditoria.models import AuditLog
 from app.core.config import settings
 from app.core.database import Base
 from app.modules.admision.models import Patient, ClinicalRecord, ClinicalRecordMovement
 # Importar todos los modelos para que Alembic los detecte
-from app.tenants.models import Tenant, TenantModule, Module
+from app.tenants.hospitales.models import Tenant, TenantModule
+from app.tenants.modulos.models import Module
 from app.auth.models import User
 from app.sigarh.mantenimiento.models import (
     Departamento, Servicio, TipoTrabajador, TipoGuardia,

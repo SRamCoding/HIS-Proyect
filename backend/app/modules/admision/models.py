@@ -10,7 +10,8 @@ class Patient(Base):
     __tablename__ = "patients"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    dni: Mapped[str] = mapped_column(String(8), unique=True, index=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    dni: Mapped[str] = mapped_column(String(8), index=True)
     first_name: Mapped[str] = mapped_column(String(100))
     last_name_paterno: Mapped[str] = mapped_column(String(100))
     last_name_materno: Mapped[str] = mapped_column(String(100))

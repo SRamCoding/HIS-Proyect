@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends
+# backend/app/admin/modulos/router.py
+import uuid
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_admin_user
 from app.admin.modulos.schemas import ModuleDependencyCreate, ModuleDependencyResponse
-from app.admin.modulos.service import get_module_dependencies, create_module_dependency
+from app.admin.modulos.service import get_module_dependencies, create_module_dependency, delete_module_dependency
 from app.tenants.modulos.service import get_all_modules
 
 router = APIRouter()
@@ -25,6 +27,18 @@ async def crear_dependencia(
     current_user: dict = Depends(get_admin_user),
 ):
     return await create_module_dependency(db, data)
+
+
+@router.delete("/modulos/dependencias/{dep_id}", summary="Eliminar dependencia")
+async def eliminar_dependencia(
+    dep_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    ok = await delete_module_dependency(db, dep_id)
+    if not ok:
+        raise HTTPException(404, detail="Dependencia no encontrada")
+    return {"ok": True}
 
 
 @router.get("/modulos/catalogo", summary="Catalogo de modulos")

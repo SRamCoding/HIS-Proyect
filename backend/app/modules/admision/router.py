@@ -1,10 +1,11 @@
+# backend/app/modules/admision/router.py
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.tenants.entitlements import require_module
+from app.tenants.entitlements import require_module_jwt
 from app.modules.admision.schemas import (
     PatientCreate, PatientUpdate, PatientResponse,
     PatientSearchResult, ClinicalRecordMovementCreate,
@@ -15,6 +16,13 @@ from app.modules.admision.service import (
 )
 
 router = APIRouter()
+
+
+def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
+    tid = current_user.get("tenant_id") or request.headers.get("X-Tenant-ID")
+    if not tid:
+        raise HTTPException(403, detail="Sin tenant asignado")
+    return uuid.UUID(str(tid))
 
 
 def _to_response(patient) -> PatientResponse:
@@ -45,13 +53,14 @@ def _to_response(patient) -> PatientResponse:
 @router.get("/buscar", response_model=list[PatientSearchResult], summary="Buscar pacientes")
 async def buscar_pacientes(
     q: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module("pacientes")),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_module_jwt("pacientes")),
 ):
+    tenant_id = get_tenant_id(current_user, request)
     if len(q) < 2:
         raise HTTPException(400, detail="Ingresa al menos 2 caracteres")
-    patients = await search_patients(db, q)
+    patients = await search_patients(db, tenant_id, q)
     return [
         PatientSearchResult(
             id=p.id,
@@ -69,11 +78,12 @@ async def buscar_pacientes(
 @router.get("/dni/{dni}", response_model=PatientResponse, summary="Buscar por DNI")
 async def buscar_por_dni(
     dni: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module("pacientes")),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_module_jwt("pacientes")),
 ):
-    patient = await get_patient_by_dni(db, dni)
+    tenant_id = get_tenant_id(current_user, request)
+    patient = await get_patient_by_dni(db, tenant_id, dni)
     if not patient:
         raise HTTPException(404, detail=f"Paciente con DNI {dni} no encontrado")
     return _to_response(patient)
@@ -82,25 +92,27 @@ async def buscar_por_dni(
 @router.post("/", response_model=PatientResponse, status_code=201, summary="Registrar paciente")
 async def registrar_paciente(
     data: PatientCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module("pacientes")),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_module_jwt("pacientes")),
 ):
-    existing = await get_patient_by_dni(db, data.dni)
+    tenant_id = get_tenant_id(current_user, request)
+    existing = await get_patient_by_dni(db, tenant_id, data.dni)
     if existing:
         raise HTTPException(400, detail=f"Ya existe un paciente con DNI {data.dni}")
-    patient = await create_patient(db, data)
+    patient = await create_patient(db, tenant_id, data)
     return _to_response(patient)
 
 
 @router.get("/{patient_id}", response_model=PatientResponse, summary="Obtener paciente")
 async def obtener_paciente(
     patient_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module("pacientes")),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_module_jwt("pacientes")),
 ):
-    patient = await get_patient_by_id(db, patient_id)
+    tenant_id = get_tenant_id(current_user, request)
+    patient = await get_patient_by_id(db, tenant_id, patient_id)
     if not patient:
         raise HTTPException(404, detail="Paciente no encontrado")
     return _to_response(patient)
@@ -110,11 +122,12 @@ async def obtener_paciente(
 async def actualizar_paciente(
     patient_id: uuid.UUID,
     data: PatientUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module("pacientes")),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_module_jwt("pacientes")),
 ):
-    patient = await update_patient(db, patient_id, data)
+    tenant_id = get_tenant_id(current_user, request)
+    patient = await update_patient(db, tenant_id, patient_id, data)
     if not patient:
         raise HTTPException(404, detail="Paciente no encontrado")
     return _to_response(patient)
@@ -123,12 +136,16 @@ async def actualizar_paciente(
 @router.post("/historia-clinica/mover", summary="Mover historia clinica")
 async def mover_historia_clinica(
     data: ClinicalRecordMovementCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module("pacientes")),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_module_jwt("pacientes")),
 ):
-    movement = await move_clinical_record(
-        db, data.clinical_record_id, data.to_location,
-        data.moved_by, data.notes,
-    )
+    tenant_id = get_tenant_id(current_user, request)
+    try:
+        movement = await move_clinical_record(
+            db, tenant_id, data.clinical_record_id, data.to_location,
+            data.moved_by, data.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(404, detail=str(exc)) from exc
     return {"ok": True, "movement_id": str(movement.id)}

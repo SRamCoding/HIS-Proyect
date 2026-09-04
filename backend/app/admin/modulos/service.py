@@ -1,3 +1,5 @@
+# backend/app/admin/modulos/service.py
+import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -21,3 +23,13 @@ async def create_module_dependency(db: AsyncSession, data) -> ModuleDependency:
     await db.commit()
     await db.refresh(dep)
     return dep
+
+
+async def delete_module_dependency(db: AsyncSession, dep_id: uuid.UUID) -> bool:
+    result = await db.execute(select(ModuleDependency).where(ModuleDependency.id == dep_id))
+    dep = result.scalar_one_or_none()
+    if not dep:
+        return False
+    await db.delete(dep)
+    await db.commit()
+    return True

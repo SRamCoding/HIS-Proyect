@@ -18,8 +18,9 @@ async def get_next_sequence(db: AsyncSession) -> int:
     return (count or 0) + 1
 
 
-async def create_patient(db: AsyncSession, data: PatientCreate) -> Patient:
+async def create_patient(db: AsyncSession, tenant_id: uuid.UUID, data: PatientCreate) -> Patient:
     patient = Patient(
+        tenant_id=tenant_id,
         dni=data.dni,
         first_name=data.first_name,
         last_name_paterno=data.last_name_paterno,
@@ -51,29 +52,30 @@ async def create_patient(db: AsyncSession, data: PatientCreate) -> Patient:
     return patient
 
 
-async def get_patient_by_dni(db: AsyncSession, dni: str) -> Patient | None:
+async def get_patient_by_dni(db: AsyncSession, tenant_id: uuid.UUID, dni: str) -> Patient | None:
     result = await db.execute(
         select(Patient)
         .options(selectinload(Patient.clinical_record))
-        .where(Patient.dni == dni)
+        .where(Patient.tenant_id == tenant_id, Patient.dni == dni)
     )
     return result.scalar_one_or_none()
 
 
-async def get_patient_by_id(db: AsyncSession, patient_id: uuid.UUID) -> Patient | None:
+async def get_patient_by_id(db: AsyncSession, tenant_id: uuid.UUID, patient_id: uuid.UUID) -> Patient | None:
     result = await db.execute(
         select(Patient)
         .options(selectinload(Patient.clinical_record))
-        .where(Patient.id == patient_id)
+        .where(Patient.tenant_id == tenant_id, Patient.id == patient_id)
     )
     return result.scalar_one_or_none()
 
 
-async def search_patients(db: AsyncSession, query: str) -> list[Patient]:
+async def search_patients(db: AsyncSession, tenant_id: uuid.UUID, query: str) -> list[Patient]:
     result = await db.execute(
         select(Patient)
         .options(selectinload(Patient.clinical_record))
         .where(
+            Patient.tenant_id == tenant_id,
             or_(
                 Patient.dni.ilike(f"%{query}%"),
                 Patient.first_name.ilike(f"%{query}%"),
@@ -86,8 +88,8 @@ async def search_patients(db: AsyncSession, query: str) -> list[Patient]:
     return result.scalars().all()
 
 
-async def update_patient(db: AsyncSession, patient_id: uuid.UUID, data: PatientUpdate) -> Patient | None:
-    patient = await get_patient_by_id(db, patient_id)
+async def update_patient(db: AsyncSession, tenant_id: uuid.UUID, patient_id: uuid.UUID, data: PatientUpdate) -> Patient | None:
+    patient = await get_patient_by_id(db, tenant_id, patient_id)
     if not patient:
         return None
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -99,13 +101,16 @@ async def update_patient(db: AsyncSession, patient_id: uuid.UUID, data: PatientU
 
 async def move_clinical_record(
     db: AsyncSession,
+    tenant_id: uuid.UUID,
     clinical_record_id: uuid.UUID,
     to_location: str,
     moved_by: str | None = None,
     notes: str | None = None,
 ) -> ClinicalRecordMovement:
     result = await db.execute(
-        select(ClinicalRecord).where(ClinicalRecord.id == clinical_record_id)
+        select(ClinicalRecord)
+        .join(Patient, Patient.id == ClinicalRecord.patient_id)
+        .where(ClinicalRecord.id == clinical_record_id, Patient.tenant_id == tenant_id)
     )
     record = result.scalar_one_or_none()
     if not record:

@@ -67,6 +67,10 @@
               <UIcon name="i-heroicons-chart-bar" class="nav-icon" />
               <span v-if="!collapsed">Reportes Mensuales</span>
             </NuxtLink>
+              <NuxtLink to="/admin/reportes/hospitales-modulos" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/reportes/hospitales-modulos', 'nav-collapsed': collapsed }">
+                <UIcon name="i-heroicons-building-office-2" class="nav-icon" />
+                <span v-if="!collapsed">Hospitales y Módulos</span>
+              </NuxtLink>
             <NuxtLink to="/admin/reportes/exportar" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/reportes/exportar', 'nav-collapsed': collapsed }">
               <UIcon name="i-heroicons-arrow-down-tray" class="nav-icon" />
               <span v-if="!collapsed">Exportar Datos</span>
