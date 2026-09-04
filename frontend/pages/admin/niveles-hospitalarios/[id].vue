@@ -1,105 +1,510 @@
 <template>
-  <div class="max-w-3xl mx-auto">
-    <div class="mb-6">
-      <div class="flex items-center gap-2 text-sm mb-2" style="color: var(--ink-soft)">
-        <NuxtLink to="/admin/niveles-hospitalarios" style="color: var(--ink-soft)">Niveles Hospitalarios</NuxtLink>
-        <span>/</span><span>Editar</span>
+  <div class="edit-level-container">
+    <!-- Progress Indicator -->
+    <div class="onboarding-progress">
+      <div class="progress-steps">
+        <div 
+          v-for="(step, index) in steps" 
+          :key="index"
+          class="step-item"
+          :class="{ 
+            active: currentStep >= index, 
+            completed: currentStep > index 
+          }"
+        >
+          <div class="step-circle">
+            <span v-if="currentStep > index" class="step-check">✓</span>
+            <span v-else>{{ index + 1 }}</span>
+          </div>
+          <span class="step-label">{{ step }}</span>
+        </div>
       </div>
-      <h1 class="text-lg font-semibold" style="color: var(--ink)">Editar Nivel Hospitalario</h1>
     </div>
 
-    <div v-if="loading" class="p-6 text-sm" style="color: var(--ink-soft)">Cargando...</div>
-
-    <template v-else>
-      <!-- Datos del Nivel -->
-      <section class="mb-4 p-5" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-        <p class="text-sm font-semibold mb-4 flex items-center gap-2" style="color: var(--ink)">🏛 Datos del Nivel</p>
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Código MINSA*</label>
-            <input v-model="form.code" class="input-clinical" />
+    <div class="edit-grid">
+      <!-- Main Content -->
+      <div class="edit-main">
+        <!-- Breadcrumb + Title -->
+        <div class="mb-8">
+          <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
+            <NuxtLink to="/admin/niveles-hospitalarios" class="hover:underline flex items-center gap-1" style="color: var(--ink-soft)">
+              <UIcon name="i-heroicons-building-library" class="w-3.5 h-3.5" />
+              Niveles Hospitalarios
+            </NuxtLink>
+            <UIcon name="i-heroicons-chevron-right" class="w-3 h-3" />
+            <span style="color: var(--ink)">Editar</span>
           </div>
-          <div>
-            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Nombre*</label>
-            <input v-model="form.name" class="input-clinical" />
-          </div>
-          <div class="col-span-2">
-            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Descripción</label>
-            <textarea v-model="form.description" class="input-clinical" rows="2" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Color identificador*</label>
-            <div class="flex items-center gap-2">
-              <input v-model="form.color" class="input-clinical flex-1" />
-              <input type="color" v-model="form.color" class="w-8 h-8 rounded cursor-pointer border" style="border-color: var(--line)" />
+          <div class="flex items-center gap-4">
+            <div class="header-icon" :style="{ background: form.color + '33' }">
+              <UIcon name="i-heroicons-pencil-square" class="w-6 h-6" :style="{ color: form.color }" />
+            </div>
+            <div>
+              <h1 class="page-title">Editar Nivel Hospitalario</h1>
+              <p class="page-subtitle">
+                <span class="level-badge" :style="{ background: form.color, color: getContrastColor(form.color) }">
+                  {{ form.code || 'Código' }}
+                </span>
+                {{ form.name || 'Sin nombre' }}
+              </p>
             </div>
           </div>
-          <div>
-            <label class="block text-xs font-medium mb-1" style="color: var(--ink-soft)">Orden</label>
-            <input v-model.number="form.sort_order" type="number" class="input-clinical" />
+        </div>
+
+        <!-- Loading State -->
+        <div v-if="loading" class="loading-state">
+          <div class="loading-spinner">
+            <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--teal)" />
           </div>
-          <div class="col-span-2 flex items-center gap-2">
-            <input type="checkbox" v-model="form.is_active" id="activo" />
-            <label for="activo" class="text-sm" style="color: var(--ink)">Activo</label>
+          <p style="color: var(--ink-soft)">Cargando nivel hospitalario...</p>
+        </div>
+
+        <template v-else>
+          <!-- Step 1: Basic Information -->
+          <section class="edit-card" v-show="currentStep === 0">
+            <div class="card-header">
+              <div class="card-header-icon" style="background: var(--teal-soft)">
+                <UIcon name="i-heroicons-identification" class="w-4 h-4" style="color: var(--teal)" />
+              </div>
+              <div>
+                <h3 class="card-title">Información Básica</h3>
+                <p class="card-subtitle">Actualiza los datos generales del nivel</p>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Código MINSA <span class="required">*</span></label>
+                <div class="input-wrapper">
+                  <UIcon name="i-heroicons-barcode" class="input-icon" />
+                  <input 
+                    v-model="form.code" 
+                    class="input-clinical font-mono-data" 
+                    placeholder="Ej: III-1"
+                    :class="{ 'input-error': errors.code }"
+                  />
+                </div>
+                <span v-if="errors.code" class="error-message">{{ errors.code }}</span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Nombre <span class="required">*</span></label>
+                <div class="input-wrapper">
+                  <UIcon name="i-heroicons-pencil" class="input-icon" />
+                  <input 
+                    v-model="form.name" 
+                    class="input-clinical" 
+                    placeholder="Ej: Hospital Nacional"
+                    :class="{ 'input-error': errors.name }"
+                  />
+                </div>
+                <span v-if="errors.name" class="error-message">{{ errors.name }}</span>
+              </div>
+
+              <div class="form-group full-width">
+                <label class="form-label">Descripción</label>
+                <div class="input-wrapper">
+                  <UIcon name="i-heroicons-document-text" class="input-icon" />
+                  <textarea 
+                    v-model="form.description" 
+                    class="input-clinical" 
+                    rows="2" 
+                    placeholder="Descripción opcional del nivel"
+                  />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Color Identificador <span class="required">*</span></label>
+                <div class="color-picker-wrapper">
+                  <input
+                    type="color"
+                    v-model="form.color"
+                    class="color-picker-input"
+                  />
+                  <input 
+                    v-model="form.color" 
+                    class="input-clinical font-mono-data flex-1" 
+                    placeholder="#6b7280"
+                    :class="{ 'input-error': errors.color }"
+                  />
+                  <div class="color-preview" :style="{ background: form.color }"></div>
+                </div>
+                <span v-if="errors.color" class="error-message">{{ errors.color }}</span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Orden de Visualización</label>
+                <div class="input-wrapper">
+                  <UIcon name="i-heroicons-arrows-up-down" class="input-icon" />
+                  <input 
+                    v-model.number="form.sort_order" 
+                    type="number" 
+                    class="input-clinical font-mono-data" 
+                    min="0"
+                  />
+                </div>
+              </div>
+
+              <div class="form-group full-width">
+                <div class="status-toggle">
+                  <div class="status-preview">
+                    <div
+                      class="status-badge"
+                      :style="{ 
+                        background: form.color + '22', 
+                        color: form.color,
+                        borderColor: form.color + '44'
+                      }"
+                    >
+                      <UIcon name="i-heroicons-building-office-2" class="w-4 h-4" />
+                      <span>{{ form.code || 'Código' }} — {{ form.name || 'Nombre del nivel' }}</span>
+                    </div>
+                    <span class="preview-label">Vista previa de la etiqueta</span>
+                  </div>
+                  <label class="toggle-container">
+                    <span class="toggle-label">Activo</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      :aria-checked="form.is_active"
+                      @click="form.is_active = !form.is_active"
+                      class="toggle-switch"
+                      :class="{ 'toggle-active': form.is_active }"
+                    >
+                      <span class="toggle-slider" />
+                    </button>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Step 2: App Modules -->
+          <section class="edit-card" v-show="currentStep === 1">
+            <div class="card-header">
+              <div class="card-header-icon" style="background: var(--purple-soft)">
+                <UIcon name="i-heroicons-squares-plus" class="w-4 h-4" style="color: var(--purple)" />
+              </div>
+              <div>
+                <h3 class="card-title">Módulos App</h3>
+                <p class="card-subtitle">Selecciona los módulos disponibles en el panel administrativo</p>
+              </div>
+            </div>
+
+            <div class="module-controls">
+              <div class="module-actions">
+                <button class="action-btn action-select" @click="seleccionarTodos('app')">
+                  <UIcon name="i-heroicons-check-circle" class="w-4 h-4" />
+                  Seleccionar todos
+                </button>
+                <button class="action-btn action-clear" @click="limpiarCategoria('app')">
+                  <UIcon name="i-heroicons-x-circle" class="w-4 h-4" />
+                  Limpiar
+                </button>
+              </div>
+              <span class="module-counter">
+                {{ seleccionadosApp.length }}/{{ modulosApp.length }}
+              </span>
+            </div>
+
+            <div v-if="loadingModulos" class="module-skeleton">
+              <div v-for="i in 6" :key="i" class="skeleton-chip" />
+            </div>
+            <div v-else class="module-grid">
+              <button
+                v-for="mod in modulosApp"
+                :key="mod.code"
+                type="button"
+                class="module-chip"
+                :class="{ 'module-chip--active': modulosSeleccionados.includes(mod.code) }"
+                @click="toggleModulo(mod.code)"
+              >
+                <UIcon
+                  :name="modulosSeleccionados.includes(mod.code) ? 'i-heroicons-check-circle-solid' : 'i-heroicons-plus-circle'"
+                  class="w-4 h-4 shrink-0"
+                />
+                <span class="truncate">{{ mod.name }}</span>
+                <span v-if="modulosSeleccionados.includes(mod.code)" class="chip-badge">✓</span>
+              </button>
+            </div>
+          </section>
+
+          <!-- Step 3: SIGARH Modules -->
+          <section class="edit-card" v-show="currentStep === 2">
+            <div class="card-header">
+              <div class="card-header-icon" style="background: var(--navy-soft)">
+                <UIcon name="i-heroicons-rectangle-stack" class="w-4 h-4" style="color: var(--navy)" />
+              </div>
+              <div>
+                <h3 class="card-title">Módulos SIGARH</h3>
+                <p class="card-subtitle">Selecciona los módulos disponibles en el panel de RRHH</p>
+              </div>
+            </div>
+
+            <div class="module-controls">
+              <div class="module-actions">
+                <button class="action-btn action-select" @click="seleccionarTodos('sigarh')">
+                  <UIcon name="i-heroicons-check-circle" class="w-4 h-4" />
+                  Seleccionar todos
+                </button>
+                <button class="action-btn action-clear" @click="limpiarCategoria('sigarh')">
+                  <UIcon name="i-heroicons-x-circle" class="w-4 h-4" />
+                  Limpiar
+                </button>
+              </div>
+              <span class="module-counter">
+                {{ seleccionadosSigarh.length }}/{{ modulosSigarh.length }}
+              </span>
+            </div>
+
+            <div v-if="loadingModulos" class="module-skeleton">
+              <div v-for="i in 6" :key="i" class="skeleton-chip" />
+            </div>
+            <div v-else class="module-grid">
+              <button
+                v-for="mod in modulosSigarh"
+                :key="mod.code"
+                type="button"
+                class="module-chip"
+                :class="{ 'module-chip--active': modulosSeleccionados.includes(mod.code) }"
+                @click="toggleModulo(mod.code)"
+              >
+                <UIcon
+                  :name="modulosSeleccionados.includes(mod.code) ? 'i-heroicons-check-circle-solid' : 'i-heroicons-plus-circle'"
+                  class="w-4 h-4 shrink-0"
+                />
+                <span class="truncate">{{ mod.name }}</span>
+                <span v-if="modulosSeleccionados.includes(mod.code)" class="chip-badge">✓</span>
+              </button>
+            </div>
+          </section>
+
+          <!-- Error Message -->
+          <div v-if="saveError" class="error-banner">
+            <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
+            {{ saveError }}
           </div>
-        </div>
-      </section>
 
-      <!-- Módulos App -->
-      <section class="mb-4 p-5" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-        <p class="text-sm font-semibold mb-1" style="color: var(--ink)">⚙ Módulos del Panel Administrativo (/app)</p>
-        <p class="text-xs mb-3" style="color: var(--ink-soft)">Módulos que se activarán automáticamente al crear un hospital de este nivel.</p>
-        <button class="text-xs mb-3" style="color: var(--teal)" @click="seleccionarTodos('app')">Seleccionar todos</button>
-        <div class="grid grid-cols-3 gap-2">
-          <label v-for="mod in modulosApp" :key="mod.code" class="flex items-center gap-2 text-sm cursor-pointer" style="color: var(--ink)">
-            <input type="checkbox" :value="mod.code" v-model="modulosSeleccionados" />
-            {{ mod.name }}
-          </label>
-        </div>
-      </section>
+          <!-- Navigation Actions -->
+          <div class="edit-actions">
+            <button 
+              v-if="currentStep > 0"
+              class="btn-secondary"
+              @click="currentStep--"
+            >
+              <UIcon name="i-heroicons-arrow-left" class="w-4 h-4" />
+              Anterior
+            </button>
+            
+            <div class="action-spacer"></div>
 
-      <!-- Módulos SIGARH -->
-      <section class="mb-4 p-5" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-        <p class="text-sm font-semibold mb-1" style="color: var(--ink)">🗂 Módulos del Panel SIGARH (/sigarh)</p>
-        <p class="text-xs mb-3" style="color: var(--ink-soft)">Módulos de configuración y RRHH que se activarán para este nivel.</p>
-        <button class="text-xs mb-3" style="color: var(--teal)" @click="seleccionarTodos('sigarh')">Seleccionar todos</button>
-        <div class="grid grid-cols-3 gap-2">
-          <label v-for="mod in modulosSigarh" :key="mod.code" class="flex items-center gap-2 text-sm cursor-pointer" style="color: var(--ink)">
-            <input type="checkbox" :value="mod.code" v-model="modulosSeleccionados" />
-            {{ mod.name }}
-          </label>
-        </div>
-      </section>
+            <button 
+              v-if="currentStep < 2"
+              class="btn-primary"
+              @click="nextStep"
+            >
+              Siguiente
+              <UIcon name="i-heroicons-arrow-right" class="w-4 h-4" />
+            </button>
 
-      <div v-if="saveError" class="mb-4 text-sm px-3 py-2 rounded" style="background: var(--alert-soft); color: var(--alert)">
-        {{ saveError }}
+            <div v-else class="action-group">
+              <button class="btn-primary" :disabled="saving" @click="handleSave">
+                <UIcon v-if="saving" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
+                <UIcon v-else name="i-heroicons-check" class="w-4 h-4" />
+                {{ saving ? 'Guardando...' : 'Guardar Cambios' }}
+              </button>
+              <NuxtLink
+                to="/admin/niveles-hospitalarios"
+                class="btn-cancel"
+              >
+                Cancelar
+              </NuxtLink>
+            </div>
+          </div>
+        </template>
       </div>
 
-      <div class="flex gap-3">
-        <button class="btn-primary" :disabled="saving" @click="handleSave">
-          {{ saving ? 'Guardando...' : 'Guardar cambios' }}
-        </button>
-        <NuxtLink to="/admin/niveles-hospitalarios" class="px-4 py-2 rounded text-sm" style="border: 1px solid var(--line); color: var(--ink-soft)">
-          Cancelar
-        </NuxtLink>
+      <!-- Sidebar Widgets -->
+      <div class="edit-sidebar">
+        <!-- Info Widget -->
+        <div class="widget widget-info">
+          <div class="widget-header">
+            <UIcon name="i-heroicons-information-circle" class="widget-icon" style="color: var(--teal)" />
+            <h4 class="widget-title">Información del Nivel</h4>
+          </div>
+          <div class="widget-content">
+            <div class="info-item">
+              <span class="info-label">ID</span>
+              <span class="info-value font-mono-data">#{{ id }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Código</span>
+              <span class="info-value">
+                <span class="mini-badge" :style="{ background: form.color, color: getContrastColor(form.color) }">
+                  {{ form.code || '—' }}
+                </span>
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Nombre</span>
+              <span class="info-value">{{ form.name || '—' }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Estado</span>
+              <span class="info-value">
+                <span class="status-badge-mini" :class="form.is_active ? 'status-active-mini' : 'status-inactive-mini'">
+                  <span class="status-dot-mini" :class="form.is_active ? 'dot-active-mini' : 'dot-inactive-mini'" />
+                  {{ form.is_active ? 'Activo' : 'Inactivo' }}
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary Widget -->
+        <div class="widget widget-summary">
+          <div class="widget-header">
+            <UIcon name="i-heroicons-document-text" class="widget-icon" style="color: var(--amber)" />
+            <h4 class="widget-title">Resumen de Configuración</h4>
+          </div>
+          <div class="widget-content">
+            <div class="summary-item">
+              <span class="summary-label">Módulos App</span>
+              <span class="summary-value">{{ seleccionadosApp.length }} seleccionados</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Módulos SIGARH</span>
+              <span class="summary-value">{{ seleccionadosSigarh.length }} seleccionados</span>
+            </div>
+            <div class="summary-divider"></div>
+            <div class="summary-total">
+              <span>Total Módulos</span>
+              <span class="total-number">{{ modulosSeleccionados.length }}</span>
+            </div>
+            <div class="summary-divider"></div>
+            <div class="summary-actions">
+              <button class="summary-btn" @click="resetToOriginal">
+                <UIcon name="i-heroicons-arrow-uturn-left" class="w-4 h-4" />
+                Restaurar original
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Module Distribution Widget -->
+        <div class="widget widget-distribution">
+          <div class="widget-header">
+            <UIcon name="i-heroicons-chart-pie" class="widget-icon" style="color: var(--purple)" />
+            <h4 class="widget-title">Distribución</h4>
+          </div>
+          <div class="widget-content">
+            <div class="distribution-item">
+              <div class="distribution-label">
+                <span class="distribution-dot" style="background: var(--teal)"></span>
+                <span>App</span>
+              </div>
+              <div class="distribution-bar">
+                <div 
+                  class="distribution-fill" 
+                  :style="{ 
+                    width: getDistributionPercentage('app') + '%',
+                    background: 'var(--teal)'
+                  }"
+                />
+              </div>
+              <span class="distribution-value">{{ seleccionadosApp.length }}</span>
+            </div>
+            <div class="distribution-item">
+              <div class="distribution-label">
+                <span class="distribution-dot" style="background: var(--navy)"></span>
+                <span>SIGARH</span>
+              </div>
+              <div class="distribution-bar">
+                <div 
+                  class="distribution-fill" 
+                  :style="{ 
+                    width: getDistributionPercentage('sigarh') + '%',
+                    background: 'var(--navy)'
+                  }"
+                />
+              </div>
+              <span class="distribution-value">{{ seleccionadosSigarh.length }}</span>
+            </div>
+            <div class="distribution-total">
+              <span>Total: {{ modulosSeleccionados.length }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions Widget -->
+        <div class="widget widget-actions">
+          <div class="widget-header">
+            <UIcon name="i-heroicons-bolt" class="widget-icon" style="color: var(--green)" />
+            <h4 class="widget-title">Acciones Rápidas</h4>
+          </div>
+          <div class="widget-content">
+            <button class="quick-action" @click="currentStep = 0">
+              <UIcon name="i-heroicons-identification" class="w-4 h-4" />
+              Información Básica
+            </button>
+            <button class="quick-action" @click="currentStep = 1">
+              <UIcon name="i-heroicons-squares-plus" class="w-4 h-4" />
+              Módulos App
+            </button>
+            <button class="quick-action" @click="currentStep = 2">
+              <UIcon name="i-heroicons-rectangle-stack" class="w-4 h-4" />
+              Módulos SIGARH
+            </button>
+          </div>
+        </div>
       </div>
-    </template>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 definePageMeta({ layout: 'admin', middleware: ['auth', 'panel'] })
 
+interface Modulo {
+  code: string
+  name: string
+  category: 'app' | 'sigarh'
+}
+
+interface Nivel {
+  id: number
+  code: string
+  name: string
+  description: string
+  color: string
+  sort_order: number
+  is_active: boolean
+  default_modules: {
+    app: string[]
+    sigarh: string[]
+  }
+}
+
 const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
+
 const id = computed(() => route.params.id as string)
+const currentStep = ref(0)
+const steps = ['Información Básica', 'Módulos App', 'Módulos SIGARH']
 
 const loading = ref(true)
+const loadingModulos = ref(true)
 const saving = ref(false)
 const saveError = ref('')
 const modulosSeleccionados = ref<string[]>([])
-const todosModulos = ref<any[]>([])
+const todosModulos = ref<Modulo[]>([])
+const originalModules = ref<string[]>([])
+const errors = reactive({
+  code: '',
+  name: '',
+  color: ''
+})
 
 const form = reactive({
   code: '',
@@ -112,15 +517,67 @@ const form = reactive({
 
 const modulosApp = computed(() => todosModulos.value.filter(m => m.category === 'app'))
 const modulosSigarh = computed(() => todosModulos.value.filter(m => m.category === 'sigarh'))
+const seleccionadosApp = computed(() => modulosSeleccionados.value.filter(c => modulosApp.value.some(m => m.code === c)))
+const seleccionadosSigarh = computed(() => modulosSeleccionados.value.filter(c => modulosSigarh.value.some(m => m.code === c)))
 
-const seleccionarTodos = (category: string) => {
-  const codes = todosModulos.value.filter(m => m.category === category).map(m => m.code)
-  codes.forEach(c => {
-    if (!modulosSeleccionados.value.includes(c)) modulosSeleccionados.value.push(c)
+const toggleModulo = (code: string) => {
+  const i = modulosSeleccionados.value.indexOf(code)
+  if (i === -1) modulosSeleccionados.value.push(code)
+  else modulosSeleccionados.value.splice(i, 1)
+}
+
+const seleccionarTodos = (category: 'app' | 'sigarh') => {
+  const lista = category === 'app' ? modulosApp.value : modulosSigarh.value
+  lista.forEach(m => {
+    if (!modulosSeleccionados.value.includes(m.code)) modulosSeleccionados.value.push(m.code)
   })
 }
 
+const limpiarCategoria = (category: 'app' | 'sigarh') => {
+  const lista = category === 'app' ? modulosApp.value : modulosSigarh.value
+  const codes = new Set(lista.map(m => m.code))
+  modulosSeleccionados.value = modulosSeleccionados.value.filter(c => !codes.has(c))
+}
+
+const nextStep = () => {
+  if (currentStep.value === 0 && !validateStep1()) return
+  if (currentStep.value < 2) currentStep.value++
+}
+
+const validateStep1 = (): boolean => {
+  let valid = true
+  errors.code = !form.code ? 'El código es requerido' : ''
+  errors.name = !form.name ? 'El nombre es requerido' : ''
+  errors.color = !form.color ? 'El color es requerido' : ''
+  if (errors.code || errors.name || errors.color) valid = false
+  return valid
+}
+
+const getContrastColor = (hex: string) => {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance > 0.5 ? '#000000' : '#FFFFFF'
+}
+
+const getDistributionPercentage = (category: 'app' | 'sigarh') => {
+  const total = modulosSeleccionados.value.length
+  if (total === 0) return 0
+  const count = category === 'app' ? seleccionadosApp.value.length : seleccionadosSigarh.value.length
+  return Math.round((count / total) * 100)
+}
+
+const resetToOriginal = () => {
+  modulosSeleccionados.value = [...originalModules.value]
+}
+
 const handleSave = async () => {
+  if (!validateStep1()) {
+    currentStep.value = 0
+    return
+  }
+
   saving.value = true
   saveError.value = ''
   try {
@@ -141,7 +598,7 @@ const handleSave = async () => {
     })
     router.push('/admin/niveles-hospitalarios')
   } catch (e: any) {
-    saveError.value = e?.data?.detail || 'No se pudo guardar'
+    saveError.value = e?.data?.detail || 'No se pudo guardar el nivel'
   } finally {
     saving.value = false
   }
@@ -150,24 +607,946 @@ const handleSave = async () => {
 onMounted(async () => {
   try {
     const [nivel, modulos] = await Promise.all([
-      api<any>(`/admin/niveles-hospitalarios/${id.value}`),
-      api<any[]>('/admin/modulos/catalogo'),
+      api<Nivel>(`/admin/niveles-hospitalarios/${id.value}`),
+      api<Modulo[]>('/admin/modulos/catalogo'),
     ])
+
     form.code = nivel.code
     form.name = nivel.name
     form.description = nivel.description || ''
     form.color = nivel.color || '#6b7280'
-    form.sort_order = nivel.sort_order
-    form.is_active = nivel.is_active
+    form.sort_order = nivel.sort_order || 0
+    form.is_active = nivel.is_active !== undefined ? nivel.is_active : true
+
     todosModulos.value = modulos
-    modulosSeleccionados.value = [
+    const selected = [
       ...(nivel.default_modules?.app || []),
       ...(nivel.default_modules?.sigarh || []),
     ]
-  } catch {
-    //
+    modulosSeleccionados.value = selected
+    originalModules.value = selected
+  } catch (e: any) {
+    saveError.value = 'No se pudo cargar el nivel'
   } finally {
     loading.value = false
+    loadingModulos.value = false
   }
 })
 </script>
+
+<style scoped>
+.edit-level-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem;
+}
+
+/* Progress Steps */
+.onboarding-progress {
+  margin-bottom: 2rem;
+}
+
+.progress-steps {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  opacity: 0.5;
+  transition: all 0.3s ease;
+}
+
+.step-item.active {
+  opacity: 1;
+  border-color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.step-item.completed {
+  opacity: 1;
+  border-color: var(--teal);
+  background: rgba(8, 145, 178, 0.08);
+}
+
+.step-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--mist);
+  color: var(--ink-soft);
+  transition: all 0.3s ease;
+}
+
+.step-item.active .step-circle {
+  background: var(--teal);
+  color: white;
+}
+
+.step-item.completed .step-circle {
+  background: var(--teal);
+  color: white;
+}
+
+.step-check {
+  font-size: 0.875rem;
+}
+
+.step-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* Grid Layout */
+.edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 2rem;
+}
+
+.edit-main {
+  min-width: 0;
+}
+
+.edit-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Header */
+.header-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.page-subtitle {
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  margin: 0.125rem 0 0 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.level-badge {
+  display: inline-block;
+  padding: 0.125rem 0.625rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: monospace;
+}
+
+/* Loading State */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  gap: 1rem;
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+}
+
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Cards */
+.edit-card {
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.card-header-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+.card-subtitle {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+/* Form */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 0.5rem;
+}
+
+.required {
+  color: var(--alert);
+}
+
+.input-wrapper {
+  position: relative;
+}
+
+.input-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1rem;
+  height: 1rem;
+  color: var(--ink-soft);
+}
+
+.input-wrapper textarea + .input-icon {
+  top: 0.75rem;
+  transform: none;
+}
+
+.input-clinical {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  padding-left: 2.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.input-clinical:focus {
+  outline: none;
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px var(--teal-soft);
+}
+
+.input-clinical.input-error {
+  border-color: var(--alert);
+}
+
+.input-clinical.input-error:focus {
+  box-shadow: 0 0 0 3px var(--alert-soft);
+}
+
+.error-message {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--alert);
+  margin-top: 0.25rem;
+}
+
+/* Color Picker */
+.color-picker-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.color-picker-input {
+  width: 40px;
+  height: 40px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  background: var(--paper);
+}
+
+.color-picker-input::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.color-picker-input::-webkit-color-swatch {
+  border-radius: 4px;
+  border: none;
+}
+
+.color-picker-wrapper .input-clinical {
+  padding-left: 0.875rem;
+}
+
+.color-preview {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+/* Status Toggle */
+.status-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  background: var(--mist);
+  border-radius: 12px;
+}
+
+.status-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid;
+}
+
+.preview-label {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.toggle-container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.toggle-label {
+  font-size: 0.8125rem;
+  color: var(--ink);
+}
+
+.toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--line);
+  border: none;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  padding: 0;
+}
+
+.toggle-switch.toggle-active {
+  background: var(--teal);
+}
+
+.toggle-slider {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.3s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-active .toggle-slider {
+  transform: translateX(20px);
+}
+
+/* Module Controls */
+.module-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.module-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-select {
+  color: var(--teal);
+}
+
+.action-select:hover {
+  background: var(--teal-soft);
+}
+
+.action-clear {
+  color: var(--ink-soft);
+}
+
+.action-clear:hover {
+  background: var(--mist);
+}
+
+.module-counter {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  background: var(--mist);
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+}
+
+/* Module Grid */
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.625rem;
+}
+
+.module-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink-soft);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+.module-chip:hover {
+  border-color: var(--teal);
+  color: var(--ink);
+}
+
+.module-chip--active {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal);
+  font-weight: 500;
+}
+
+.chip-badge {
+  margin-left: auto;
+  font-size: 0.75rem;
+}
+
+.module-skeleton {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.625rem;
+}
+
+.skeleton-chip {
+  height: 40px;
+  border-radius: 8px;
+  background: var(--mist);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Error Banner */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: var(--alert-soft);
+  color: var(--alert);
+  font-size: 0.875rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Navigation Actions */
+.edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.action-spacer {
+  flex: 1;
+}
+
+.action-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: none;
+  background: var(--teal);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--teal-dark);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background: var(--mist);
+}
+
+.btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-soft);
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.btn-cancel:hover {
+  background: var(--mist);
+}
+
+/* Widgets */
+.widget {
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.widget-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.widget-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.widget-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+.widget-content {
+  padding: 1rem 1.25rem;
+}
+
+/* Info Widget */
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.375rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.info-item:last-child {
+  border-bottom: none;
+}
+
+.info-label {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.info-value {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.mini-badge {
+  display: inline-block;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  font-family: monospace;
+}
+
+.status-badge-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+.status-active-mini {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.status-inactive-mini {
+  background: var(--mist);
+  color: var(--ink-soft);
+}
+
+.status-dot-mini {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-active-mini {
+  background: var(--green);
+}
+
+.dot-inactive-mini {
+  background: var(--ink-soft);
+}
+
+/* Summary Widget */
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.375rem 0;
+}
+
+.summary-label {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.summary-value {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.summary-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 0.5rem 0;
+}
+
+.summary-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.total-number {
+  background: var(--teal);
+  color: white;
+  padding: 0.0625rem 0.625rem;
+  border-radius: 12px;
+  font-size: 0.8125rem;
+}
+
+.summary-actions {
+  padding-top: 0.5rem;
+}
+
+.summary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  justify-content: center;
+}
+
+.summary-btn:hover {
+  background: var(--mist);
+  color: var(--ink);
+}
+
+/* Distribution Widget */
+.distribution-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.375rem 0;
+}
+
+.distribution-label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--ink);
+  min-width: 70px;
+}
+
+.distribution-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.distribution-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--mist);
+  overflow: hidden;
+}
+
+.distribution-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+
+.distribution-value {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink);
+  min-width: 24px;
+  text-align: right;
+}
+
+.distribution-total {
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+  margin-top: 0.5rem;
+}
+
+/* Quick Actions Widget */
+.quick-action {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.quick-action:hover {
+  background: var(--mist);
+}
+
+.quick-action + .quick-action {
+  margin-top: 0.25rem;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .edit-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .edit-sidebar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .edit-level-container {
+    padding: 1rem;
+  }
+  
+  .progress-steps {
+    flex-wrap: wrap;
+  }
+  
+  .step-item {
+    flex: 1;
+    min-width: 120px;
+  }
+  
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .module-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  
+  .edit-sidebar {
+    grid-template-columns: 1fr;
+  }
+  
+  .edit-actions {
+    flex-wrap: wrap;
+  }
+  
+  .action-group {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  
+  .action-group > * {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .module-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .status-toggle {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+  
+  .color-picker-wrapper {
+    flex-wrap: wrap;
+  }
+}
+</style>
