@@ -79,6 +79,30 @@
                 <p class="field-hint">Nombre descriptivo del rol del sistema</p>
               </div>
 
+              <div class="form-group">
+                <label class="form-label">Código interno</label>
+                <input v-model="form.codigo" type="text" class="input-clinical" style="padding-left: 0.875rem;" disabled />
+                <p class="field-hint">El código no se puede cambiar después de creado.</p>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Panel asociado <span class="required">*</span></label>
+                <select v-model="form.panel" class="input-clinical" style="padding-left: 0.875rem;">
+                  <option value="app">Panel Hospital (app)</option>
+                  <option value="sigarh">Panel SIGARH</option>
+                  <option value="portal">Portal</option>
+                </select>
+              </div>
+
+              <div class="form-group full-width">
+                <label class="form-label">Módulo requerido</label>
+                <select v-model="form.modulo_requerido" class="input-clinical" style="padding-left: 0.875rem;">
+                  <option value="">— Ninguno (rol siempre disponible) —</option>
+                  <option v-for="m in todosModulos" :key="m.code" :value="m.code">{{ m.name }}</option>
+                </select>
+                <p class="field-hint">Si el hospital no tiene este módulo activo, el rol no aparecerá al crear Perfiles.</p>
+              </div>
+
               <div class="form-group full-width">
                 <label class="form-label">Descripción</label>
                 <div class="input-wrapper">
@@ -147,6 +171,55 @@
                   Cancelar
                 </NuxtLink>
               </div>
+            </div>
+          </section>
+
+          <!-- Módulos permitidos -->
+          <section class="form-card" style="margin-top: 1.5rem;">
+            <div class="card-header">
+              <div class="card-header-icon" style="background: var(--teal-soft)">
+                <UIcon name="i-heroicons-squares-2x2" class="w-4 h-4" style="color: var(--teal)" />
+              </div>
+              <div>
+                <h3 class="card-title">Módulos permitidos para este rol</h3>
+                <p class="card-subtitle">Deja vacío para no restringir</p>
+              </div>
+            </div>
+            <button class="text-xs font-medium mb-3" style="color: var(--teal)" @click="toggleTodosModulos">
+              {{ form.modulos_permitidos.length === todosModulos.length ? 'Ninguno' : 'Seleccionar todos' }}
+            </button>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label v-for="m in modulosApp" :key="m.code" class="flex items-center gap-2 text-sm" style="color: var(--ink)">
+                <input type="checkbox" :value="m.code" v-model="form.modulos_permitidos" />
+                [App] {{ m.name }}
+              </label>
+              <label v-for="m in modulosSigarh" :key="m.code" class="flex items-center gap-2 text-sm" style="color: var(--ink)">
+                <input type="checkbox" :value="m.code" v-model="form.modulos_permitidos" />
+                [SIGARH] {{ m.name }}
+              </label>
+            </div>
+          </section>
+
+          <!-- Grupos ocupacionales permitidos -->
+          <section class="form-card" style="margin-top: 1.5rem;">
+            <div class="card-header">
+              <div class="card-header-icon" style="background: var(--purple-soft)">
+                <UIcon name="i-heroicons-user-group" class="w-4 h-4" style="color: var(--purple)" />
+              </div>
+              <div>
+                <h3 class="card-title">Grupos Ocupacionales permitidos</h3>
+                <p class="card-subtitle">Deja vacío para no restringir</p>
+              </div>
+            </div>
+            <button class="text-xs font-medium mb-3" style="color: var(--teal)" @click="toggleTodosGrupos">
+              {{ form.grupos_ocupacionales_permitidos.length === gruposOcupacionales.length ? 'Ninguno' : 'Seleccionar todos' }}
+            </button>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label v-for="g in gruposOcupacionales" :key="g.id" class="flex items-center gap-2 text-sm" style="color: var(--ink)">
+                <input type="checkbox" :value="g.id" v-model="form.grupos_ocupacionales_permitidos" />
+                {{ g.nombre }}
+              </label>
+              <p v-if="!gruposOcupacionales.length" class="text-sm" style="color: var(--ink-soft)">No hay grupos ocupacionales registrados.</p>
             </div>
           </section>
         </template>
@@ -219,7 +292,7 @@
               <div>
                 <p class="tip-title">Consejo</p>
                 <p class="tip-text">
-                  Al editar un rol, asegúrate de que el nombre sea claro y 
+                  Al editar un rol, asegúrate de que el nombre sea claro y
                   representativo de las responsabilidades que conlleva.
                 </p>
               </div>
@@ -260,6 +333,19 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
 
+interface Modulo {
+  id: string
+  code: string
+  name: string
+  category: string
+  is_active: boolean
+}
+
+interface GrupoOcupacional {
+  id: string
+  nombre: string
+}
+
 const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
@@ -271,14 +357,24 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 
+const todosModulos = ref<Modulo[]>([])
+const gruposOcupacionales = ref<GrupoOcupacional[]>([])
+const modulosApp = computed(() => todosModulos.value.filter(m => m.category === 'app'))
+const modulosSigarh = computed(() => todosModulos.value.filter(m => m.category === 'sigarh'))
+
 const errors = reactive({
   nombre: ''
 })
 
 const form = reactive({
+  codigo: '',
   nombre: '',
+  panel: 'app',
+  modulo_requerido: '',
   descripcion: '',
   is_active: true,
+  modulos_permitidos: [] as string[],
+  grupos_ocupacionales_permitidos: [] as string[],
 })
 
 const filledFields = computed(() => {
@@ -287,6 +383,22 @@ const filledFields = computed(() => {
   if (form.descripcion) count++
   return count
 })
+
+const toggleTodosModulos = () => {
+  if (form.modulos_permitidos.length === todosModulos.value.length) {
+    form.modulos_permitidos = []
+  } else {
+    form.modulos_permitidos = todosModulos.value.map(m => m.code)
+  }
+}
+
+const toggleTodosGrupos = () => {
+  if (form.grupos_ocupacionales_permitidos.length === gruposOcupacionales.value.length) {
+    form.grupos_ocupacionales_permitidos = []
+  } else {
+    form.grupos_ocupacionales_permitidos = gruposOcupacionales.value.map(g => g.id)
+  }
+}
 
 const validateForm = (): boolean => {
   let valid = true
@@ -306,9 +418,14 @@ const handleSave = async () => {
     await api(`/sigarh/mantenimiento/roles-sistema/${id.value}`, {
       method: 'PATCH',
       body: {
+        codigo: form.codigo,
         nombre: form.nombre,
+        panel: form.panel,
+        modulo_requerido: form.modulo_requerido || null,
         descripcion: form.descripcion || null,
         is_active: form.is_active,
+        modulos_permitidos: form.modulos_permitidos,
+        grupos_ocupacionales_permitidos: form.grupos_ocupacionales_permitidos,
       }
     })
     router.push(`/sigarh/mantenimiento/roles-sistema?tenant=${tenantId.value}`)
@@ -321,10 +438,22 @@ const handleSave = async () => {
 
 onMounted(async () => {
   try {
-    const data = await api<any>(`/sigarh/mantenimiento/roles-sistema/${id.value}`)
+    const [data, modulos, grupos] = await Promise.all([
+      api<any>(`/sigarh/mantenimiento/roles-sistema/${id.value}`),
+      api<Modulo[]>('/sigarh/mantenimiento/modulos-catalogo'),
+      api<GrupoOcupacional[]>('/sigarh/mantenimiento/grupos-ocupacionales'),
+    ])
+    todosModulos.value = modulos
+    gruposOcupacionales.value = grupos
+
+    form.codigo = data.codigo || ''
     form.nombre = data.nombre
+    form.panel = data.panel
+    form.modulo_requerido = data.modulo_requerido || ''
     form.descripcion = data.descripcion || ''
     form.is_active = data.is_active
+    form.modulos_permitidos = data.modulos_permitidos || []
+    form.grupos_ocupacionales_permitidos = data.grupos_ocupacionales_permitidos || []
   } catch (e: any) {
     error.value = e?.data?.detail || 'No se pudo cargar el rol'
   } finally {

@@ -1,3 +1,4 @@
+# backend/app/sigarh/mantenimiento/service.py
 import uuid
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,7 +83,7 @@ async def actualizar_servicio(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.U
     return item
 
 
-# ─── Helper para catálogos simples ───────────────────────────────────────────
+# ─── Helper para catálogos simples ────────────────────────────────────────────
 
 async def crud_crear(db: AsyncSession, modelo, tenant_id: uuid.UUID, data) -> any:
     item = modelo(tenant_id=tenant_id, **data.model_dump())
@@ -101,6 +102,7 @@ async def crud_actualizar(db: AsyncSession, modelo, id: uuid.UUID, tenant_id: uu
     await db.commit()
     await db.refresh(item)
     return item
+
 
 # ─── Rol Sistema (con JSON de modulos y grupos ocupacionales) ─────────────
 
@@ -165,12 +167,61 @@ async def actualizar_rol(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, 
     return _serializar_rol(item)
 
 
+# ─── Perfil Usuario (con JSON de módulos) ─────────────────────────────────
 
-# ─── Perfil Usuario (con JSON de módulos) ────────────────────────────────────
+def _serializar_perfil(item: PerfilUsuario) -> dict:
+    return {
+        "id": item.id,
+        "tenant_id": item.tenant_id,
+        "nombre": item.nombre,
+        "rol_sistema_id": item.rol_sistema_id,
+        "modulos_acceso": json.loads(item.modulos_acceso) if item.modulos_acceso else [],
+        "descripcion": item.descripcion,
+        "is_active": item.is_active,
+        "created_at": item.created_at,
+    }
 
-async def crear_perfil(db: AsyncSession, tenant_id: uuid.UUID, data) -> PerfilUsuario:
+# ─── Validación de Perfil contra su Rol ────────────────────────────────────
+
+async def _validar_perfil_contra_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_sistema_id, modulos_acceso: list[str]):
+    from sqlalchemy import func
+    from app.tenants.hospitales.models import TenantModule
+
+    rol = await obtener(db, RolSistema, rol_sistema_id, tenant_id)
+    if not rol:
+        raise ValueError("El rol seleccionado no existe")
+    if not rol.is_active:
+        raise ValueError("El rol seleccionado está inactivo")
+
+    # El módulo requerido por el rol debe estar activo para este hospital
+    if rol.modulo_requerido:
+        activo = await db.scalar(
+            select(func.count(TenantModule.id)).where(
+                TenantModule.tenant_id == tenant_id,
+                TenantModule.module_code == rol.modulo_requerido,
+                TenantModule.is_active == True,
+            )
+        )
+        if not activo:
+            raise ValueError(
+                f"El rol requiere el módulo '{rol.modulo_requerido}', que no está activo para este hospital"
+            )
+
+    # Los módulos elegidos deben estar dentro de lo permitido por el rol
+    permitidos = json.loads(rol.modulos_permitidos) if rol.modulos_permitidos else []
+    if permitidos:
+        no_permitidos = [m for m in modulos_acceso if m not in permitidos]
+        if no_permitidos:
+            raise ValueError(
+                f"Estos módulos no están permitidos por el rol seleccionado: {', '.join(no_permitidos)}"
+            )
+
+async def crear_perfil(db: AsyncSession, tenant_id: uuid.UUID, data) -> dict:
     data_dict = data.model_dump()
     modulos = data_dict.pop('modulos_acceso', [])
+    rol_sistema_id = data_dict.get('rol_sistema_id')
+    if rol_sistema_id:
+        await _validar_perfil_contra_rol(db, tenant_id, rol_sistema_id, modulos)
     perfil = PerfilUsuario(
         tenant_id=tenant_id,
         modulos_acceso=json.dumps(modulos),
@@ -179,4 +230,38 @@ async def crear_perfil(db: AsyncSession, tenant_id: uuid.UUID, data) -> PerfilUs
     db.add(perfil)
     await db.commit()
     await db.refresh(perfil)
-    return perfil
+    return _serializar_perfil(perfil)
+
+async def listar_perfiles_usuario(db: AsyncSession, tenant_id: uuid.UUID) -> list[dict]:
+    items = await listar(db, PerfilUsuario, tenant_id)
+    return [_serializar_perfil(i) for i in items]
+
+
+async def obtener_perfil_usuario(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID) -> dict | None:
+    item = await obtener(db, PerfilUsuario, id, tenant_id)
+    if not item:
+        return None
+    return _serializar_perfil(item)
+
+
+async def actualizar_perfil_usuario(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, data) -> dict | None:
+    item = await obtener(db, PerfilUsuario, id, tenant_id)
+    if not item:
+        return None
+    data_dict = data.model_dump(exclude_unset=True)
+
+    rol_sistema_id = data_dict.get('rol_sistema_id', item.rol_sistema_id)
+    modulos_acceso = data_dict.get(
+        'modulos_acceso',
+        json.loads(item.modulos_acceso) if item.modulos_acceso else []
+    )
+    if rol_sistema_id:
+        await _validar_perfil_contra_rol(db, tenant_id, rol_sistema_id, modulos_acceso)
+
+    if "modulos_acceso" in data_dict:
+        item.modulos_acceso = json.dumps(data_dict.pop("modulos_acceso"))
+    for field, value in data_dict.items():
+        setattr(item, field, value)
+    await db.commit()
+    await db.refresh(item)
+    return _serializar_perfil(item)

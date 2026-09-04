@@ -1,3 +1,4 @@
+# backend/app/sigarh/mantenimiento/router.py
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +33,7 @@ from app.sigarh.mantenimiento.service import (
     crud_crear, crud_actualizar,
     crear_perfil,
     listar_roles, obtener_rol, crear_rol, actualizar_rol,
+    listar_perfiles_usuario, obtener_perfil_usuario, actualizar_perfil_usuario,
 )
 
 router = APIRouter()
@@ -119,25 +121,47 @@ async def eliminar_rol_sistema(request: Request, id: uuid.UUID, db: AsyncSession
     if not ok: raise HTTPException(404, detail="No encontrado")
     return {"ok": True}
 
+
+@router.get("/modulos-catalogo", summary="Catálogo de módulos (para checkboxes de roles)")
+async def catalogo_modulos_sigarh(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    tenant=Depends(require_module_jwt("sigarh_mantenimiento")),
+    current_user: dict = Depends(get_current_user),
+):
+    from app.tenants.modulos.service import get_all_modules
+    modules = await get_all_modules(db)
+    return [
+        {"id": str(m.id), "code": m.code, "name": m.name, "category": m.category, "is_active": m.is_active}
+        for m in modules
+    ]
+
+
 # ─── Perfiles ─────────────────────────────────────────────────────────────────
 
 @router.get("/perfiles-usuario", response_model=list[PerfilUsuarioResponse])
 async def listar_perfiles(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    return await listar(db, PerfilUsuario, get_tenant_id(current_user, request))
+    return await listar_perfiles_usuario(db, get_tenant_id(current_user, request))
 
 @router.post("/perfiles-usuario", response_model=PerfilUsuarioResponse, status_code=201)
 async def crear_perfil_usuario(request: Request, data: PerfilUsuarioCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    return await crear_perfil(db, get_tenant_id(current_user, request), data)
+    try:
+        return await crear_perfil(db, get_tenant_id(current_user, request), data)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
 
 @router.get("/perfiles-usuario/{id}", response_model=PerfilUsuarioResponse)
 async def obtener_perfil(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    item = await obtener(db, PerfilUsuario, id, get_tenant_id(current_user, request))
+    item = await obtener_perfil_usuario(db, id, get_tenant_id(current_user, request))
     if not item: raise HTTPException(404, detail="No encontrado")
     return item
 
 @router.patch("/perfiles-usuario/{id}", response_model=PerfilUsuarioResponse)
 async def actualizar_perfil(request: Request, id: uuid.UUID, data: PerfilUsuarioCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    item = await crud_actualizar(db, PerfilUsuario, id, get_tenant_id(current_user, request), data)
+    try:
+        item = await actualizar_perfil_usuario(db, id, get_tenant_id(current_user, request), data)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
     if not item: raise HTTPException(404, detail="No encontrado")
     return item
 
@@ -146,7 +170,6 @@ async def eliminar_perfil(request: Request, id: uuid.UUID, db: AsyncSession = De
     ok = await eliminar(db, PerfilUsuario, id, get_tenant_id(current_user, request))
     if not ok: raise HTTPException(404, detail="No encontrado")
     return {"ok": True}
-
 
 # ─── Usuarios SIGARH ──────────────────────────────────────────────────────────
 

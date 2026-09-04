@@ -140,63 +140,51 @@
         <table class="roles-table">
           <thead>
             <tr>
-              <th class="col-name">
-                <span class="th-content">Nombre</span>
-              </th>
-              <th class="col-description">
-                <span class="th-content">Descripción</span>
-              </th>
-              <th class="col-status">
-                <span class="th-content">Estado</span>
-              </th>
-              <th class="col-actions">
-                <span class="th-content">Acciones</span>
-              </th>
+              <th class="col-name"><span class="th-content">Código</span></th>
+              <th class="col-name"><span class="th-content">Nombre</span></th>
+              <th class="col-status"><span class="th-content">Panel</span></th>
+              <th class="col-description"><span class="th-content">Descripción</span></th>
+              <th class="col-status"><span class="th-content">Estado</span></th>
+              <th class="col-actions"><span class="th-content">Acciones</span></th>
             </tr>
           </thead>
-          <tbody>
-            <tr
-              v-for="item in filteredItems"
-              :key="item.id"
-              class="table-row"
-            >
-              <td class="col-name">
-                <div class="name-cell">
-                  <div class="rol-icon" :style="{ background: item.is_active ? 'var(--navy-soft)' : 'var(--mist)' }">
-                    <UIcon name="i-heroicons-shield-check" class="w-4 h-4" :style="{ color: item.is_active ? 'var(--navy)' : 'var(--ink-soft)' }" />
+            <tbody>
+              <tr v-for="item in filteredItems" :key="item.id" class="table-row">
+                <td class="col-name">
+                  <span class="text-xs font-mono" style="color: var(--ink-soft)">{{ item.codigo || '—' }}</span>
+                </td>
+                <td class="col-name">
+                  <div class="name-cell">
+                    <div class="rol-icon" :style="{ background: item.is_active ? 'var(--navy-soft)' : 'var(--mist)' }">
+                      <UIcon name="i-heroicons-shield-check" class="w-4 h-4" :style="{ color: item.is_active ? 'var(--navy)' : 'var(--ink-soft)' }" />
+                    </div>
+                    <span class="name-text">{{ item.nombre }}</span>
                   </div>
-                  <span class="name-text">{{ item.nombre }}</span>
-                </div>
-              </td>
-              <td class="col-description">
-                <span class="description-text">{{ item.descripcion || '—' }}</span>
-              </td>
-              <td class="col-status">
-                <span class="status-badge" :class="item.is_active ? 'status-active' : 'status-inactive'">
-                  <span class="status-dot" :class="item.is_active ? 'dot-active' : 'dot-inactive'" />
-                  {{ item.is_active ? 'Activo' : 'Inactivo' }}
-                </span>
-              </td>
-              <td class="col-actions">
-                <div class="action-buttons">
-                  <NuxtLink
-                    :to="`/sigarh/mantenimiento/roles-sistema/${item.id}?tenant=${tenantId}`"
-                    class="action-btn action-edit"
-                    title="Editar rol"
-                  >
-                    <UIcon name="i-heroicons-pencil-square" class="w-4 h-4" />
-                  </NuxtLink>
-                  <button
-                    class="action-btn action-delete"
-                    title="Eliminar rol"
-                    @click="confirmarEliminar(item)"
-                  >
-                    <UIcon name="i-heroicons-trash" class="w-4 h-4" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
+                </td>
+                <td class="col-status">
+                  <span class="text-xs" style="color: var(--ink-soft)">{{ item.panel }}</span>
+                </td>
+                <td class="col-description">
+                  <span class="description-text">{{ item.descripcion || '—' }}</span>
+                </td>
+                <td class="col-status">
+                  <span class="status-badge" :class="item.is_active ? 'status-active' : 'status-inactive'">
+                    <span class="status-dot" :class="item.is_active ? 'dot-active' : 'dot-inactive'" />
+                    {{ item.is_active ? 'Activo' : 'Inactivo' }}
+                  </span>
+                </td>
+                <td class="col-actions">
+                  <div class="action-buttons">
+                    <NuxtLink :to="`/sigarh/mantenimiento/roles-sistema/${item.id}?tenant=${tenantId}`" class="action-btn action-edit" title="Editar rol">
+                      <UIcon name="i-heroicons-pencil-square" class="w-4 h-4" />
+                    </NuxtLink>
+                    <button class="action-btn action-delete" title="Eliminar rol" @click="confirmarEliminar(item)">
+                      <UIcon name="i-heroicons-trash" class="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
         </table>
       </div>
 
@@ -251,7 +239,10 @@ definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
 
 interface Item {
   id: string
+  codigo: string | null
   nombre: string
+  panel: string
+  modulo_requerido: string | null
   descripcion: string | null
   is_active: boolean
 }
