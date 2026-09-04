@@ -1,6 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Escritorio', middleware: ['auth'] })
-const { $api } = useNuxtApp()
+
+const { api } = useApi()
 const route = useRoute()
 const tenant = route.query.tenant as string
 
@@ -8,15 +9,19 @@ const data = ref<any>(null)
 const loading = ref(true)
 const error = ref('')
 
-onMounted(async () => {
+const cargarDashboard = async () => {
+  loading.value = true
+  error.value = ''
   try {
-    data.value = await $api('/sigarh/dashboard', { tenant })
+    data.value = await api('/sigarh/dashboard')
   } catch (e: any) {
-    error.value = 'No se pudo cargar el dashboard'
+    error.value = e?.data?.detail || 'No se pudo cargar el dashboard'
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(cargarDashboard)
 
 const porcentajeAsistencia = computed(() => {
   if (!data.value?.total_empleados) return 0

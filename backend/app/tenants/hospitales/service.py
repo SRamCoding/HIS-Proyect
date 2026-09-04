@@ -2,10 +2,11 @@ import uuid
 import re
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
+from sqlalchemy.orm import selectinload
 from redis.asyncio import Redis
 
-from app.tenants.models import Tenant, TenantModule, Module
-from app.tenants.schemas import TenantCreate, TenantUpdate
+from app.tenants.hospitales.models import Tenant, TenantModule
+from app.tenants.hospitales.schemas import TenantCreate, TenantUpdate
 from app.core.tenancy import invalidate_tenant_cache
 
 
@@ -89,7 +90,6 @@ async def create_tenant(
     await db.refresh(tenant)
     return tenant
 
-from sqlalchemy.orm import selectinload
 
 async def get_tenant_by_domain(db: AsyncSession, domain: str) -> Tenant | None:
     result = await db.execute(
@@ -98,6 +98,7 @@ async def get_tenant_by_domain(db: AsyncSession, domain: str) -> Tenant | None:
         .where(Tenant.domain == domain)
     )
     return result.scalar_one_or_none()
+
 
 async def update_tenant_modules(
     db: AsyncSession,
@@ -109,7 +110,6 @@ async def update_tenant_modules(
     Actualiza los módulos activos de un tenant e invalida el caché.
     Equivalente a activar/desactivar módulos desde ModulesCatalog en Laravel.
     """
-    # Desactivar todos los módulos actuales
     result = await db.execute(
         select(Tenant).where(Tenant.id == tenant_id)
     )

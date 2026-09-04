@@ -69,7 +69,7 @@ async def login(
     # ── LÍNEA 67: obtener módulos activos del tenant ──────────────────────────
     active_modules = []
     if user.tenant_id:
-        from app.tenants.models import TenantModule
+        from app.tenants.hospitales.models import TenantModule
         mods_result = await db.execute(
             select(TenantModule).where(
                 TenantModule.tenant_id == user.tenant_id,
@@ -131,7 +131,7 @@ async def refresh_token(
     # obtener módulos activos del tenant en refresh también
     active_modules = []
     if user.tenant_id:
-        from app.tenants.models import TenantModule
+        from app.tenants.hospitales.models import TenantModule
         mods_result = await db.execute(
             select(TenantModule).where(
                 TenantModule.tenant_id == user.tenant_id,
@@ -194,7 +194,7 @@ async def _log_audit(
     ip_address: str | None = None,
 ) -> None:
     import uuid
-    from app.admin.models import AuditLog
+    from app.admin.auditoria.models import AuditLog
 
     log = AuditLog(
         user_id=uuid.UUID(user_id) if user_id else None,

@@ -1,0 +1,119 @@
+﻿
+    return TokenResponse(
+        access_token=create_access_token(token_data),
+        refresh_token=create_refresh_token(token_data),
+        user={
+            "id": str(user.id),
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "panel": user.panel,
+            "tenant_id": str(user.tenant_id) if user.tenant_id else None,
+            "active_modules": active_modules,  # â† lÃ­nea 91
+        }
+    )
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_token(
+    data: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    payload = verify_token(data.refresh_token)
+
+    if not payload or payload.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token invÃ¡lido o expirado"
+        )
+
+    result = await db.execute(
+        select(User).where(User.id == payload["sub"])
+    )
+    user = result.scalar_one_or_none()
+
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario no encontrado o inactivo"
+        )
+
+    # obtener mÃ³dulos activos del tenant en refresh tambiÃ©n
+    active_modules = []
+    if user.tenant_id:
+        from app.tenants.hospitales.models import TenantModule
+        mods_result = await db.execute(
+            select(TenantModule).where(
+                TenantModule.tenant_id == user.tenant_id,
+                TenantModule.is_active == True
+            )
+        )
+        active_modules = [m.module_code for m in mods_result.scalars().all()]
+
+    token_data = {
+        "sub": str(user.id),
+        "email": user.email,
+        "name": user.name,
+        "role": user.role,
+        "panel": user.panel,
+        "tenant_id": str(user.tenant_id) if user.tenant_id else None,
+        "active_modules": active_modules,
+    }
+
+    return TokenResponse(
+        access_token=create_access_token(token_data),
+        refresh_token=create_refresh_token(token_data),
+        user={
+            "id": str(user.id),
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "panel": user.panel,
+            "tenant_id": str(user.tenant_id) if user.tenant_id else None,
+            "active_modules": active_modules,
+        }
+    )
+
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    await _log_audit(
+        db=db,
+        user_id=None,
+        user_name="Admin",
+        tenant_id=None,
+        action="logout",
+        model="User",
+        description="Cierre de sesiÃ³n",
+        ip_address=request.client.host if request.client else None,
+    )
+    return {"ok": True, "message": "SesiÃ³n cerrada correctamente"}
+
+
+async def _log_audit(
+    db: AsyncSession,
+    user_id: str | None,
+    user_name: str | None,
+    tenant_id: str | None,
+    action: str,
+    model: str | None = None,
+    description: str | None = None,
+    ip_address: str | None = None,
+) -> None:
+    import uuid
+    from app.admin.auditoria.models import AuditLog
+
+    log = AuditLog(
+        user_id=uuid.UUID(user_id) if user_id else None,
+        user_name=user_name,
+        tenant_id=uuid.UUID(tenant_id) if tenant_id else None,
+        action=action,
+        model=model,
+        description=description,
+        ip_address=ip_address,
+    )
+    db.add(log)
+    await db.commit()

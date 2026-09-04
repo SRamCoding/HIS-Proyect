@@ -9,7 +9,12 @@ from app.core.config import settings
 
 # Importar TODOS los modelos para que SQLAlchemy resuelva las FK
 from app.core.database import Base
-from app.tenants.models import Tenant, TenantModule, Module
+from app.tenants.hospitales.models import Tenant, TenantModule
+from app.tenants.modulos.models import Module
+from app.admin.roles.models import SystemRole
+from app.admin.niveles_hospitalarios.models import HospitalLevel
+from app.admin.modulos.models import ModuleDependency
+from app.admin.auditoria.models import AuditLog
 from app.auth.models import User
 
 

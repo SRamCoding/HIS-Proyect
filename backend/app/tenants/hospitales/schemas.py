@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, EmailStr
-from typing import Any
+from pydantic import BaseModel
 
 
 class TenantBase(BaseModel):
@@ -28,6 +27,7 @@ class TenantCreate(TenantBase):
     sigarh_email: str | None = None
     sigarh_password: str | None = None
 
+
 class TenantUpdate(TenantBase):
     name: str | None = None
     domain: str | None = None
@@ -40,20 +40,5 @@ class TenantResponse(TenantBase):
     is_active: bool
     active_modules: list[str] = []
     created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class ModuleBase(BaseModel):
-    code: str
-    name: str
-    description: str | None = None
-    category: str
-    sort_order: int = 0
-
-
-class ModuleResponse(ModuleBase):
-    id: uuid.UUID
-    is_active: bool
 
     model_config = {"from_attributes": True}

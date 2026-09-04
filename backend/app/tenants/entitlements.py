@@ -1,3 +1,4 @@
+# backend/app/tenants/entitlements.py
 from fastapi import Depends, HTTPException, status, Request
 from redis.asyncio import Redis
 

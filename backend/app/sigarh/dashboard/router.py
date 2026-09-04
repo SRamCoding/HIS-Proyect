@@ -1,8 +1,8 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
-from datetime import datetime, date, timedelta
+from sqlalchemy import select, func
+from datetime import date, timedelta
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
@@ -29,28 +29,27 @@ async def dashboard(
     tenant_id = get_tenant_id(current_user, request)
     hoy = date.today()
     inicio_mes = hoy.replace(day=1)
-    hace_7_dias = hoy - timedelta(days=7)
 
-    # ── Empleados ─────────────────────────────────────────────────────────────
+    # ── Empleados ──────────────────────────────────────────────
     total_empleados = await db.scalar(
         select(func.count(Empleado.id)).where(Empleado.tenant_id == tenant_id)
     )
     empleados_activos = await db.scalar(
         select(func.count(Empleado.id)).where(
             Empleado.tenant_id == tenant_id,
-            Empleado.estado == "ACTIVO"
+            Empleado.is_active == True,
         )
     )
 
-    # ── Asistencia hoy ────────────────────────────────────────────────────────
+    # ── Asistencia hoy ─────────────────────────────────────────
     asistencia_hoy = await db.scalar(
         select(func.count(RegistroAsistencia.id)).where(
             RegistroAsistencia.tenant_id == tenant_id,
-            func.date(RegistroAsistencia.fecha) == hoy,
+            RegistroAsistencia.fecha == hoy,
         )
     )
 
-    # ── Movimientos del mes ───────────────────────────────────────────────────
+    # ── Movimientos del mes ────────────────────────────────────
     vacaciones_mes = await db.scalar(
         select(func.count(Vacacion.id)).where(
             Vacacion.tenant_id == tenant_id,
@@ -76,7 +75,7 @@ async def dashboard(
         )
     )
 
-    # ── Movimientos pendientes ────────────────────────────────────────────────
+    # ── Movimientos pendientes ─────────────────────────────────
     vacaciones_pendientes = await db.scalar(
         select(func.count(Vacacion.id)).where(
             Vacacion.tenant_id == tenant_id,
@@ -96,7 +95,7 @@ async def dashboard(
         )
     )
 
-    # ── Camas ─────────────────────────────────────────────────────────────────
+    # ── Camas ──────────────────────────────────────────────────
     total_camas = await db.scalar(
         select(func.count(Cama.id)).where(Cama.tenant_id == tenant_id)
     )
@@ -119,7 +118,7 @@ async def dashboard(
         )
     )
 
-    # ── Justificaciones pendientes ────────────────────────────────────────────
+    # ── Justificaciones pendientes ─────────────────────────────
     justificaciones_pendientes = await db.scalar(
         select(func.count(Justificacion.id)).where(
             Justificacion.tenant_id == tenant_id,
@@ -127,23 +126,25 @@ async def dashboard(
         )
     )
 
-    # ── Últimas vacaciones ────────────────────────────────────────────────────
+    # ── Últimas vacaciones (con JOIN a Empleado para el nombre) ─
     result = await db.execute(
-        select(Vacacion)
+        select(Vacacion, Empleado)
+        .join(Empleado, Empleado.id == Vacacion.empleado_id)
         .where(Vacacion.tenant_id == tenant_id)
         .order_by(Vacacion.created_at.desc())
         .limit(5)
     )
-    ultimas_vacaciones = result.scalars().all()
+    ultimas_vacaciones = result.all()
 
-    # ── Últimas licencias ─────────────────────────────────────────────────────
+    # ── Últimas licencias (con JOIN a Empleado para el nombre) ──
     result2 = await db.execute(
-        select(Licencia)
+        select(Licencia, Empleado)
+        .join(Empleado, Empleado.id == Licencia.empleado_id)
         .where(Licencia.tenant_id == tenant_id)
         .order_by(Licencia.created_at.desc())
         .limit(5)
     )
-    ultimas_licencias = result2.scalars().all()
+    ultimas_licencias = result2.all()
 
     return {
         # KPIs principales
@@ -179,21 +180,21 @@ async def dashboard(
         "ultimas_vacaciones": [
             {
                 "id": str(v.id),
-                "empleado_nombre": v.empleado_nombre,
+                "empleado_nombre": emp.nombre_completo,
                 "tipo": v.tipo,
                 "fecha_inicio": str(v.fecha_inicio),
                 "fecha_fin": str(v.fecha_fin),
                 "estado": v.estado,
             }
-            for v in ultimas_vacaciones
+            for v, emp in ultimas_vacaciones
         ],
         "ultimas_licencias": [
             {
                 "id": str(l.id),
-                "empleado_nombre": l.empleado_nombre,
+                "empleado_nombre": emp.nombre_completo,
                 "fecha_tramite": str(l.fecha_tramite),
                 "estado": l.estado,
             }
-            for l in ultimas_licencias
+            for l, emp in ultimas_licencias
         ],
     }

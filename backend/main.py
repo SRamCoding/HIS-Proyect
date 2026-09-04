@@ -1,13 +1,23 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from app.admin.router import router as admin_router
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.exceptions import register_exception_handlers
 from app.auth.router import router as auth_router
-from app.tenants.router import router as tenants_router
 from app.modules.admision.router import router as admision_router
+
+# ── Admin (submódulos independientes) ─────────────────────────
+from app.admin.dashboard.router import router as admin_dashboard_router
+from app.admin.hospitales.router import router as admin_hospitales_router
+from app.admin.usuarios.router import router as admin_usuarios_router
+from app.admin.niveles_hospitalarios.router import router as admin_niveles_router
+from app.admin.roles.router import router as admin_roles_router
+from app.admin.auditoria.router import router as admin_auditoria_router
+from app.admin.modulos.router import router as admin_modulos_router
+from app.admin.reportes.router import router as admin_reportes_router
+
+# ── SIGARH ──────────────────────────────────────────────────
 from app.sigarh.mantenimiento.router import router as sigarh_mant_router
 from app.sigarh.rrhh.router import router as sigarh_rrhh_router
 from app.sigarh.movimientos.router import router as sigarh_mov_router
@@ -20,7 +30,6 @@ from app.sigarh.laboratorio.router import router as sigarh_lab_router
 from app.sigarh.general.router import router as sigarh_general_router
 from app.sigarh.nutricion.router import router as sigarh_nutricion_router
 from app.sigarh.dashboard.router import router as sigarh_dashboard_router
-
 
 
 @asynccontextmanager
@@ -60,11 +69,21 @@ async def health_check():
     }
 
 
-# ─── Routers ──────────────────────────────────────────────────────────────────
+# ── Routers ────────────────────────────────────────────────
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
-app.include_router(tenants_router, prefix="/admin/tenants", tags=["admin"])
-app.include_router(admin_router, prefix="/admin", tags=["admin"])
 app.include_router(admision_router, prefix="/app/admision", tags=["admision"])
+
+# Admin — cada submódulo registrado por separado, mismo patrón que SIGARH
+app.include_router(admin_dashboard_router, prefix="/admin", tags=["admin-dashboard"])
+app.include_router(admin_hospitales_router, prefix="/admin", tags=["admin-hospitales"])
+app.include_router(admin_usuarios_router, prefix="/admin", tags=["admin-usuarios"])
+app.include_router(admin_niveles_router, prefix="/admin", tags=["admin-niveles-hospitalarios"])
+app.include_router(admin_roles_router, prefix="/admin", tags=["admin-roles"])
+app.include_router(admin_auditoria_router, prefix="/admin", tags=["admin-auditoria"])
+app.include_router(admin_modulos_router, prefix="/admin", tags=["admin-modulos"])
+app.include_router(admin_reportes_router, prefix="/admin", tags=["admin-reportes"])
+
+# SIGARH
 app.include_router(sigarh_mant_router, prefix="/sigarh/mantenimiento", tags=["sigarh-mantenimiento"])
 app.include_router(sigarh_rrhh_router, prefix="/sigarh/rrhh", tags=["sigarh-rrhh"])
 app.include_router(sigarh_mov_router, prefix="/sigarh/movimientos", tags=["sigarh-movimientos"])
@@ -74,6 +93,6 @@ app.include_router(sigarh_farmacia_router, prefix="/sigarh/config-farmacia", tag
 app.include_router(sigarh_financiera_router, prefix="/sigarh/config-financiera", tags=["sigarh-config-financiera"])
 app.include_router(sigarh_img_router, prefix="/sigarh/imagenologia", tags=["sigarh-imagenologia"])
 app.include_router(sigarh_lab_router, prefix="/sigarh/laboratorio", tags=["sigarh-laboratorio"])
-app.include_router(sigarh_general_router,   prefix="/sigarh/general",   tags=["SIGARH - General"])
+app.include_router(sigarh_general_router, prefix="/sigarh/general", tags=["SIGARH - General"])
 app.include_router(sigarh_nutricion_router, prefix="/sigarh/nutricion", tags=["SIGARH - Nutrición"])
 app.include_router(sigarh_dashboard_router, prefix="/sigarh", tags=["SIGARH - Dashboard"])
