@@ -102,6 +102,69 @@ async def crud_actualizar(db: AsyncSession, modelo, id: uuid.UUID, tenant_id: uu
     await db.refresh(item)
     return item
 
+# ─── Rol Sistema (con JSON de modulos y grupos ocupacionales) ─────────────
+
+def _serializar_rol(item: RolSistema) -> dict:
+    """Convierte los campos JSON (guardados como texto) a listas reales."""
+    return {
+        "id": item.id,
+        "tenant_id": item.tenant_id,
+        "codigo": item.codigo,
+        "nombre": item.nombre,
+        "panel": item.panel,
+        "modulo_requerido": item.modulo_requerido,
+        "modulos_permitidos": json.loads(item.modulos_permitidos) if item.modulos_permitidos else [],
+        "grupos_ocupacionales_permitidos": json.loads(item.grupos_ocupacionales_permitidos) if item.grupos_ocupacionales_permitidos else [],
+        "descripcion": item.descripcion,
+        "is_active": item.is_active,
+        "created_at": item.created_at,
+    }
+
+
+async def listar_roles(db: AsyncSession, tenant_id: uuid.UUID) -> list[dict]:
+    items = await listar(db, RolSistema, tenant_id)
+    return [_serializar_rol(i) for i in items]
+
+
+async def obtener_rol(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID) -> dict | None:
+    item = await obtener(db, RolSistema, id, tenant_id)
+    if not item:
+        return None
+    return _serializar_rol(item)
+
+
+async def crear_rol(db: AsyncSession, tenant_id: uuid.UUID, data) -> dict:
+    data_dict = data.model_dump()
+    modulos = data_dict.pop("modulos_permitidos", [])
+    grupos = data_dict.pop("grupos_ocupacionales_permitidos", [])
+    rol = RolSistema(
+        tenant_id=tenant_id,
+        modulos_permitidos=json.dumps(modulos),
+        grupos_ocupacionales_permitidos=json.dumps([str(g) for g in grupos]),
+        **data_dict,
+    )
+    db.add(rol)
+    await db.commit()
+    await db.refresh(rol)
+    return _serializar_rol(rol)
+
+
+async def actualizar_rol(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, data) -> dict | None:
+    item = await obtener(db, RolSistema, id, tenant_id)
+    if not item:
+        return None
+    data_dict = data.model_dump(exclude_unset=True)
+    if "modulos_permitidos" in data_dict:
+        item.modulos_permitidos = json.dumps(data_dict.pop("modulos_permitidos"))
+    if "grupos_ocupacionales_permitidos" in data_dict:
+        item.grupos_ocupacionales_permitidos = json.dumps([str(g) for g in data_dict.pop("grupos_ocupacionales_permitidos")])
+    for field, value in data_dict.items():
+        setattr(item, field, value)
+    await db.commit()
+    await db.refresh(item)
+    return _serializar_rol(item)
+
+
 
 # ─── Perfil Usuario (con JSON de módulos) ────────────────────────────────────
 

@@ -127,20 +127,32 @@ class GuardiaValorizadaResponse(GuardiaValorizadaCreate):
     model_config = {"from_attributes": True}
 
 
-# ─── Rol Sistema ──────────────────────────────────────────────────────────────
+# ─── Rol Sistema ─────────────────────────────────────────────────────────
 
 class RolSistemaCreate(BaseModel):
+    codigo: str
     nombre: str
+    panel: str = "sigarh"
+    modulo_requerido: str | None = None
+    modulos_permitidos: list[str] = []
+    grupos_ocupacionales_permitidos: list[uuid.UUID] = []
     descripcion: str | None = None
     is_active: bool = True
 
-class RolSistemaResponse(RolSistemaCreate):
+class RolSistemaResponse(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
+    codigo: str | None
+    nombre: str
+    panel: str
+    modulo_requerido: str | None
+    modulos_permitidos: list[str] = []
+    grupos_ocupacionales_permitidos: list[uuid.UUID] = []
+    descripcion: str | None
+    is_active: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
-
 
 # ─── Perfil Usuario ───────────────────────────────────────────────────────────
 

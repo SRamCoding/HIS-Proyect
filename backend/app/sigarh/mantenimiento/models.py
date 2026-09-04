@@ -178,14 +178,18 @@ class GuardiaValorizada(Base):
     def __repr__(self) -> str:
         return f"<GuardiaValorizada {self.valor}>"
 
-
 class RolSistema(Base):
     """Roles de acceso del sistema SIGARH."""
     __tablename__ = "sigarh_roles_sistema"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    codigo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     nombre: Mapped[str] = mapped_column(String(255))
+    panel: Mapped[str] = mapped_column(String(50), default="sigarh")  # app, sigarh, portal
+    modulo_requerido: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    modulos_permitidos: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: lista de codigos
+    grupos_ocupacionales_permitidos: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: lista de UUIDs (str)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

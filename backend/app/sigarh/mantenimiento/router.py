@@ -31,6 +31,7 @@ from app.sigarh.mantenimiento.service import (
     listar, obtener, eliminar,
     crud_crear, crud_actualizar,
     crear_perfil,
+    listar_roles, obtener_rol, crear_rol, actualizar_rol,
 )
 
 router = APIRouter()
@@ -85,8 +86,38 @@ make_crud(router, "grupos-ocupacionales", GrupoOcupacional, GrupoOcupacionalCrea
 make_crud(router, "tipos-actividad", TipoActividad, TipoActividadCreate, TipoActividadResponse, "sigarh_mantenimiento")
 make_crud(router, "actividades", Actividad, ActividadCreate, ActividadResponse, "sigarh_mantenimiento")
 make_crud(router, "guardias-valorizadas", GuardiaValorizada, GuardiaValorizadaCreate, GuardiaValorizadaResponse, "sigarh_mantenimiento")
-make_crud(router, "roles-sistema", RolSistema, RolSistemaCreate, RolSistemaResponse, "sigarh_mantenimiento")
 
+# ─── Roles del Sistema ─────────────────────────────────────────────────────
+
+@router.get("/roles-sistema", response_model=list[RolSistemaResponse])
+async def listar_roles_sistema(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    return await listar_roles(db, get_tenant_id(current_user, request))
+
+
+@router.post("/roles-sistema", response_model=RolSistemaResponse, status_code=201)
+async def crear_rol_sistema(request: Request, data: RolSistemaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    return await crear_rol(db, get_tenant_id(current_user, request), data)
+
+
+@router.get("/roles-sistema/{id}", response_model=RolSistemaResponse)
+async def obtener_rol_sistema(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    item = await obtener_rol(db, id, get_tenant_id(current_user, request))
+    if not item: raise HTTPException(404, detail="No encontrado")
+    return item
+
+
+@router.patch("/roles-sistema/{id}", response_model=RolSistemaResponse)
+async def actualizar_rol_sistema(request: Request, id: uuid.UUID, data: RolSistemaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    item = await actualizar_rol(db, id, get_tenant_id(current_user, request), data)
+    if not item: raise HTTPException(404, detail="No encontrado")
+    return item
+
+
+@router.delete("/roles-sistema/{id}")
+async def eliminar_rol_sistema(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    ok = await eliminar(db, RolSistema, id, get_tenant_id(current_user, request))
+    if not ok: raise HTTPException(404, detail="No encontrado")
+    return {"ok": True}
 
 # ─── Perfiles ─────────────────────────────────────────────────────────────────
 
