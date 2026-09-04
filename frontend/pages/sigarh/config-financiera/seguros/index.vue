@@ -1,0 +1,43 @@
+<script setup lang="ts">
+definePageMeta({ layout: 'sigarh', title: 'Seguros' })
+const { $api } = useNuxtApp()
+const route = useRoute()
+const tenant = route.query.tenant as string
+const lista = ref<any[]>([])
+const loading = ref(true)
+onMounted(async () => { lista.value = await $api('/sigarh/config-financiera/seguros', { tenant }); loading.value = false })
+</script>
+<template>
+  <div class="p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <div><h1 class="text-xl font-semibold text-gray-800">Seguros</h1><p class="text-sm text-gray-500 mt-0.5">Seguros y convenios del hospital</p></div>
+      <NuxtLink :to="`/sigarh/config-financiera/seguros/create?tenant=${tenant}`">
+        <button class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white" style="background:#1e3a5f"><UIcon name="i-heroicons-plus" class="w-4 h-4" /> Nuevo Seguro</button>
+      </NuxtLink>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div v-if="loading" class="p-8 text-center text-gray-400">Cargando...</div>
+      <div v-else-if="!lista.length" class="p-8 text-center text-gray-400">No hay seguros registrados</div>
+      <table v-else class="w-full text-sm">
+        <thead><tr class="border-b border-gray-100 bg-gray-50">
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Nombre</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">RUC</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Cobertura %</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Activo</th>
+          <th class="px-4 py-3"></th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="s in lista" :key="s.id" class="border-b border-gray-50 hover:bg-gray-50">
+            <td class="px-4 py-3 font-medium">{{ s.nombre }}</td>
+            <td class="px-4 py-3 font-mono text-xs text-gray-600">{{ s.ruc || '—' }}</td>
+            <td class="px-4 py-3 text-gray-600">{{ s.tipo || '—' }}</td>
+            <td class="px-4 py-3 text-gray-600">{{ s.porcentaje_cobertura != null ? s.porcentaje_cobertura + '%' : '—' }}</td>
+            <td class="px-4 py-3"><UIcon :name="s.is_active ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" :class="s.is_active ? 'text-green-500' : 'text-gray-300'" class="w-4 h-4" /></td>
+            <td class="px-4 py-3"><NuxtLink :to="`/sigarh/config-financiera/seguros/${s.id}?tenant=${tenant}`" class="text-blue-600 hover:underline text-xs">Editar</NuxtLink></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</template>
