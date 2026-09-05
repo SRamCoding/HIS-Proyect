@@ -474,11 +474,11 @@
               <span>Ver Landing</span>
               <UIcon name="i-heroicons-arrow-top-right-on-square" class="w-3.5 h-3.5 ml-auto" style="color: var(--ink-soft)" />
             </button>
-            <button class="quick-action" @click="irA('/app')">
-              <UIcon name="i-heroicons-squares-2x2" class="w-4 h-4" style="color: var(--green)" />
-              <span>Panel Admin</span>
-              <UIcon name="i-heroicons-arrow-top-right-on-square" class="w-3.5 h-3.5 ml-auto" style="color: var(--ink-soft)" />
-            </button>
+              <button class="quick-action" @click="irA('/app')">
+                <UIcon name="i-heroicons-squares-2x2" class="w-4 h-4" style="color: var(--green)" />
+                <span>Panel Hospitalario</span>
+                <UIcon name="i-heroicons-arrow-top-right-on-square" class="w-3.5 h-3.5 ml-auto" style="color: var(--ink-soft)" />
+              </button>
             <button class="quick-action" @click="irA('/sigarh')">
               <UIcon name="i-heroicons-folder-open" class="w-4 h-4" style="color: var(--navy)" />
               <span>Panel SIGARH</span>
@@ -682,6 +682,8 @@ const irA = (path: string) => {
     window.open(`${baseUrl}?tenant=${tenantId}`, '_blank')
   } else if (path === '/sigarh') {
     window.open(`${baseUrl}/sigarh/login?tenant=${tenantId}`, '_blank')
+  } else if (path === '/app') {
+    window.open(`${baseUrl}/app/login?tenant=${tenantId}`, '_blank')
   } else {
     window.open(`${baseUrl}${path}?tenant=${tenantId}`, '_blank')
   }

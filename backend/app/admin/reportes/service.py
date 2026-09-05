@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.tenants.hospitales.models import Tenant
 from app.tenants.modulos.service import get_all_modules
 from app.auth.models import User
-from app.modules.admision.models import Patient
+from app.hospital.gestion_pacientes.models import Patient
 
 
 async def get_hospitals_modules_report(db: AsyncSession) -> list[dict]:

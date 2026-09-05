@@ -211,11 +211,11 @@
                   >
                     <UIcon name="i-heroicons-globe-alt" class="w-4 h-4" />
                   </button>
-                  <button
-                    class="action-btn action-app"
-                    title="Panel Admin"
-                    @click="irA(hospital, '/app')"
-                  >
+                    <button
+                      class="action-btn action-app"
+                      title="Panel Hospitalario"
+                      @click="irA(hospital, '/app')"
+                    >
                     <UIcon name="i-heroicons-squares-2x2" class="w-4 h-4" />
                   </button>
                   <button
@@ -372,6 +372,8 @@ const irA = (hospital: Hospital, path: string) => {
     window.open(`${baseUrl}?tenant=${hospital.id}`, '_blank')
   } else if (path === '/sigarh') {
     window.open(`${baseUrl}/sigarh/login?tenant=${hospital.id}`, '_blank')
+  } else if (path === '/app') {
+    window.open(`${baseUrl}/app/login?tenant=${hospital.id}`, '_blank')
   } else {
     window.open(`${baseUrl}${path}?tenant=${hospital.id}`, '_blank')
   }

@@ -1,3 +1,4 @@
+# backend/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -5,7 +6,6 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.exceptions import register_exception_handlers
 from app.auth.router import router as auth_router
-from app.modules.admision.router import router as admision_router
 
 # ── Admin (submódulos independientes) ─────────────────────────
 from app.admin.dashboard.router import router as admin_dashboard_router
@@ -30,6 +30,22 @@ from app.sigarh.laboratorio.router import router as sigarh_lab_router
 from app.sigarh.general.router import router as sigarh_general_router
 from app.sigarh.nutricion.router import router as sigarh_nutricion_router
 from app.sigarh.dashboard.router import router as sigarh_dashboard_router
+
+# ── Panel Hospitalario (app) ────────────────────────────────
+from app.hospital.gestion_pacientes.router import router as hosp_gestion_pacientes_router
+from app.hospital.cobros.router import router as hosp_cobros_router
+from app.hospital.hospitalizacion.router import router as hosp_hospitalizacion_router
+from app.hospital.consulta_externa.router import router as hosp_consulta_externa_router
+from app.hospital.emergencia.router import router as hosp_emergencia_router
+from app.hospital.laboratorio.router import router as hosp_laboratorio_router
+from app.hospital.imagenologia.router import router as hosp_imagenologia_router
+from app.hospital.farmacia.router import router as hosp_farmacia_router
+from app.hospital.caja.router import router as hosp_caja_router
+from app.hospital.archivo_clinico.router import router as hosp_archivo_clinico_router
+from app.hospital.sis.router import router as hosp_sis_router
+from app.hospital.his.router import router as hosp_his_router
+from app.hospital.reportes.router import router as hosp_reportes_router
+from app.hospital.telemedicina.router import router as hosp_telemedicina_router
 
 
 @asynccontextmanager
@@ -71,7 +87,6 @@ async def health_check():
 
 # ── Routers ────────────────────────────────────────────────
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
-app.include_router(admision_router, prefix="/app/admision", tags=["admision"])
 
 # Admin — cada submódulo registrado por separado, mismo patrón que SIGARH
 app.include_router(admin_dashboard_router, prefix="/admin", tags=["admin-dashboard"])
@@ -96,3 +111,19 @@ app.include_router(sigarh_lab_router, prefix="/sigarh/laboratorio", tags=["sigar
 app.include_router(sigarh_general_router, prefix="/sigarh/general", tags=["SIGARH - General"])
 app.include_router(sigarh_nutricion_router, prefix="/sigarh/nutricion", tags=["SIGARH - Nutrición"])
 app.include_router(sigarh_dashboard_router, prefix="/sigarh", tags=["SIGARH - Dashboard"])
+
+# Panel Hospitalario (app)
+app.include_router(hosp_gestion_pacientes_router, prefix="/app/gestion-pacientes", tags=["app-gestion-pacientes"])
+app.include_router(hosp_cobros_router, prefix="/app/cobros", tags=["app-cobros"])
+app.include_router(hosp_hospitalizacion_router, prefix="/app/hospitalizacion", tags=["app-hospitalizacion"])
+app.include_router(hosp_consulta_externa_router, prefix="/app/consulta-externa", tags=["app-consulta-externa"])
+app.include_router(hosp_emergencia_router, prefix="/app/emergencia", tags=["app-emergencia"])
+app.include_router(hosp_laboratorio_router, prefix="/app/laboratorio", tags=["app-laboratorio"])
+app.include_router(hosp_imagenologia_router, prefix="/app/imagenologia", tags=["app-imagenologia"])
+app.include_router(hosp_farmacia_router, prefix="/app/farmacia", tags=["app-farmacia"])
+app.include_router(hosp_caja_router, prefix="/app/caja", tags=["app-caja"])
+app.include_router(hosp_archivo_clinico_router, prefix="/app/archivo-clinico", tags=["app-archivo-clinico"])
+app.include_router(hosp_sis_router, prefix="/app/sis", tags=["app-sis"])
+app.include_router(hosp_his_router, prefix="/app/his", tags=["app-his"])
+app.include_router(hosp_reportes_router, prefix="/app/reportes", tags=["app-reportes"])
+app.include_router(hosp_telemedicina_router, prefix="/app/telemedicina", tags=["app-telemedicina"])
