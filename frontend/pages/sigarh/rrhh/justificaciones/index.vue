@@ -74,9 +74,9 @@
               <UIcon name="i-heroicons-flag" class="input-icon-small" />
               <select v-model="filtroEstado" class="input-clinical-small" @change="cargar" style="border: 1px solid var(--line); background: var(--paper)">
                 <option value="">Todos los estados</option>
-                <option value="pendiente">⏳ Pendiente</option>
-                <option value="aprobado">✅ Aprobado</option>
-                <option value="rechazado">❌ Rechazado</option>
+                <option value="pendiente">Pendiente</option>
+                <option value="aprobado">Aprobado</option>
+                <option value="rechazado">Rechazado</option>
               </select>
             </div>
           </div>

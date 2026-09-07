@@ -1,5 +1,5 @@
 <template>
-  <div class="grupos-container">
+  <div class="grupos-ocupacionales-container">
     <!-- Header with Stats -->
     <div class="page-header">
       <div class="header-left">
@@ -343,7 +343,7 @@ onMounted(cargar)
 </script>
 
 <style scoped>
-.grupos-container {
+.grupos-ocupacionales-container {
   max-width: 1400px;
   margin: 0 auto;
   padding: 1.5rem 2rem;
@@ -755,8 +755,8 @@ onMounted(cargar)
 }
 
 .status-active {
-  background: var(--teal-soft);
-  color: var(--teal);
+  background: var(--green-soft);
+  color: var(--green);
 }
 
 .status-inactive {
@@ -772,7 +772,7 @@ onMounted(cargar)
 }
 
 .dot-active {
-  background: var(--teal);
+  background: var(--green);
 }
 
 .dot-inactive {
@@ -903,7 +903,7 @@ onMounted(cargar)
 }
 
 @media (max-width: 1024px) {
-  .grupos-container {
+  .grupos-ocupacionales-container {
     padding: 1rem 1.5rem;
   }
 
@@ -923,7 +923,7 @@ onMounted(cargar)
 }
 
 @media (max-width: 768px) {
-  .grupos-container {
+  .grupos-ocupacionales-container {
     padding: 1rem;
   }
 

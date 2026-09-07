@@ -1,4 +1,3 @@
-# backend/app/modules/admision/router.py
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,10 +8,12 @@ from app.tenants.entitlements import require_module_jwt
 from app.hospital.gestion_pacientes.schemas import (
     PatientCreate, PatientUpdate, PatientResponse,
     PatientSearchResult, ClinicalRecordMovementCreate,
+    UbigeoDepartamentoOut, UbigeoProvinciaOut, UbigeoDistritoOut,
 )
 from app.hospital.gestion_pacientes.service import (
     create_patient, get_patient_by_dni, get_patient_by_id,
     search_patients, update_patient, move_clinical_record,
+    get_departamentos, get_provincias, get_distritos,
 )
 
 router = APIRouter()
@@ -28,20 +29,37 @@ def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
 def _to_response(patient) -> PatientResponse:
     return PatientResponse(
         id=patient.id,
+        document_type=patient.document_type,
         dni=patient.dni,
+        is_nn=patient.is_nn,
         first_name=patient.first_name,
+        second_name=patient.second_name,
         last_name_paterno=patient.last_name_paterno,
         last_name_materno=patient.last_name_materno,
         full_name=patient.full_name,
         birth_date=patient.birth_date,
         gender=patient.gender,
         age=patient.age,
+        marital_status=patient.marital_status,
+        education_level=patient.education_level,
+        occupation=patient.occupation,
+        ethnicity=patient.ethnicity,
+        language=patient.language,
         phone=patient.phone,
+        phone_is_whatsapp=patient.phone_is_whatsapp,
         email=patient.email,
         address=patient.address,
         department_id=patient.department_id,
         province_id=patient.province_id,
         district_id=patient.district_id,
+        populated_center=patient.populated_center,
+        country=patient.country,
+        birth_same_as_address=patient.birth_same_as_address,
+        birth_department_id=patient.birth_department_id,
+        birth_province_id=patient.birth_province_id,
+        birth_district_id=patient.birth_district_id,
+        birth_populated_center=patient.birth_populated_center,
+        birth_country=patient.birth_country,
         insurance_type=patient.insurance_type,
         insurance_number=patient.insurance_number,
         is_active=patient.is_active,
@@ -89,6 +107,24 @@ async def buscar_por_dni(
     return _to_response(patient)
 
 
+
+@router.get("/dni-lookup/{dni}", summary="Consultar DNI en servicio externo (autocompletado)")
+async def consultar_dni_externo(
+    dni: str,
+    current_user: dict = Depends(require_module_jwt("gestion_pacientes")),
+):
+    from app.hospital.gestion_pacientes.service import lookup_dni_externo
+    datos = await lookup_dni_externo(dni)
+    if not datos:
+        raise HTTPException(404, detail="No se encontraron datos para ese DNI en el servicio externo")
+    return {
+        "first_name": datos.get("nombres", ""),
+        "last_name_paterno": datos.get("apellidoPaterno", ""),
+        "last_name_materno": datos.get("apellidoMaterno", ""),
+    }
+
+
+
 @router.post("/", response_model=PatientResponse, status_code=201, summary="Registrar paciente")
 async def registrar_paciente(
     data: PatientCreate,
@@ -97,9 +133,10 @@ async def registrar_paciente(
     current_user: dict = Depends(require_module_jwt("gestion_pacientes")),
 ):
     tenant_id = get_tenant_id(current_user, request)
-    existing = await get_patient_by_dni(db, tenant_id, data.dni)
-    if existing:
-        raise HTTPException(400, detail=f"Ya existe un paciente con DNI {data.dni}")
+    if data.dni:
+        existing = await get_patient_by_dni(db, tenant_id, data.dni)
+        if existing:
+            raise HTTPException(400, detail=f"Ya existe un paciente con documento {data.dni}")
     patient = await create_patient(db, tenant_id, data)
     return _to_response(patient)
 
@@ -149,3 +186,30 @@ async def mover_historia_clinica(
     except ValueError as exc:
         raise HTTPException(404, detail=str(exc)) from exc
     return {"ok": True, "movement_id": str(movement.id)}
+
+
+# --- Ubigeo en cascada (para los selects de Domicilio/Nacimiento del formulario) ---
+@router.get("/ubigeo/departamentos", response_model=list[UbigeoDepartamentoOut], summary="Listar departamentos")
+async def listar_departamentos(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt("gestion_pacientes")),
+):
+    return await get_departamentos(db)
+
+
+@router.get("/ubigeo/provincias/{departamento_id}", response_model=list[UbigeoProvinciaOut], summary="Listar provincias de un departamento")
+async def listar_provincias(
+    departamento_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt("gestion_pacientes")),
+):
+    return await get_provincias(db, departamento_id)
+
+
+@router.get("/ubigeo/distritos/{provincia_id}", response_model=list[UbigeoDistritoOut], summary="Listar distritos de una provincia")
+async def listar_distritos(
+    provincia_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt("gestion_pacientes")),
+):
+    return await get_distritos(db, provincia_id)

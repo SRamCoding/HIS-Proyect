@@ -262,9 +262,9 @@ onMounted(async () => {
               <div class="input-wrapper">
                 <UIcon name="i-heroicons-flag" class="input-icon" />
                 <select v-model="form.estado" class="input-clinical">
-                  <option value="pendiente">⏳ Pendiente</option>
-                  <option value="aprobado">✅ Aprobado</option>
-                  <option value="rechazado">❌ Rechazado</option>
+                  <option value="pendiente">Pendiente</option>
+                  <option value="aprobado">Aprobado</option>
+                  <option value="rechazado">Rechazado</option>
                 </select>
               </div>
               <p class="field-hint">Estado inicial de la papeleta</p>

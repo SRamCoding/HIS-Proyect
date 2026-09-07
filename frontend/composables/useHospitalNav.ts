@@ -11,7 +11,7 @@ export const useHospitalNav = () => {
 
   const grupos = computed(() => [
     {
-      label: 'Gestion de Pacientes',
+      label: 'Admisión',
       modulo: 'gestion_pacientes',
       icon: 'i-heroicons-user',
       items: [
@@ -50,6 +50,7 @@ export const useHospitalNav = () => {
         { label: 'Programacion Medica', path: '/app/consulta-externa/programacion-medica', icon: 'i-heroicons-calendar' },
         { label: 'Calendario Medico', path: '/app/consulta-externa/calendario-medico', icon: 'i-heroicons-calendar-days' },
         { label: 'Triaje', path: '/app/consulta-externa/triaje', icon: 'i-heroicons-heart' },
+        { label: 'Citas por Confirmar', path: '/app/consulta-externa/admision/pendientes', icon: 'i-heroicons-clock' },
         { label: 'Atenciones Medicas', path: '/app/consulta-externa/atenciones-medicas', icon: 'i-heroicons-clipboard-document-check' },
         { label: 'Bandeja Electronica', path: '/app/consulta-externa/bandeja-electronica', icon: 'i-heroicons-inbox' },
       ]

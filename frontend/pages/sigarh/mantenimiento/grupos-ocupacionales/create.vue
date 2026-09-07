@@ -1,8 +1,8 @@
 <template>
-  <div class="grupo-create-container">
-    <div class="grupo-create-grid">
+  <div class="grupo-ocupacional-create-container">
+    <div class="grupo-ocupacional-create-grid">
       <!-- Main Content -->
-      <div class="grupo-create-main">
+      <div class="grupo-ocupacional-create-main">
         <!-- Breadcrumb + Title -->
         <div class="mb-8">
           <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
@@ -159,7 +159,7 @@
       </div>
 
       <!-- Sidebar Widgets -->
-      <div class="grupo-create-sidebar">
+      <div class="grupo-ocupacional-create-sidebar">
         <!-- Info Widget -->
         <div class="widget widget-info">
           <div class="widget-header">
@@ -337,24 +337,24 @@ const handleCreate = async (createAnother: boolean) => {
 </script>
 
 <style scoped>
-.grupo-create-container {
+.grupo-ocupacional-create-container {
   max-width: 1400px;
   margin: 0 auto;
   padding: 1.5rem 2rem;
 }
 
 /* Grid */
-.grupo-create-grid {
+.grupo-ocupacional-create-grid {
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 2rem;
 }
 
-.grupo-create-main {
+.grupo-ocupacional-create-main {
   min-width: 0;
 }
 
-.grupo-create-sidebar {
+.grupo-ocupacional-create-sidebar {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
@@ -950,11 +950,11 @@ const handleCreate = async (createAnother: boolean) => {
 
 /* Responsive */
 @media (max-width: 1024px) {
-  .grupo-create-grid {
+  .grupo-ocupacional-create-grid {
     grid-template-columns: 1fr;
   }
 
-  .grupo-create-sidebar {
+  .grupo-ocupacional-create-sidebar {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1.25rem;
@@ -962,7 +962,7 @@ const handleCreate = async (createAnother: boolean) => {
 }
 
 @media (max-width: 768px) {
-  .grupo-create-container {
+  .grupo-ocupacional-create-container {
     padding: 1rem;
   }
 
@@ -970,7 +970,7 @@ const handleCreate = async (createAnother: boolean) => {
     grid-template-columns: 1fr;
   }
 
-  .grupo-create-sidebar {
+  .grupo-ocupacional-create-sidebar {
     grid-template-columns: 1fr;
   }
 

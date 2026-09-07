@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    DNI_API_URL: str = "https://dni-api.prowebsolutions.lat/api/consultar"
+    DNI_API_KEY: str = ""
+
     # Multi-tenant
     CENTRAL_DOMAIN: str = "erp.local"
 

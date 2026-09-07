@@ -1,8 +1,8 @@
 <template>
-  <div class="grupo-edit-container">
-    <div class="grupo-edit-grid">
+  <div class="grupo-ocupacional-edit-container">
+    <div class="grupo-ocupacional-edit-grid">
       <!-- Main Content -->
-      <div class="grupo-edit-main">
+      <div class="grupo-ocupacional-edit-main">
         <!-- Breadcrumb + Title -->
         <div class="mb-8">
           <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
@@ -39,7 +39,7 @@
           <div class="loading-spinner">
             <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--teal)" />
           </div>
-          <p style="color: var(--ink-soft)">Cargando información del grupo...</p>
+          <p style="color: var(--ink-soft)">Cargando información del grupo ocupacional...</p>
         </div>
 
         <template v-else>
@@ -171,7 +171,7 @@
       </div>
 
       <!-- Sidebar Widgets -->
-      <div class="grupo-edit-sidebar">
+      <div class="grupo-ocupacional-edit-sidebar">
         <!-- Summary Widget -->
         <div class="widget widget-summary">
           <div class="widget-header">
@@ -360,24 +360,24 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.grupo-edit-container {
+.grupo-ocupacional-edit-container {
   max-width: 1400px;
   margin: 0 auto;
   padding: 1.5rem 2rem;
 }
 
 /* Grid */
-.grupo-edit-grid {
+.grupo-ocupacional-edit-grid {
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 2rem;
 }
 
-.grupo-edit-main {
+.grupo-ocupacional-edit-main {
   min-width: 0;
 }
 
-.grupo-edit-sidebar {
+.grupo-ocupacional-edit-sidebar {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
@@ -1006,11 +1006,11 @@ onMounted(async () => {
 
 /* Responsive */
 @media (max-width: 1024px) {
-  .grupo-edit-grid {
+  .grupo-ocupacional-edit-grid {
     grid-template-columns: 1fr;
   }
 
-  .grupo-edit-sidebar {
+  .grupo-ocupacional-edit-sidebar {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1.25rem;
@@ -1018,7 +1018,7 @@ onMounted(async () => {
 }
 
 @media (max-width: 768px) {
-  .grupo-edit-container {
+  .grupo-ocupacional-edit-container {
     padding: 1rem;
   }
 
@@ -1026,7 +1026,7 @@ onMounted(async () => {
     grid-template-columns: 1fr;
   }
 
-  .grupo-edit-sidebar {
+  .grupo-ocupacional-edit-sidebar {
     grid-template-columns: 1fr;
   }
 
