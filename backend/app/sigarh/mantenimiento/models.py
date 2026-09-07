@@ -4,7 +4,8 @@ from sqlalchemy import String, Boolean, DateTime, Integer, Text, ForeignKey, Flo
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
-
+from typing import Optional
+from app.sigarh.infraestructura_hosp.models import Piso
 
 class Departamento(Base):
     """Departamentos del hospital — equivalente a Department en Laravel."""
@@ -26,12 +27,13 @@ class Departamento(Base):
 
 
 class Servicio(Base):
-    """Servicios del hospital — equivalente a Service en Laravel."""
+    """Servicios del hospital – equivalente a Service en Laravel."""
     __tablename__ = "sigarh_servicios"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     departamento_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_departamentos.id", ondelete="SET NULL"), nullable=True)
+    piso_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_pisos.id", ondelete="SET NULL"), nullable=True)
     nombre: Mapped[str] = mapped_column(String(255))
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -40,7 +42,7 @@ class Servicio(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     departamento: Mapped["Departamento"] = relationship(back_populates="servicios")
-
+    piso: Mapped[Optional["Piso"]] = relationship()
     def __repr__(self) -> str:
         return f"<Servicio {self.nombre}>"
 
@@ -71,6 +73,8 @@ class TipoGuardia(Base):
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     horas: Mapped[int | None] = mapped_column(Integer, nullable=True)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    es_laborable: Mapped[bool] = mapped_column(Boolean, default=True)
+    requiere_epp: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -103,7 +107,9 @@ class HorarioGuardia(Base):
     nombre: Mapped[str] = mapped_column(String(255))
     hora_inicio: Mapped[str] = mapped_column(String(5))   # HH:MM
     hora_fin: Mapped[str] = mapped_column(String(5))      # HH:MM
+    tipo_guardia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_tipos_guardia.id", ondelete="SET NULL"), nullable=True)
     horas_totales: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tipo_guardia: Mapped["TipoGuardia"] = relationship()
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -120,6 +126,7 @@ class GrupoOcupacional(Base):
     nombre: Mapped[str] = mapped_column(String(255))
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tipo_grupo_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -153,6 +160,7 @@ class Actividad(Base):
     tipo_actividad_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_tipos_actividad.id", ondelete="SET NULL"), nullable=True)
     nombre: Mapped[str] = mapped_column(String(255))
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    requiere_consultorio: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -222,9 +230,14 @@ class Dependencia(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     nombre: Mapped[str] = mapped_column(String(255))
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    clasificacion: Mapped[str] = mapped_column(String(50), default="administrativa")  # administrativa, asistencial
+    departamento_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_departamentos.id", ondelete="SET NULL"), nullable=True)
+    servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="SET NULL"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    departamento: Mapped["Departamento"] = relationship()
+    servicio: Mapped["Servicio"] = relationship()
 
     def __repr__(self) -> str:
         return f"<Dependencia {self.nombre}>"

@@ -31,7 +31,7 @@
               <input type="checkbox" v-model="form.requiere_consultorio" id="consultorio" />
               <label for="consultorio" class="text-sm font-medium" style="color: var(--ink)">Requiere Consultorio</label>
             </div>
-            <p class="text-xs" style="color: var(--ink-soft)">Activelo si esta actividad se atiende en un consultorio (ej. Consulta Externa). Los dias de atencion se configuraran en el modulo de Consultorios, no en el Rol. Dejelo desactivado para actividades como Guardia, Reten o Sin Actividad, donde los dias se definen directamente en el Rol.</p>
+            <p class="text-xs" style="color: var(--ink-soft)">Actívelo si esta actividad se atiende en un consultorio (ej. Consulta Externa). Los días de atención se configurarán en el módulo de Consultorios, no en el Rol. Déjelo desactivado para actividades como Guardia, Retén o Sin Actividad, donde los días se definen directamente en el Rol.</p>
           </div>
           <div class="flex items-center gap-2">
             <input type="checkbox" v-model="form.is_active" id="activo" />

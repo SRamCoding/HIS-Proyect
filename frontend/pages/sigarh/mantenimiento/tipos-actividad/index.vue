@@ -146,9 +146,6 @@
               <th class="col-code">
                 <span class="th-content">Código</span>
               </th>
-              <th class="col-description">
-                <span class="th-content">Descripción</span>
-              </th>
               <th class="col-status">
                 <span class="th-content">Estado</span>
               </th>
@@ -173,9 +170,6 @@
               </td>
               <td class="col-code">
                 <span class="code-text font-mono-data">{{ item.codigo || '—' }}</span>
-              </td>
-              <td class="col-description">
-                <span class="description-text">{{ item.descripcion || '—' }}</span>
               </td>
               <td class="col-status">
                 <span class="status-badge" :class="item.is_active ? 'status-active' : 'status-inactive'">
@@ -259,7 +253,6 @@ interface Item {
   id: string
   nombre: string
   codigo: string | null
-  descripcion: string | null
   is_active: boolean
 }
 
@@ -702,7 +695,7 @@ onMounted(cargar)
 
 .col-name { width: 22%; }
 .col-code { width: 15%; }
-.col-description { width: 33%; }
+
 .col-status { width: 15%; }
 .col-actions { width: 15%; text-align: right; }
 
@@ -734,14 +727,7 @@ onMounted(cargar)
   color: var(--ink-soft);
 }
 
-/* Description */
-.description-text {
-  color: var(--ink-soft);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
+
 
 /* Status Badge */
 .status-badge {
@@ -949,9 +935,7 @@ onMounted(cargar)
     min-width: 80px;
   }
 
-  .col-description {
-    min-width: 120px;
-  }
+  
 
   .col-name {
     min-width: 150px;
@@ -997,8 +981,6 @@ onMounted(cargar)
     height: 28px;
   }
 
-  .description-text {
-    -webkit-line-clamp: 1;
-  }
+  
 }
 </style>

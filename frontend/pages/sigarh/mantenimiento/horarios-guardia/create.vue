@@ -61,6 +61,31 @@
             </div>
 
             <div class="form-group">
+              <label class="form-label">Tipo de Guardia</label>
+              <div class="input-wrapper">
+                <UIcon name="i-heroicons-shield-check" class="input-icon" />
+                <select v-model="form.tipo_guardia_id" class="input-clinical">
+                  <option value="">Sin tipo</option>
+                  <option v-for="t in tipos_guardia" :key="t.id" :value="t.id">{{ t.nombre }}{{ t.horas ? ` (${t.horas}h)` : "" }}</option>
+                </select>
+              </div>
+              <p class="field-hint">Al seleccionar el tipo se autocompletan las horas</p>
+            </div>
+<div class="form-group">
+              <label class="form-label">Horas Totales</label>
+              <div class="input-wrapper">
+                <UIcon name="i-heroicons-chart-bar" class="input-icon" />
+                <input
+                  v-model.number="form.horas_totales"
+                  type="number"
+                  class="input-clinical font-mono-data"
+                  readonly
+                  style="background: var(--mist); cursor: not-allowed;"
+                />
+              </div>
+              <p class="field-hint">Duración total del horario en horas</p>
+            </div>
+<div class="form-group">
               <label class="form-label">Hora de Inicio <span class="required">*</span></label>
               <div class="input-wrapper">
                 <UIcon name="i-heroicons-arrow-right-circle" class="input-icon" />
@@ -75,8 +100,7 @@
               <span v-if="errors.hora_inicio" class="error-message">{{ errors.hora_inicio }}</span>
               <p class="field-hint">Hora de inicio de la guardia</p>
             </div>
-
-            <div class="form-group">
+<div class="form-group">
               <label class="form-label">Hora de Fin <span class="required">*</span></label>
               <div class="input-wrapper">
                 <UIcon name="i-heroicons-arrow-left-circle" class="input-icon" />
@@ -84,28 +108,12 @@
                   v-model="form.hora_fin"
                   type="time"
                   class="input-clinical"
-                  :class="{ 'input-error': errors.hora_fin }"
-                  @change="errors.hora_fin = ''"
+                  readonly
+                  style="background: var(--mist); cursor: not-allowed;"
                 />
               </div>
               <span v-if="errors.hora_fin" class="error-message">{{ errors.hora_fin }}</span>
               <p class="field-hint">Hora de fin de la guardia</p>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Horas Totales</label>
-              <div class="input-wrapper">
-                <UIcon name="i-heroicons-chart-bar" class="input-icon" />
-                <input
-                  v-model.number="form.horas_totales"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  class="input-clinical font-mono-data"
-                  placeholder="12"
-                />
-              </div>
-              <p class="field-hint">Duración total del horario en horas</p>
             </div>
 
             <div class="form-group full-width">
@@ -299,6 +307,7 @@ const router = useRouter()
 const tenantId = computed(() => route.query.tenant as string || '')
 const saving = ref(false)
 const error = ref('')
+const tipos_guardia = ref<any[]>([])
 
 const errors = reactive({
   nombre: '',
@@ -311,7 +320,46 @@ const form = reactive({
   hora_inicio: '07:00',
   hora_fin: '19:00',
   horas_totales: 12 as number | null,
+  tipo_guardia_id: '',
   is_active: true,
+})
+
+// Al cambiar tipo: actualizar horas y recalcular hora_fin
+watch(() => form.tipo_guardia_id, (val) => {
+  const tg = tipos_guardia.value.find((t: any) => t.id === val)
+  if (tg && tg.horas) {
+    form.horas_totales = tg.horas
+    if (form.hora_inicio) {
+      const [h, m] = form.hora_inicio.split(':').map(Number)
+      const total = h * 60 + m + tg.horas * 60
+      const hFin = Math.floor(total / 60) % 24
+      const mFin = total % 60
+      form.hora_fin = `${String(hFin).padStart(2, '0')}:${String(mFin).padStart(2, '0')}`
+    }
+  }
+})
+
+// Al cambiar hora_inicio: recalcular hora_fin si hay tipo elegido
+watch(() => form.hora_inicio, (val) => {
+  const tg = tipos_guardia.value.find((t: any) => t.id === form.tipo_guardia_id)
+  if (tg && tg.horas && val) {
+    const [h, m] = val.split(':').map(Number)
+    const total = h * 60 + m + tg.horas * 60
+    const hFin = Math.floor(total / 60) % 24
+    const mFin = total % 60
+    form.hora_fin = `${String(hFin).padStart(2, '0')}:${String(mFin).padStart(2, '0')}`
+  }
+})
+
+// Al cambiar hora_inicio o hora_fin: recalcular horas_totales
+watch([() => form.hora_inicio, () => form.hora_fin], ([inicio, fin]) => {
+  if (inicio && fin) {
+    const [h1, m1] = inicio.split(':').map(Number)
+    const [h2, m2] = fin.split(':').map(Number)
+    let diff = (h2 * 60 + m2) - (h1 * 60 + m1)
+    if (diff < 0) diff += 24 * 60
+    form.horas_totales = Math.round(diff / 60 * 10) / 10
+  }
 })
 
 const filledFields = computed(() => {
@@ -331,14 +379,6 @@ const validateForm = (): boolean => {
   }
   if (!form.hora_inicio) {
     errors.hora_inicio = 'La hora de inicio es requerida'
-    valid = false
-  }
-  if (!form.hora_fin) {
-    errors.hora_fin = 'La hora de fin es requerida'
-    valid = false
-  }
-  if (form.hora_inicio && form.hora_fin && form.hora_inicio >= form.hora_fin) {
-    errors.hora_fin = 'La hora de fin debe ser posterior a la hora de inicio'
     valid = false
   }
   return valid
@@ -381,6 +421,12 @@ const handleCreate = async (createAnother: boolean) => {
     saving.value = false
   }
 }
+
+onMounted(async () => {
+  try {
+    tipos_guardia.value = await api<any[]>('/sigarh/mantenimiento/tipos-guardia')
+  } catch {}
+})
 </script>
 
 <style scoped>

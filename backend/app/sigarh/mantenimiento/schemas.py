@@ -1,9 +1,9 @@
-import uuid
+﻿import uuid
 from datetime import datetime
 from pydantic import BaseModel
 
 
-# ─── Base genérica para catálogos simples ─────────────────────────────────────
+# Base generica para catalogos simples 
 
 class CatalogoBase(BaseModel):
     nombre: str
@@ -20,7 +20,7 @@ class CatalogoResponse(CatalogoBase):
     model_config = {"from_attributes": True}
 
 
-# ─── Departamento ──────────────────────────────────────────────────────────────
+# Departamento
 
 class DepartamentoCreate(CatalogoBase):
     pass
@@ -29,17 +29,20 @@ class DepartamentoResponse(CatalogoResponse):
     pass
 
 
-# ─── Servicio ──────────────────────────────────────────────────────────────────
+# Servicio 
 
 class ServicioCreate(CatalogoBase):
     departamento_id: uuid.UUID | None = None
+    piso_id: uuid.UUID | None = None
 
 class ServicioResponse(CatalogoResponse):
     departamento_id: uuid.UUID | None = None
     departamento_nombre: str | None = None
+    piso_id: uuid.UUID | None = None
+    piso_nombre: str | None = None
 
 
-# ─── Tipo Trabajador ──────────────────────────────────────────────────────────
+# Tipo Trabajador 
 
 class TipoTrabajadorCreate(CatalogoBase):
     pass
@@ -48,16 +51,20 @@ class TipoTrabajadorResponse(CatalogoResponse):
     pass
 
 
-# ─── Tipo Guardia ─────────────────────────────────────────────────────────────
+#  Tipo Guardia 
 
 class TipoGuardiaCreate(CatalogoBase):
     horas: int | None = None
+    es_laborable: bool = True
+    requiere_epp: bool = False
 
 class TipoGuardiaResponse(CatalogoResponse):
     horas: int | None = None
+    es_laborable: bool = True
+    requiere_epp: bool = False
 
 
-# ─── Nivel Remunerativo ───────────────────────────────────────────────────────
+# Nivel Remunerativo 
 
 class NivelRemunerativoCreate(CatalogoBase):
     pass
@@ -66,51 +73,84 @@ class NivelRemunerativoResponse(CatalogoResponse):
     pass
 
 
-# ─── Horario Guardia ──────────────────────────────────────────────────────────
+# Horario Guardia 
 
 class HorarioGuardiaCreate(BaseModel):
     nombre: str
     hora_inicio: str
     hora_fin: str
     horas_totales: int | None = None
+    tipo_guardia_id: uuid.UUID | None = None
     is_active: bool = True
 
 class HorarioGuardiaResponse(HorarioGuardiaCreate):
     id: uuid.UUID
     tenant_id: uuid.UUID
+    tipo_guardia_nombre: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-# ─── Grupo Ocupacional ────────────────────────────────────────────────────────
+#  Grupo Ocupacional 
+
+# --- Tipo Grupo Ocupacional ---
+
+class TipoGrupoOcupacionalCreate(CatalogoBase):
+    pass
+
+class TipoGrupoOcupacionalResponse(CatalogoResponse):
+    pass
+
 
 class GrupoOcupacionalCreate(CatalogoBase):
-    pass
+    tipo_grupo_id: uuid.UUID | None = None
 
 class GrupoOcupacionalResponse(CatalogoResponse):
-    pass
+    tipo_grupo_id: uuid.UUID | None = None
 
 
-# ─── Tipo Actividad ───────────────────────────────────────────────────────────
+# Tipo Actividad 
 
-class TipoActividadCreate(CatalogoBase):
-    pass
+class TipoActividadCreate(BaseModel):
+    nombre: str
+    codigo: str | None = None
+    is_active: bool = True
 
-class TipoActividadResponse(CatalogoResponse):
-    pass
+class TipoActividadResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    nombre: str
+    codigo: str | None = None
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
-# ─── Actividad ────────────────────────────────────────────────────────────────
+# Actividad 
 
-class ActividadCreate(CatalogoBase):
+class ActividadCreate(BaseModel):
+    nombre: str
+    codigo: str | None = None
     tipo_actividad_id: uuid.UUID | None = None
+    requiere_consultorio: bool = False
+    is_active: bool = True
 
-class ActividadResponse(CatalogoResponse):
+class ActividadResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    nombre: str
+    codigo: str | None = None
     tipo_actividad_id: uuid.UUID | None = None
+    requiere_consultorio: bool = False
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
-# ─── Guardia Valorizada ───────────────────────────────────────────────────────
+# Guardia Valorizada 
 
 class GuardiaValorizadaCreate(BaseModel):
     tipo_guardia_id: uuid.UUID | None = None
@@ -127,7 +167,7 @@ class GuardiaValorizadaResponse(GuardiaValorizadaCreate):
     model_config = {"from_attributes": True}
 
 
-# ─── Rol Sistema ─────────────────────────────────────────────────────────
+#Rol Sistema 
 
 class RolSistemaCreate(BaseModel):
     codigo: str
@@ -154,7 +194,7 @@ class RolSistemaResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
-# ─── Perfil Usuario ───────────────────────────────────────────────────────────
+#Perfil Usuario 
 
 class PerfilUsuarioCreate(BaseModel):
     nombre: str
@@ -170,11 +210,28 @@ class PerfilUsuarioResponse(PerfilUsuarioCreate):
 
     model_config = {"from_attributes": True}
 
-class DependenciaCreate(CatalogoBase):
-    pass
+class DependenciaCreate(BaseModel):
+    nombre: str
+    codigo: str | None = None
+    clasificacion: str = "administrativa"
+    departamento_id: uuid.UUID | None = None
+    servicio_id: uuid.UUID | None = None
+    is_active: bool = True
 
-class DependenciaResponse(CatalogoResponse):
-    pass
+class DependenciaResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    nombre: str
+    codigo: str | None = None
+    clasificacion: str
+    departamento_id: uuid.UUID | None = None
+    servicio_id: uuid.UUID | None = None
+    departamento_nombre: str | None = None
+    servicio_nombre: str | None = None
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 class UsuarioSigarhCreate(BaseModel):
     empleado_id: uuid.UUID | None = None
@@ -195,3 +252,4 @@ class UsuarioSigarhResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+

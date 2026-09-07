@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="servicio-create-container">
     <div class="servicio-create-grid">
       <!-- Main Content -->
@@ -90,6 +90,18 @@
                 </button>
               </div>
               <p class="field-hint">Los servicios inactivos no estarán disponibles</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Piso</label>
+              <div class="input-wrapper">
+                <UIcon name="i-heroicons-building-office-2" class="input-icon" />
+                <select v-model="form.piso_id" class="input-clinical">
+                  <option value="">Sin piso</option>
+                  <option v-for="p in pisos" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+                </select>
+              </div>
+              <p class="field-hint">Piso hospitalario donde se ubica el servicio</p>
             </div>
 
             <div class="form-group">
@@ -294,6 +306,7 @@ const tenantId = computed(() => route.query.tenant as string || '')
 const saving = ref(false)
 const error = ref('')
 const departamentos = ref<any[]>([])
+const pisos = ref<any[]>([])
 
 const errors = reactive({
   nombre: ''
@@ -304,11 +317,16 @@ const form = reactive({
   codigo: '',
   descripcion: '',
   departamento_id: '',
+  piso_id: '',
   is_active: true,
 })
 
 const departamentoSeleccionado = computed(() =>
   departamentos.value.find(d => d.id === form.departamento_id)
+)
+
+const pisoSeleccionado = computed(() =>
+  pisos.value.find(p => p.id === form.piso_id)
 )
 
 const filledFields = computed(() => {
@@ -342,6 +360,7 @@ const handleCreate = async (createAnother: boolean) => {
         codigo: form.codigo || null,
         descripcion: form.descripcion || null,
         departamento_id: form.departamento_id || null,
+        piso_id: form.piso_id || null,
         is_active: form.is_active,
       }
     })
@@ -352,6 +371,7 @@ const handleCreate = async (createAnother: boolean) => {
         codigo: '',
         descripcion: '',
         departamento_id: '',
+        piso_id: '',
         is_active: true,
       })
       errors.nombre = ''
@@ -368,6 +388,7 @@ const handleCreate = async (createAnother: boolean) => {
 onMounted(async () => {
   try {
     departamentos.value = await api<any[]>('/sigarh/mantenimiento/departamentos')
+    pisos.value = await api<any[]>('/sigarh/infraestructura-hosp/pisos')
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al cargar departamentos'
   }
@@ -1065,3 +1086,5 @@ onMounted(async () => {
   }
 }
 </style>
+
+

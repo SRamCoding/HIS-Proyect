@@ -25,6 +25,13 @@
             <option v-for="t in tiposActividad" :key="t.id" :value="t.id">{{ t.nombre }}</option>
           </select>
         </div>
+        <div class="mb-4">
+          <div class="flex items-center gap-2 mb-1">
+            <input type="checkbox" v-model="form.requiere_consultorio" id="consultorio" />
+            <label for="consultorio" class="text-sm font-medium" style="color: var(--ink)">Requiere Consultorio</label>
+          </div>
+          <p class="text-xs" style="color: var(--ink-soft)">Actívelo si esta actividad se atiende en un consultorio (ej. Consulta Externa). Los días de atención se configurarán en el módulo de Consultorios, no en el Rol. Déjelo desactivado para actividades como Guardia, Retén o Sin Actividad, donde los días se definen directamente en el Rol.</p>
+        </div>
         <div class="flex items-center gap-2">
           <input type="checkbox" v-model="form.is_active" id="activo" />
           <label for="activo" class="text-sm" style="color: var(--ink)">Activo</label>
@@ -49,14 +56,14 @@ const tenantId = computed(() => route.query.tenant as string || '')
 const saving = ref(false)
 const error = ref('')
 const tiposActividad = ref<any[]>([])
-const form = reactive({ nombre: '', codigo: '', tipo_actividad_id: '', is_active: true })
+const form = reactive({ nombre: '', codigo: '', tipo_actividad_id: '', requiere_consultorio: false, is_active: true })
 const handleCreate = async (createAnother: boolean) => {
   if (!form.nombre.trim()) { error.value = 'El nombre es requerido'; return }
   saving.value = true
   error.value = ''
   try {
     await api('/sigarh/mantenimiento/actividades', { method: 'POST', body: { ...form, tipo_actividad_id: form.tipo_actividad_id || null } })
-    if (createAnother) { Object.assign(form, { nombre: '', codigo: '', tipo_actividad_id: '', is_active: true }) }
+    if (createAnother) { Object.assign(form, { nombre: '', codigo: '', tipo_actividad_id: '', requiere_consultorio: false, is_active: true }) }
     else { router.push(`/sigarh/mantenimiento/actividades?tenant=${tenantId.value}`) }
   } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear' }
   finally { saving.value = false }

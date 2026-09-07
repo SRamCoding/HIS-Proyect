@@ -75,6 +75,18 @@
             </div>
 
             <div class="form-group">
+              <label class="form-label">Tipo de Grupo</label>
+              <div class="input-wrapper">
+                <UIcon name="i-heroicons-tag" class="input-icon" />
+                <select v-model="form.tipo_grupo_id" class="input-clinical">
+                  <option value="">Sin tipo</option>
+                  <option v-for="t in tiposGrupo" :key="t.id" :value="t.id">{{ t.nombre }}</option>
+                </select>
+              </div>
+              <p class="field-hint">Tipo de grupo ocupacional del catalogo</p>
+            </div>
+
+            <div class="form-group">
               <label class="form-label">Estado</label>
               <div class="status-toggle">
                 <span class="toggle-label">Grupo Activo</span>
@@ -92,19 +104,6 @@
               <p class="field-hint">Los grupos inactivos no estarán disponibles</p>
             </div>
 
-            <div class="form-group full-width">
-              <label class="form-label">Descripción</label>
-              <div class="input-wrapper">
-                <UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" />
-                <textarea
-                  v-model="form.descripcion"
-                  class="input-clinical"
-                  rows="3"
-                  placeholder="Descripción del grupo ocupacional..."
-                />
-              </div>
-            </div>
-
             <!-- Preview Section -->
             <div v-if="form.nombre || form.codigo" class="form-group full-width preview-section">
               <h4 class="preview-title">Vista Previa</h4>
@@ -116,7 +115,6 @@
                   <span class="preview-name">{{ form.nombre || 'Nombre del grupo' }}</span>
                   <span class="preview-detail">
                     <span class="preview-code">{{ form.codigo || 'Sin código' }}</span>
-                    <span class="preview-desc">{{ form.descripcion || 'Sin descripción' }}</span>
                   </span>
                 </div>
                 <span class="preview-status" :class="form.is_active ? 'preview-active' : 'preview-inactive'">
@@ -205,11 +203,6 @@
             </div>
             <div class="summary-divider"></div>
             <div class="summary-item">
-              <span class="summary-label">Descripción</span>
-              <span class="summary-value">{{ form.descripcion ? (form.descripcion.length > 50 ? form.descripcion.slice(0, 50) + '...' : form.descripcion) : '—' }}</span>
-            </div>
-            <div class="summary-divider"></div>
-            <div class="summary-item">
               <span class="summary-label">Estado</span>
               <span class="summary-value">
                 <span class="status-badge-mini" :class="form.is_active ? 'status-active-mini' : 'status-inactive-mini'">
@@ -277,6 +270,7 @@ const router = useRouter()
 const tenantId = computed(() => route.query.tenant as string || '')
 const saving = ref(false)
 const error = ref('')
+const tiposGrupo = ref<any[]>([])
 
 const errors = reactive({
   nombre: ''
@@ -285,7 +279,7 @@ const errors = reactive({
 const form = reactive({
   nombre: '',
   codigo: '',
-  descripcion: '',
+  tipo_grupo_id: '',
   is_active: true,
 })
 
@@ -293,7 +287,6 @@ const filledFields = computed(() => {
   let count = 0
   if (form.nombre) count++
   if (form.codigo) count++
-  if (form.descripcion) count++
   return count
 })
 
@@ -317,13 +310,13 @@ const handleCreate = async (createAnother: boolean) => {
       body: {
         nombre: form.nombre,
         codigo: form.codigo || null,
-        descripcion: form.descripcion || null,
+        tipo_grupo_id: form.tipo_grupo_id || null,
         is_active: form.is_active,
       }
     })
 
     if (createAnother) {
-      Object.assign(form, { nombre: '', codigo: '', descripcion: '', is_active: true })
+      Object.assign(form, { nombre: '', codigo: '', tipo_grupo_id: '', is_active: true })
       errors.nombre = ''
     } else {
       router.push(`/sigarh/mantenimiento/grupos-ocupacionales?tenant=${tenantId.value}`)
@@ -334,6 +327,12 @@ const handleCreate = async (createAnother: boolean) => {
     saving.value = false
   }
 }
+
+onMounted(async () => {
+  try {
+    tiposGrupo.value = await api<any[]>('/sigarh/infraestructura/catalogos?categoria=tipos_grupo_ocupacional')
+  } catch {}
+})
 </script>
 
 <style scoped>

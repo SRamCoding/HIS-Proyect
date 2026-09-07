@@ -111,19 +111,6 @@
                 <p class="field-hint">Los grupos inactivos no estarán disponibles</p>
               </div>
 
-              <div class="form-group full-width">
-                <label class="form-label">Descripción</label>
-                <div class="input-wrapper">
-                  <UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" />
-                  <textarea
-                    v-model="form.descripcion"
-                    class="input-clinical"
-                    rows="3"
-                    placeholder="Descripción del grupo ocupacional..."
-                  />
-                </div>
-              </div>
-
               <!-- Preview Section -->
               <div class="form-group full-width preview-section">
                 <h4 class="preview-title">Vista Previa</h4>
@@ -135,7 +122,6 @@
                     <span class="preview-name">{{ form.nombre || 'Nombre del grupo' }}</span>
                     <span class="preview-detail">
                       <span class="preview-code">{{ form.codigo || 'Sin código' }}</span>
-                      <span class="preview-desc">{{ form.descripcion || 'Sin descripción' }}</span>
                     </span>
                   </div>
                   <span class="preview-status" :class="form.is_active ? 'preview-active' : 'preview-inactive'">
@@ -186,11 +172,6 @@
             <div class="summary-item">
               <span class="summary-label">Código</span>
               <span class="summary-value font-mono-data">{{ form.codigo || '—' }}</span>
-            </div>
-            <div class="summary-divider"></div>
-            <div class="summary-item">
-              <span class="summary-label">Descripción</span>
-              <span class="summary-value">{{ form.descripcion ? (form.descripcion.length > 50 ? form.descripcion.slice(0, 50) + '...' : form.descripcion) : '—' }}</span>
             </div>
             <div class="summary-divider"></div>
             <div class="summary-item">
@@ -292,6 +273,7 @@ const id = computed(() => route.params.id as string)
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
+const tiposGrupo = ref<any[]>([])
 
 const errors = reactive({
   nombre: ''
@@ -300,7 +282,7 @@ const errors = reactive({
 const form = reactive({
   nombre: '',
   codigo: '',
-  descripcion: '',
+  tipo_grupo_id: '',
   is_active: true,
 })
 
@@ -308,7 +290,6 @@ const filledFields = computed(() => {
   let count = 0
   if (form.nombre) count++
   if (form.codigo) count++
-  if (form.descripcion) count++
   return count
 })
 
@@ -332,7 +313,7 @@ const handleSave = async () => {
       body: {
         nombre: form.nombre,
         codigo: form.codigo || null,
-        descripcion: form.descripcion || null,
+        tipo_grupo_id: form.tipo_grupo_id || null,
         is_active: form.is_active,
       }
     })
@@ -349,13 +330,19 @@ onMounted(async () => {
     const data = await api<any>(`/sigarh/mantenimiento/grupos-ocupacionales/${id.value}`)
     form.nombre = data.nombre
     form.codigo = data.codigo || ''
-    form.descripcion = data.descripcion || ''
+    form.tipo_grupo_id = data.tipo_grupo_id || ''
     form.is_active = data.is_active
   } catch (e: any) {
     error.value = e?.data?.detail || 'No se pudo cargar el grupo ocupacional'
   } finally {
     loading.value = false
   }
+})
+
+onMounted(async () => {
+  try {
+    tiposGrupo.value = await api<any[]>('/sigarh/infraestructura/catalogos?categoria=tipos_grupo_ocupacional')
+  } catch {}
 })
 </script>
 

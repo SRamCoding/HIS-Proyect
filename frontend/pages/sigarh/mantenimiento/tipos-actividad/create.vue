@@ -92,18 +92,6 @@
               <p class="field-hint">Los tipos inactivos no estarán disponibles</p>
             </div>
 
-            <div class="form-group full-width">
-              <label class="form-label">Descripción</label>
-              <div class="input-wrapper">
-                <UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" />
-                <textarea
-                  v-model="form.descripcion"
-                  class="input-clinical"
-                  rows="3"
-                  placeholder="Descripción del tipo de actividad..."
-                />
-              </div>
-            </div>
 
             <!-- Preview Section -->
             <div v-if="form.nombre || form.codigo" class="form-group full-width preview-section">
@@ -116,7 +104,6 @@
                   <span class="preview-name">{{ form.nombre || 'Nombre del tipo' }}</span>
                   <span class="preview-detail">
                     <span class="preview-code">{{ form.codigo || 'Sin código' }}</span>
-                    <span class="preview-desc">{{ form.descripcion || 'Sin descripción' }}</span>
                   </span>
                 </div>
                 <span class="preview-status" :class="form.is_active ? 'preview-active' : 'preview-inactive'">
@@ -205,11 +192,6 @@
             </div>
             <div class="summary-divider"></div>
             <div class="summary-item">
-              <span class="summary-label">Descripción</span>
-              <span class="summary-value">{{ form.descripcion ? (form.descripcion.length > 50 ? form.descripcion.slice(0, 50) + '...' : form.descripcion) : '—' }}</span>
-            </div>
-            <div class="summary-divider"></div>
-            <div class="summary-item">
               <span class="summary-label">Estado</span>
               <span class="summary-value">
                 <span class="status-badge-mini" :class="form.is_active ? 'status-active-mini' : 'status-inactive-mini'">
@@ -285,7 +267,6 @@ const errors = reactive({
 const form = reactive({
   nombre: '',
   codigo: '',
-  descripcion: '',
   is_active: true,
 })
 
@@ -293,7 +274,6 @@ const filledFields = computed(() => {
   let count = 0
   if (form.nombre) count++
   if (form.codigo) count++
-  if (form.descripcion) count++
   return count
 })
 
@@ -317,13 +297,12 @@ const handleCreate = async (createAnother: boolean) => {
       body: {
         nombre: form.nombre,
         codigo: form.codigo || null,
-        descripcion: form.descripcion || null,
         is_active: form.is_active,
       }
     })
 
     if (createAnother) {
-      Object.assign(form, { nombre: '', codigo: '', descripcion: '', is_active: true })
+      Object.assign(form, { nombre: '', codigo: '', is_active: true })
       errors.nombre = ''
     } else {
       router.push(`/sigarh/mantenimiento/tipos-actividad?tenant=${tenantId.value}`)

@@ -1,4 +1,4 @@
-# backend/app/sigarh/mantenimiento/service.py
+﻿# backend/app/sigarh/mantenimiento/service.py
 import uuid
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.sigarh.mantenimiento.models import (
-    Departamento, Servicio, TipoTrabajador, TipoGuardia,
+    Departamento, Servicio, Dependencia, TipoTrabajador, TipoGuardia,
     NivelRemunerativo, HorarioGuardia, GrupoOcupacional,
     TipoActividad, Actividad, GuardiaValorizada,
     RolSistema, PerfilUsuario
@@ -64,6 +64,25 @@ async def actualizar_departamento(db: AsyncSession, id: uuid.UUID, tenant_id: uu
 
 # ─── Servicios ────────────────────────────────────────────────────────────────
 
+async def listar_servicios(db: AsyncSession, tenant_id: uuid.UUID) -> list[Servicio]:
+    result = await db.execute(
+        select(Servicio)
+        .where(Servicio.tenant_id == tenant_id)
+        .options(selectinload(Servicio.departamento), selectinload(Servicio.piso))
+        .order_by(Servicio.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+async def obtener_servicio(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID) -> Servicio | None:
+    result = await db.execute(
+        select(Servicio)
+        .where(Servicio.id == id, Servicio.tenant_id == tenant_id)
+        .options(selectinload(Servicio.departamento), selectinload(Servicio.piso))
+    )
+    return result.scalar_one_or_none()
+
+
 async def crear_servicio(db: AsyncSession, tenant_id: uuid.UUID, data) -> Servicio:
     item = Servicio(tenant_id=tenant_id, **data.model_dump())
     db.add(item)
@@ -103,6 +122,84 @@ async def crud_actualizar(db: AsyncSession, modelo, id: uuid.UUID, tenant_id: uu
     await db.refresh(item)
     return item
 
+
+
+
+
+async def listar_horarios_guardia(db: AsyncSession, tenant_id: uuid.UUID):
+    result = await db.execute(
+        select(HorarioGuardia)
+        .where(HorarioGuardia.tenant_id == tenant_id)
+        .options(selectinload(HorarioGuardia.tipo_guardia))
+        .order_by(HorarioGuardia.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+async def obtener_horario_guardia(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID):
+    result = await db.execute(
+        select(HorarioGuardia)
+        .where(HorarioGuardia.id == id, HorarioGuardia.tenant_id == tenant_id)
+        .options(selectinload(HorarioGuardia.tipo_guardia))
+    )
+    return result.scalar_one_or_none()
+
+
+async def crear_horario_guardia(db: AsyncSession, tenant_id: uuid.UUID, data):
+    item = HorarioGuardia(tenant_id=tenant_id, **data.model_dump())
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+async def actualizar_horario_guardia(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, data):
+    item = await obtener(db, HorarioGuardia, id, tenant_id)
+    if not item:
+        return None
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(item, field, value)
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+async def listar_dependencias(db: AsyncSession, tenant_id: uuid.UUID):
+    result = await db.execute(
+        select(Dependencia)
+        .where(Dependencia.tenant_id == tenant_id)
+        .options(selectinload(Dependencia.departamento), selectinload(Dependencia.servicio))
+        .order_by(Dependencia.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+async def obtener_dependencia(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID):
+    result = await db.execute(
+        select(Dependencia)
+        .where(Dependencia.id == id, Dependencia.tenant_id == tenant_id)
+        .options(selectinload(Dependencia.departamento), selectinload(Dependencia.servicio))
+    )
+    return result.scalar_one_or_none()
+
+
+async def crear_dependencia(db: AsyncSession, tenant_id: uuid.UUID, data):
+    item = Dependencia(tenant_id=tenant_id, **data.model_dump())
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+async def actualizar_dependencia(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, data):
+    item = await obtener(db, Dependencia, id, tenant_id)
+    if not item:
+        return None
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(item, field, value)
+    await db.commit()
+    await db.refresh(item)
+    return item
 
 # ─── Rol Sistema (con JSON de modulos y grupos ocupacionales) ─────────────
 

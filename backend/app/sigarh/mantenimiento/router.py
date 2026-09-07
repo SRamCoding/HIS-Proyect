@@ -1,4 +1,4 @@
-# backend/app/sigarh/mantenimiento/router.py
+﻿# backend/app/sigarh/mantenimiento/router.py
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +34,12 @@ from app.sigarh.mantenimiento.service import (
     crear_perfil,
     listar_roles, obtener_rol, crear_rol, actualizar_rol,
     listar_perfiles_usuario, obtener_perfil_usuario, actualizar_perfil_usuario,
+    listar_servicios, obtener_servicio,
+    crear_servicio, actualizar_servicio,
+    listar_dependencias, obtener_dependencia,
+    crear_dependencia, actualizar_dependencia,
+    listar_horarios_guardia, obtener_horario_guardia,
+    crear_horario_guardia, actualizar_horario_guardia,
 )
 
 router = APIRouter()
@@ -78,12 +84,126 @@ def make_crud(subrouter, prefix, modelo, schema_create, schema_response, modulo)
 
 # ─── CRUDs simples ────────────────────────────────────────────────────────────
 make_crud(router, "departamentos", Departamento, DepartamentoCreate, DepartamentoResponse, "sigarh_mantenimiento")
-make_crud(router, "servicios", Servicio, ServicioCreate, ServicioResponse, "sigarh_mantenimiento")
-make_crud(router, "dependencias", Dependencia, DependenciaCreate, DependenciaResponse, "sigarh_mantenimiento")
+# Servicios (endpoints propios para incluir piso)
+@router.get("/servicios", response_model=list[ServicioResponse])
+async def listar_servicios_endpoint(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    items = await listar_servicios(db, get_tenant_id(current_user, request))
+    return [ServicioResponse(
+        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
+        departamento_nombre=item.departamento.nombre if item.departamento else None,
+        piso_nombre=item.piso.nombre if item.piso else None,
+    ) for item in items]
+
+@router.post("/servicios", response_model=ServicioResponse, status_code=201)
+async def crear_servicio_endpoint(request: Request, data: ServicioCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    return await crear_servicio(db, get_tenant_id(current_user, request), data)
+
+@router.get("/servicios/{id}", response_model=ServicioResponse)
+async def obtener_servicio_endpoint(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    item = await obtener_servicio(db, id, get_tenant_id(current_user, request))
+    if not item: raise HTTPException(404, detail="No encontrado")
+    return ServicioResponse(
+        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
+        departamento_nombre=item.departamento.nombre if item.departamento else None,
+        piso_nombre=item.piso.nombre if item.piso else None,
+    )
+
+@router.patch("/servicios/{id}", response_model=ServicioResponse)
+async def actualizar_servicio_endpoint(request: Request, id: uuid.UUID, data: ServicioCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    item = await actualizar_servicio(db, id, get_tenant_id(current_user, request), data)
+    if not item: raise HTTPException(404, detail="No encontrado")
+    item = await obtener_servicio(db, id, get_tenant_id(current_user, request))
+    return ServicioResponse(
+        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
+        departamento_nombre=item.departamento.nombre if item.departamento else None,
+        piso_nombre=item.piso.nombre if item.piso else None,
+    )
+
+@router.delete("/servicios/{id}")
+async def eliminar_servicio_endpoint(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    ok = await eliminar(db, Servicio, id, get_tenant_id(current_user, request))
+    if not ok: raise HTTPException(404, detail="No encontrado")
+    return {"ok": True}
+# Dependencias (endpoints propios para incluir departamento y servicio)
+@router.get("/dependencias", response_model=list[DependenciaResponse])
+async def listar_dependencias_endpoint(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    items = await listar_dependencias(db, get_tenant_id(current_user, request))
+    return [DependenciaResponse(
+        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
+        departamento_nombre=item.departamento.nombre if item.departamento else None,
+        servicio_nombre=item.servicio.nombre if item.servicio else None,
+    ) for item in items]
+
+@router.post("/dependencias", response_model=DependenciaResponse, status_code=201)
+async def crear_dependencia_endpoint(request: Request, data: DependenciaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    return await crear_dependencia(db, get_tenant_id(current_user, request), data)
+
+@router.get("/dependencias/{id}", response_model=DependenciaResponse)
+async def obtener_dependencia_endpoint(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    item = await obtener_dependencia(db, id, get_tenant_id(current_user, request))
+    if not item: raise HTTPException(404, detail="No encontrado")
+    return DependenciaResponse(
+        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
+        departamento_nombre=item.departamento.nombre if item.departamento else None,
+        servicio_nombre=item.servicio.nombre if item.servicio else None,
+    )
+
+@router.patch("/dependencias/{id}", response_model=DependenciaResponse)
+async def actualizar_dependencia_endpoint(request: Request, id: uuid.UUID, data: DependenciaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    item = await actualizar_dependencia(db, id, get_tenant_id(current_user, request), data)
+    if not item: raise HTTPException(404, detail="No encontrado")
+    item = await obtener_dependencia(db, id, get_tenant_id(current_user, request))
+    return DependenciaResponse(
+        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
+        departamento_nombre=item.departamento.nombre if item.departamento else None,
+        servicio_nombre=item.servicio.nombre if item.servicio else None,
+    )
+
+@router.delete("/dependencias/{id}")
+async def eliminar_dependencia_endpoint(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    ok = await eliminar(db, Dependencia, id, get_tenant_id(current_user, request))
+    if not ok: raise HTTPException(404, detail="No encontrado")
+    return {"ok": True}
 make_crud(router, "tipos-trabajador", TipoTrabajador, TipoTrabajadorCreate, TipoTrabajadorResponse, "sigarh_mantenimiento")
 make_crud(router, "tipos-guardia", TipoGuardia, TipoGuardiaCreate, TipoGuardiaResponse, "sigarh_mantenimiento")
 make_crud(router, "niveles-remunerativos", NivelRemunerativo, NivelRemunerativoCreate, NivelRemunerativoResponse, "sigarh_mantenimiento")
-make_crud(router, "horarios-guardia", HorarioGuardia, HorarioGuardiaCreate, HorarioGuardiaResponse, "sigarh_mantenimiento")
+# Horarios Guardia (endpoints propios para incluir tipo_guardia)
+@router.get("/horarios-guardia", response_model=list[HorarioGuardiaResponse])
+async def listar_horarios_endpoint(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    items = await listar_horarios_guardia(db, get_tenant_id(current_user, request))
+    return [HorarioGuardiaResponse(
+        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
+        tipo_guardia_nombre=item.tipo_guardia.nombre if item.tipo_guardia else None,
+    ) for item in items]
+
+@router.post("/horarios-guardia", response_model=HorarioGuardiaResponse, status_code=201)
+async def crear_horario_endpoint(request: Request, data: HorarioGuardiaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    return await crear_horario_guardia(db, get_tenant_id(current_user, request), data)
+
+@router.get("/horarios-guardia/{id}", response_model=HorarioGuardiaResponse)
+async def obtener_horario_endpoint(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    item = await obtener_horario_guardia(db, id, get_tenant_id(current_user, request))
+    if not item: raise HTTPException(404, detail="No encontrado")
+    return HorarioGuardiaResponse(
+        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
+        tipo_guardia_nombre=item.tipo_guardia.nombre if item.tipo_guardia else None,
+    )
+
+@router.patch("/horarios-guardia/{id}", response_model=HorarioGuardiaResponse)
+async def actualizar_horario_endpoint(request: Request, id: uuid.UUID, data: HorarioGuardiaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    item = await actualizar_horario_guardia(db, id, get_tenant_id(current_user, request), data)
+    if not item: raise HTTPException(404, detail="No encontrado")
+    item = await obtener_horario_guardia(db, id, get_tenant_id(current_user, request))
+    return HorarioGuardiaResponse(
+        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
+        tipo_guardia_nombre=item.tipo_guardia.nombre if item.tipo_guardia else None,
+    )
+
+@router.delete("/horarios-guardia/{id}")
+async def eliminar_horario_endpoint(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+    ok = await eliminar(db, HorarioGuardia, id, get_tenant_id(current_user, request))
+    if not ok: raise HTTPException(404, detail="No encontrado")
+    return {"ok": True}
 make_crud(router, "grupos-ocupacionales", GrupoOcupacional, GrupoOcupacionalCreate, GrupoOcupacionalResponse, "sigarh_mantenimiento")
 make_crud(router, "tipos-actividad", TipoActividad, TipoActividadCreate, TipoActividadResponse, "sigarh_mantenimiento")
 make_crud(router, "actividades", Actividad, ActividadCreate, ActividadResponse, "sigarh_mantenimiento")

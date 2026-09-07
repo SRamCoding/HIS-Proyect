@@ -112,6 +112,18 @@
               </div>
 
               <div class="form-group">
+                <label class="form-label">Piso</label>
+                <div class="input-wrapper">
+                  <UIcon name="i-heroicons-building-office-2" class="input-icon" />
+                  <select v-model="form.piso_id" class="input-clinical">
+                    <option value="">Sin piso</option>
+                    <option v-for="p in pisos" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+                  </select>
+                </div>
+                <p class="field-hint">Piso hospitalario donde se ubica el servicio</p>
+              </div>
+
+              <div class="form-group">
                 <label class="form-label">Departamento</label>
                 <div class="input-wrapper">
                   <UIcon name="i-heroicons-building-office" class="input-icon" />
@@ -309,6 +321,7 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 const departamentos = ref<any[]>([])
+const pisos = ref<any[]>([])
 
 const errors = reactive({
   nombre: ''
@@ -319,11 +332,16 @@ const form = reactive({
   codigo: '',
   descripcion: '',
   departamento_id: '',
+  piso_id: '',
   is_active: true,
 })
 
 const departamentoSeleccionado = computed(() =>
   departamentos.value.find(d => d.id === form.departamento_id)
+)
+
+const pisoSeleccionado = computed(() =>
+  pisos.value.find(p => p.id === form.piso_id)
 )
 
 const filledFields = computed(() => {
@@ -357,6 +375,7 @@ const handleSave = async () => {
         codigo: form.codigo || null,
         descripcion: form.descripcion || null,
         departamento_id: form.departamento_id || null,
+        piso_id: form.piso_id || null,
         is_active: form.is_active,
       }
     })
@@ -370,16 +389,19 @@ const handleSave = async () => {
 
 onMounted(async () => {
   try {
-    const [data, deps] = await Promise.all([
+    const [data, deps, pisosData] = await Promise.all([
       api<any>(`/sigarh/mantenimiento/servicios/${id.value}`),
       api<any[]>('/sigarh/mantenimiento/departamentos'),
+      api<any[]>('/sigarh/infraestructura-hosp/pisos'),
     ])
     form.nombre = data.nombre
     form.codigo = data.codigo || ''
     form.descripcion = data.descripcion || ''
     form.departamento_id = data.departamento_id || ''
+    form.piso_id = data.piso_id || ''
     form.is_active = data.is_active
     departamentos.value = deps
+    pisos.value = pisosData
   } catch (e: any) {
     error.value = e?.data?.detail || 'No se pudo cargar el servicio'
   } finally {

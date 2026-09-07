@@ -91,6 +91,36 @@
             </div>
 
             <div class="form-group">
+              <label class="form-label">Guardia Laborable</label>
+              <div class="status-toggle">
+                <span class="toggle-label" style="color: var(--ink-soft); font-size: 0.8125rem;">No es laborable: vacaciones, descanso, etc.</span>
+                <div class="flex items-center gap-2">
+                  <label class="flex items-center gap-1 text-sm cursor-pointer">
+                    <input type="radio" :value="true" v-model="form.es_laborable" /> SI
+                  </label>
+                  <label class="flex items-center gap-1 text-sm cursor-pointer">
+                    <input type="radio" :value="false" v-model="form.es_laborable" /> NO
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Requiere EPP</label>
+              <div class="status-toggle">
+                <span class="toggle-label" style="color: var(--ink-soft); font-size: 0.8125rem;">No requiere EPP: guardias remoto, descanso, etc.</span>
+                <div class="flex items-center gap-2">
+                  <label class="flex items-center gap-1 text-sm cursor-pointer">
+                    <input type="radio" :value="true" v-model="form.requiere_epp" /> SI
+                  </label>
+                  <label class="flex items-center gap-1 text-sm cursor-pointer">
+                    <input type="radio" :value="false" v-model="form.requiere_epp" /> NO
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
               <label class="form-label">Estado</label>
               <div class="status-toggle">
                 <span class="toggle-label">Tipo Activo</span>
@@ -305,6 +335,8 @@ const form = reactive({
   codigo: '',
   horas: null as number | null,
   descripcion: '',
+  es_laborable: true,
+  requiere_epp: false,
   is_active: true,
 })
 
@@ -339,6 +371,8 @@ const handleCreate = async (createAnother: boolean) => {
         codigo: form.codigo || null,
         horas: form.horas || null,
         descripcion: form.descripcion || null,
+        es_laborable: form.es_laborable,
+        requiere_epp: form.requiere_epp,
         is_active: form.is_active,
       }
     })
@@ -349,6 +383,8 @@ const handleCreate = async (createAnother: boolean) => {
         codigo: '',
         horas: null,
         descripcion: '',
+        es_laborable: true,
+        requiere_epp: false,
         is_active: true,
       })
       errors.nombre = ''

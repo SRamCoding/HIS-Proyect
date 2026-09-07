@@ -111,21 +111,7 @@
                 <p class="field-hint">Los tipos inactivos no estarán disponibles</p>
               </div>
 
-              <div class="form-group full-width">
-                <label class="form-label">Descripción</label>
-                <div class="input-wrapper">
-                  <UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" />
-                  <textarea
-                    v-model="form.descripcion"
-                    class="input-clinical"
-                    rows="3"
-                    placeholder="Descripción del tipo de actividad..."
-                  />
-                </div>
-              </div>
-
-              <!-- Preview Section -->
-              <div class="form-group full-width preview-section">
+              <div v-if="form.nombre || form.codigo" class="form-group full-width preview-section">
                 <h4 class="preview-title">Vista Previa</h4>
                 <div class="preview-card">
                   <div class="preview-icon" :style="{ background: form.is_active ? 'var(--orange-soft)' : 'var(--mist)' }">
@@ -135,7 +121,6 @@
                     <span class="preview-name">{{ form.nombre || 'Nombre del tipo' }}</span>
                     <span class="preview-detail">
                       <span class="preview-code">{{ form.codigo || 'Sin código' }}</span>
-                      <span class="preview-desc">{{ form.descripcion || 'Sin descripción' }}</span>
                     </span>
                   </div>
                   <span class="preview-status" :class="form.is_active ? 'preview-active' : 'preview-inactive'">
@@ -186,11 +171,6 @@
             <div class="summary-item">
               <span class="summary-label">Código</span>
               <span class="summary-value font-mono-data">{{ form.codigo || '—' }}</span>
-            </div>
-            <div class="summary-divider"></div>
-            <div class="summary-item">
-              <span class="summary-label">Descripción</span>
-              <span class="summary-value">{{ form.descripcion ? (form.descripcion.length > 50 ? form.descripcion.slice(0, 50) + '...' : form.descripcion) : '—' }}</span>
             </div>
             <div class="summary-divider"></div>
             <div class="summary-item">
@@ -300,7 +280,6 @@ const errors = reactive({
 const form = reactive({
   nombre: '',
   codigo: '',
-  descripcion: '',
   is_active: true,
 })
 
@@ -308,7 +287,6 @@ const filledFields = computed(() => {
   let count = 0
   if (form.nombre) count++
   if (form.codigo) count++
-  if (form.descripcion) count++
   return count
 })
 
@@ -332,7 +310,6 @@ const handleSave = async () => {
       body: {
         nombre: form.nombre,
         codigo: form.codigo || null,
-        descripcion: form.descripcion || null,
         is_active: form.is_active,
       }
     })
@@ -349,7 +326,6 @@ onMounted(async () => {
     const data = await api<any>(`/sigarh/mantenimiento/tipos-actividad/${id.value}`)
     form.nombre = data.nombre
     form.codigo = data.codigo || ''
-    form.descripcion = data.descripcion || ''
     form.is_active = data.is_active
   } catch (e: any) {
     error.value = e?.data?.detail || 'No se pudo cargar el tipo de actividad'
