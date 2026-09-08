@@ -149,10 +149,18 @@ async def move_clinical_record(
         select(ClinicalRecord)
         .join(Patient, Patient.id == ClinicalRecord.patient_id)
         .where(ClinicalRecord.id == clinical_record_id, Patient.tenant_id == tenant_id)
+        .with_for_update(of=ClinicalRecord)
+        .execution_options(populate_existing=True)
     )
     record = result.scalar_one_or_none()
     if not record:
-        raise ValueError("Historia clinica no encontrada")
+        raise LookupError("Historia clinica no encontrada")
+
+    to_location = to_location.strip()
+    if not to_location or len(to_location) > 50:
+        raise ValueError("La ubicación debe contener entre 1 y 50 caracteres")
+    if record.location.casefold() == to_location.casefold():
+        raise ValueError("La historia clínica ya se encuentra en esa ubicación")
 
     movement = ClinicalRecordMovement(
         clinical_record_id=clinical_record_id,

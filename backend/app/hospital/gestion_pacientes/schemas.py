@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class PatientCreate(BaseModel):
@@ -145,9 +145,17 @@ class PatientSearchResult(BaseModel):
 
 class ClinicalRecordMovementCreate(BaseModel):
     clinical_record_id: uuid.UUID
-    to_location: str
-    moved_by: str | None = None
-    notes: str | None = None
+    to_location: str = Field(min_length=1, max_length=50)
+    moved_by: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="before")
+    @classmethod
+    def vacios_a_none(cls, data):
+        if isinstance(data, dict):
+            return {k: (v.strip() or None) if isinstance(v, str) else v
+                    for k, v in data.items()}
+        return data
 
 
 # --- Ubigeo (solo lectura, para los selects en cascada del frontend) ---

@@ -380,3 +380,162 @@ class HospitalizacionResponse(BaseModel):
     fecha_ingreso: datetime
     fecha_alta: datetime | None
     estado: str
+
+
+class ExamenLaboratorioOut(BaseModel):
+    id: uuid.UUID
+    codigo: str | None
+    nombre: str
+    categoria: str | None
+    tipo_muestra: str | None
+    requiere_ayuno: bool
+    model_config = {"from_attributes": True}
+
+
+class OrdenLaboratorioCreate(BaseModel):
+    examen_ids: list[uuid.UUID]
+    indicacion_clinica: str | None = None
+
+    @model_validator(mode="after")
+    def validar_examenes(self):
+        if not self.examen_ids:
+            raise ValueError("La orden debe tener al menos un examen")
+        return self
+
+
+class OrdenLaboratorioItemOut(BaseModel):
+    id: uuid.UUID
+    examen_id: uuid.UUID
+    codigo: str | None
+    nombre: str
+    categoria: str | None
+    tipo_muestra: str | None
+
+
+class OrdenLaboratorioResponse(BaseModel):
+    id: uuid.UUID
+    atencion_medica_id: uuid.UUID
+    numero_orden: str
+    indicacion_clinica: str | None
+    estado: str
+    items: list[OrdenLaboratorioItemOut]
+    created_at: datetime
+
+
+class ExamenImagenOut(BaseModel):
+    id: uuid.UUID
+    codigo: str | None
+    nombre: str
+    modalidad: str
+    parte_cuerpo: str | None
+    requiere_contraste: bool
+    model_config = {"from_attributes": True}
+
+
+class OrdenImagenCreate(BaseModel):
+    examen_ids: list[uuid.UUID]
+    indicacion_clinica: str | None = None
+
+    @model_validator(mode="after")
+    def validar_examenes(self):
+        if not self.examen_ids:
+            raise ValueError("La orden debe tener al menos un examen")
+        return self
+
+
+class OrdenImagenItemOut(BaseModel):
+    id: uuid.UUID
+    examen_id: uuid.UUID
+    codigo: str | None
+    nombre: str
+    modalidad: str
+    parte_cuerpo: str | None
+
+
+class OrdenImagenResponse(BaseModel):
+    id: uuid.UUID
+    atencion_medica_id: uuid.UUID
+    numero_orden: str
+    indicacion_clinica: str | None
+    estado: str
+    items: list[OrdenImagenItemOut]
+    created_at: datetime
+
+
+class InterconsultaCreate(BaseModel):
+    especialidad_destino_id: uuid.UUID
+    diagnostico_id: uuid.UUID | None = None
+    motivo: str
+    urgente: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def vacios_a_none(cls, data):
+        if isinstance(data, dict):
+            return {k: (None if v == "" else v) for k, v in data.items()}
+        return data
+
+
+class InterconsultaResponse(BaseModel):
+    id: uuid.UUID
+    atencion_medica_id: uuid.UUID
+    paciente_nombre: str
+    paciente_dni: str | None
+    especialidad_destino_id: uuid.UUID
+    especialidad_destino_nombre: str
+    diagnostico_codigo: str | None
+    diagnostico_descripcion: str | None
+    motivo: str
+    urgente: bool
+    estado: str
+    cita_generada_id: uuid.UUID | None
+    created_at: datetime
+
+
+class ProgramarInterconsultaRequest(BaseModel):
+    programacion_medica_id: uuid.UUID
+    hora_inicio: str
+    hora_fin: str
+
+class ReferenciaCreate(BaseModel):
+    codigo_renipress_destino: str | None = None
+    nombre_ipress_destino: str | None = None
+    tenant_destino_id: uuid.UUID | None = None
+    especialidad_destino: str | None = None
+    diagnostico_id: uuid.UUID | None = None
+    motivo: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def vacios_a_none(cls, data):
+        if isinstance(data, dict):
+            return {k: (None if v == "" else v) for k, v in data.items()}
+        return data
+
+    @model_validator(mode="after")
+    def validar_destino(self):
+        if not self.tenant_destino_id and not self.nombre_ipress_destino:
+            raise ValueError("Debe indicar un hospital de destino o el nombre del IPRESS externo")
+        return self
+
+
+class TenantOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    model_config = {"from_attributes": True}
+
+
+class ReferenciaResponse(BaseModel):
+    id: uuid.UUID
+    atencion_medica_id: uuid.UUID
+    numero_referencia: str
+    codigo_renipress_destino: str | None
+    nombre_ipress_destino: str | None
+    tenant_destino_id: uuid.UUID | None
+    tenant_destino_nombre: str | None
+    especialidad_destino: str | None
+    diagnostico_codigo: str | None
+    diagnostico_descripcion: str | None
+    motivo: str
+    estado: str
+    created_at: datetime

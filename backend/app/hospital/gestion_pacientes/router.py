@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.tenants.entitlements import require_module_jwt
+from app.tenants.entitlements import require_module_jwt, require_any_module_jwt
 from app.hospital.gestion_pacientes.schemas import (
     PatientCreate, PatientUpdate, PatientResponse,
     PatientSearchResult, ClinicalRecordMovementCreate,
@@ -175,16 +175,18 @@ async def mover_historia_clinica(
     data: ClinicalRecordMovementCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_module_jwt("gestion_pacientes")),
+    current_user: dict = Depends(require_any_module_jwt("gestion_pacientes", "archivo_clinico")),
 ):
     tenant_id = get_tenant_id(current_user, request)
     try:
         movement = await move_clinical_record(
             db, tenant_id, data.clinical_record_id, data.to_location,
-            data.moved_by, data.notes,
+            f"{(current_user.get('name') or 'Usuario')[:210]} ({current_user['sub']})", data.notes,
         )
-    except ValueError as exc:
+    except LookupError as exc:
         raise HTTPException(404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, detail=str(exc)) from exc
     return {"ok": True, "movement_id": str(movement.id)}
 
 

@@ -1,17 +1,6 @@
+﻿"""Modelos compartidos con Gestión de Pacientes; no duplicar tablas.
+El aislamiento se obtiene mediante ClinicalRecord.patient_id -> Patient.tenant_id.
 """
-Modelos de Archivo Clinico.
-Submodulos de este modulo:
-# - hc-electronica: HC Electronica
-# - historias-clinicas: Historias Clinicas
-# - movimientos-hc: Movimientos de H.C.
-# - personal-archivo: Personal de Archivo
+from app.hospital.gestion_pacientes.models import ClinicalRecord, ClinicalRecordMovement
 
-TODO: definir las tablas reales de cada submodulo.
-Recuerda: todo modelo debe tener tenant_id para aislamiento multi-tenant.
-"""
-# import uuid
-# from datetime import datetime
-# from sqlalchemy import String, Boolean, DateTime
-# from sqlalchemy.orm import Mapped, mapped_column
-# from sqlalchemy.dialects.postgresql import UUID
-# from app.core.database import Base
+__all__ = ["ClinicalRecord", "ClinicalRecordMovement"]

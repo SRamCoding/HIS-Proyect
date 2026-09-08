@@ -9,8 +9,10 @@ from app.admin.modulos.models import ModuleDependency
 from app.admin.auditoria.models import AuditLog
 from app.core.config import settings
 from app.core.database import Base
+from app.hospital.laboratorio.models import LabCorrelativo, LabCupo, LabMovimiento, LabMovimientoItem, LabFichaCovid
 from app.hospital.gestion_pacientes.models import Patient, ClinicalRecord, ClinicalRecordMovement
-from app.hospital.consulta_externa.models import ProgramacionMedica, Cita, Triaje, AtencionMedica, AtencionDiagnostico, Receta, RecetaItem, Hospitalizacion
+from app.hospital.consulta_externa.models import ProgramacionMedica, Cita, Triaje, AtencionMedica, AtencionDiagnostico, Receta, RecetaItem, Hospitalizacion, OrdenLaboratorio, OrdenLaboratorioItem, OrdenImagen, OrdenImagenItem, Interconsulta, Referencia
+from app.hospital.emergencia.models import AdmisionEmergencia, TriajeEmergencia, AtencionEmergencia, EmergenciaDiagnostico
 from app.shared.ubigeo.models import UbigeoDepartamento, UbigeoProvincia, UbigeoDistrito
 # Importar todos los modelos para que Alembic los detecte
 from app.tenants.hospitales.models import Tenant, TenantModule
