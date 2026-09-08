@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.security import create_access_token, create_refresh_token, verify_token
 from app.core.config import settings
 from app.auth.models import User
+from app.sigarh.mantenimiento.models import UsuarioSigarh, PerfilUsuario
 from app.auth.schemas import LoginRequest, TokenResponse, RefreshRequest
 
 router = APIRouter()
@@ -22,6 +23,50 @@ async def login(
     data: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
+    # Si el panel es sigarh, buscar primero en sigarh_usuarios
+    if data.panel == "sigarh":
+        import json
+        sigarh_result = await db.execute(
+            select(UsuarioSigarh).where(
+                (UsuarioSigarh.email == data.email) | (UsuarioSigarh.username == data.email)
+            )
+        )
+        sigarh_user = sigarh_result.scalar_one_or_none()
+        if sigarh_user and verify_password(data.password, sigarh_user.password):
+            if not sigarh_user.is_active:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo")
+            active_modules = []
+            if sigarh_user.perfil_id:
+                perfil_result = await db.execute(select(PerfilUsuario).where(PerfilUsuario.id == sigarh_user.perfil_id))
+                perfil = perfil_result.scalar_one_or_none()
+                if perfil and perfil.modulos_acceso:
+                    active_modules = json.loads(perfil.modulos_acceso)
+            token_data = {
+                "sub": str(sigarh_user.id),
+                "email": sigarh_user.email,
+                "name": sigarh_user.username,
+                "role": "sigarh",
+                "panel": "sigarh",
+                "tenant_id": str(sigarh_user.tenant_id) if sigarh_user.tenant_id else None,
+                "active_modules": active_modules,
+            }
+            access_token = create_access_token(token_data)
+            refresh_token = create_refresh_token(token_data)
+            return TokenResponse(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_type="bearer",
+                user={
+                    "id": str(sigarh_user.id),
+                    "name": sigarh_user.username,
+                    "email": sigarh_user.email,
+                    "role": "sigarh",
+                    "panel": "sigarh",
+                    "tenant_id": str(sigarh_user.tenant_id) if sigarh_user.tenant_id else None,
+                    "active_modules": active_modules,
+                }
+            )
+
     result = await db.execute(
         select(User).where(User.email == data.email)
     )

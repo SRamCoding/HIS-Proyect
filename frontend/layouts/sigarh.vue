@@ -283,7 +283,7 @@
 
   const handleLogout = async () => {
     await authStore.logout()
-    await navigateTo('/login')
+    await navigateTo('/sigarh/login')
   }
   </script>
 
