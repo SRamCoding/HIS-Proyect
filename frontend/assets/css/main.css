@@ -6,20 +6,35 @@
   --ink-soft: #4a5c66;
   --navy: #123a52;
   --navy-hover: #0d2c3f;
+  --navy-soft: #e5edf1;
   --teal: #0c7c74;
   --teal-soft: #e3f2f0;
+  --teal-dark: #095f59;
   --mist: #eef3f4;
   --paper: #ffffff;
   --line: #dce5e7;
   --alert: #c13f2c;
   --alert-soft: #fbeae7;
+  --alert-dark: #9c3122;
   --warn: #b8862b;
   --warn-soft: #faf1e0;
   --ok: #1e7d4f;
   --ok-soft: #e6f3ec;
+  /* Colores de acento para estados e iconos (usados en SIGARH) */
+  --green: #1e7d4f;
+  --green-soft: #e6f3ec;
+  --amber: #b8862b;
+  --amber-soft: #faf1e0;
+  --orange: #c2571e;
+  --orange-soft: #fbeee3;
+  --purple: #6b4fa3;
+  --purple-soft: #efeaf7;
   --radius: 6px;
    --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(15, 31, 46, 0.05);
   --shadow-card: 0 1px 2px rgba(15, 31, 46, 0.04), 0 1px 3px rgba(15, 31, 46, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 31, 46, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 31, 46, 0.14);
 }
 
 html, body {

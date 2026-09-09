@@ -1,6 +1,6 @@
 ﻿import uuid
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 # Base generica para catalogos simples 
@@ -240,6 +240,27 @@ class UsuarioSigarhCreate(BaseModel):
     email: str
     password: str
     is_active: bool = True
+
+class UsuarioSigarhUpdate(BaseModel):
+    """Solo campos editables; omitir un campo conserva su valor actual."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    empleado_id: uuid.UUID | None = None
+    perfil_id: uuid.UUID | None = None
+    username: str | None = None
+    email: str | None = None
+    password: str | None = None
+    is_active: bool | None = None
+
+    @field_validator("username", "email", "is_active")
+    @classmethod
+    def reject_explicit_null(cls, value):
+        # Estos campos pueden omitirse en PATCH, pero no son NULL en la BD.
+        if value is None:
+            raise ValueError("El campo no puede ser nulo")
+        return value
+
 
 class UsuarioSigarhResponse(BaseModel):
     id: uuid.UUID

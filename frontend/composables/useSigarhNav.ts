@@ -55,20 +55,24 @@ export const useSigarhNav = () => {
       label: 'Creacion de Roles',
       modulo: 'sigarh_creacion_roles',
       icon: 'i-heroicons-calendar-days',
-      items: [
-        { label: 'Prof. Salud - Medicos',   path: '/sigarh/roles-turno/crear/medicos',             icon: 'i-heroicons-user-group' },
-        { label: 'Otros Prof. de la Salud', path: '/sigarh/roles-turno/crear/otros-profesionales', icon: 'i-heroicons-user-group' },
-        { label: 'Residentes de Medicina',  path: '/sigarh/roles-turno/crear/residentes',          icon: 'i-heroicons-user-group' },
-        { label: 'Tecnicos y Auxiliares',   path: '/sigarh/roles-turno/crear/tecnicos',            icon: 'i-heroicons-user-group' },
-        { label: 'Internos de Medicina',    path: '/sigarh/roles-turno/crear/internos',            icon: 'i-heroicons-user-group' },
-      ]
+      items: CATEGORIAS_PERSONAL.map(c => ({
+        label: c.label,
+        subgrupo: true,
+        icon: c.icon,
+        children: (MODALIDADES[c.key] || []).map(t => ({
+          label: TIPO_ROL_LABEL[t] || t,
+          path: `/sigarh/creacion-roles/${c.key}/${t}`,
+          icon: 'i-heroicons-document-plus',
+        })),
+      })),
     },
     {
       label: 'Roles Pendientes',
       modulo: 'sigarh_roles_pendientes',
       icon: 'i-heroicons-clock',
       items: [
-        { label: 'Roles por Aprobar', path: '/sigarh/roles-turno/pendientes', icon: 'i-heroicons-list-bullet' },
+        { label: 'Bandeja de Roles',          path: '/sigarh/roles-pendientes',              icon: 'i-heroicons-inbox-stack' },
+        { label: 'Solicitudes de Modificacion', path: '/sigarh/roles-pendientes/solicitudes', icon: 'i-heroicons-pencil-square' },
       ]
     },
     {
@@ -76,7 +80,7 @@ export const useSigarhNav = () => {
       modulo: 'sigarh_roles_aprobados',
       icon: 'i-heroicons-check-badge',
       items: [
-        { label: 'Roles Aprobados', path: '/sigarh/roles-turno/aprobados', icon: 'i-heroicons-check-circle' },
+        { label: 'Roles Aprobados', path: '/sigarh/roles-aprobados', icon: 'i-heroicons-check-circle' },
       ]
     },
     {

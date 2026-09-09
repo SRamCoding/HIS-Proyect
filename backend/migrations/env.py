@@ -37,6 +37,9 @@ from app.sigarh.imagenologia.models import ExamenImagenologia
 from app.sigarh.laboratorio.models import ExamenLaboratorio
 from app.sigarh.general.models import DiagnosticoCIE10, Paquete, TiempoProcedimiento
 from app.sigarh.nutricion.models import RacionNutricion, CambioTurnoNutricion
+from app.sigarh.creacion_roles.models import (
+    Rol, RolEmpleado, RolActividad, RolTurno, SolicitudModificacionRol,
+)
 
 
 config = context.config

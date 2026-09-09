@@ -380,7 +380,7 @@ const clearFilters = () => {
 }
 
 const editarSolicitud = (v: Vacacion) => {
-  router.push(`/sigarh/movimientos/vacaciones/${v.id}/edit?tenant=${tenant}`)
+  router.push(`/sigarh/movimientos/vacaciones/${v.id}?tenant=${tenant}`)
 }
 
 const confirmarEliminar = (v: Vacacion) => {

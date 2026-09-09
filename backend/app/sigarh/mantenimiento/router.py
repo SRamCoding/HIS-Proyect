@@ -26,7 +26,7 @@ from app.sigarh.mantenimiento.schemas import (
     RolSistemaCreate, RolSistemaResponse,
     PerfilUsuarioCreate, PerfilUsuarioResponse,
     DependenciaCreate, DependenciaResponse,
-    UsuarioSigarhCreate, UsuarioSigarhResponse,
+    UsuarioSigarhCreate, UsuarioSigarhUpdate, UsuarioSigarhResponse,
 )
 from app.sigarh.mantenimiento.service import (
     listar, obtener, eliminar,
@@ -322,17 +322,17 @@ async def obtener_usuario(request: Request, id: uuid.UUID, db: AsyncSession = De
     return item
 
 @router.patch("/usuarios/{id}", response_model=UsuarioSigarhResponse)
-async def actualizar_usuario(request: Request, id: uuid.UUID, data: dict, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+async def actualizar_usuario(request: Request, id: uuid.UUID, data: UsuarioSigarhUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
     import bcrypt
     item = await obtener(db, UsuarioSigarh, id, get_tenant_id(current_user, request))
     if not item: raise HTTPException(404, detail="No encontrado")
-    if "password" in data and data["password"]:
-        data["password"] = bcrypt.hashpw(data["password"].encode(), bcrypt.gensalt()).decode()
+    cambios = data.model_dump(exclude_unset=True)
+    if cambios.get("password"):
+        cambios["password"] = bcrypt.hashpw(cambios["password"].encode(), bcrypt.gensalt()).decode()
     else:
-        data.pop("password", None)
-    for field, value in data.items():
-        if hasattr(item, field):
-            setattr(item, field, value)
+        cambios.pop("password", None)
+    for field, value in cambios.items():
+        setattr(item, field, value)
     await db.commit()
     await db.refresh(item)
     return item

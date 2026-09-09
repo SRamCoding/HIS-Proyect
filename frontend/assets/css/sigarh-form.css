@@ -455,6 +455,37 @@
 .dot-active { background: var(--green); }
 .dot-inactive { background: var(--ink-soft); }
 
+/* Catalogo de checkboxes (modulos, grupos ocupacionales, etc.) */
+.check-catalog {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.375rem;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
+.check-catalog-empty { font-size: 0.8125rem; color: var(--ink-soft); grid-column: 1 / -1; }
+.check-catalog-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.check-catalog-item:hover { background: var(--mist); }
+.check-catalog-item--active { background: var(--teal-soft); border-color: var(--teal); }
+.check-catalog-item input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--teal); cursor: pointer; }
+.check-catalog-item span { font-size: 0.75rem; color: var(--ink); }
+
+@media (max-width: 768px) {
+  .check-catalog { grid-template-columns: 1fr; }
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .sigarh-form-grid { grid-template-columns: 1fr; }
