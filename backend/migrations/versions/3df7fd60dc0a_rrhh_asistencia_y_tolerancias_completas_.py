@@ -32,7 +32,11 @@ def upgrade() -> None:
     op.add_column('sigarh_registro_asistencia', sa.Column('hora_salida_programada', sa.String(length=5), nullable=True))
     op.add_column('sigarh_registro_asistencia', sa.Column('hora_entrada_real', sa.String(length=5), nullable=True))
     op.add_column('sigarh_registro_asistencia', sa.Column('hora_salida_real', sa.String(length=5), nullable=True))
-    op.add_column('sigarh_registro_asistencia', sa.Column('minutos_tardanza', sa.Integer(), nullable=False))
+    # Las tablas pueden contener registros previos. Se usa un default temporal
+    # para que PostgreSQL pueda crear las columnas NOT NULL sin perder datos.
+    op.add_column('sigarh_registro_asistencia', sa.Column(
+        'minutos_tardanza', sa.Integer(), nullable=False, server_default=sa.text('0')
+    ))
     op.add_column('sigarh_registro_asistencia', sa.Column('registrado_por', sa.String(length=255), nullable=True))
     op.create_foreign_key(None, 'sigarh_registro_asistencia', 'sigarh_grupos_ocupacionales', ['grupo_ocupacional_id'], ['id'], ondelete='SET NULL')
     op.create_foreign_key(None, 'sigarh_registro_asistencia', 'sigarh_horarios_guardia', ['horario_guardia_id'], ['id'], ondelete='SET NULL')
@@ -40,8 +44,12 @@ def upgrade() -> None:
     op.drop_column('sigarh_registro_asistencia', 'hora_salida')
     op.add_column('sigarh_tolerancias', sa.Column('dependencia_id', sa.UUID(), nullable=True))
     op.add_column('sigarh_tolerancias', sa.Column('grupo_ocupacional_id', sa.UUID(), nullable=True))
-    op.add_column('sigarh_tolerancias', sa.Column('minutos_tolerancia', sa.Integer(), nullable=False))
-    op.add_column('sigarh_tolerancias', sa.Column('minutos_tolerancia_dia', sa.Integer(), nullable=False))
+    op.add_column('sigarh_tolerancias', sa.Column(
+        'minutos_tolerancia', sa.Integer(), nullable=False, server_default=sa.text('0')
+    ))
+    op.add_column('sigarh_tolerancias', sa.Column(
+        'minutos_tolerancia_dia', sa.Integer(), nullable=False, server_default=sa.text('0')
+    ))
     op.alter_column('sigarh_tolerancias', 'nombre',
                existing_type=sa.VARCHAR(length=255),
                nullable=True)

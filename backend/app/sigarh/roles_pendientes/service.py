@@ -13,6 +13,7 @@ from app.sigarh.creacion_roles.service import (
 )
 from app.sigarh.mantenimiento.models import Servicio, Actividad, HorarioGuardia
 from app.sigarh.rrhh.models import Empleado
+from app.hospital.consulta_externa.service import sincronizar_programacion_sigarh
 
 MESES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
          "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
@@ -33,6 +34,7 @@ async def aprobar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID,
     rol.reviewed_at = datetime.utcnow()
     rol.rejection_reason = None
     await db.commit()
+    await sincronizar_programacion_sigarh(db, tenant_id, rol.mes, rol.anio)
     return await serializar_uno(db, tenant_id, await obtener_rol_orm(db, rol_id, tenant_id))
 
 
@@ -157,6 +159,7 @@ async def aprobar_solicitud(db: AsyncSession, tenant_id: uuid.UUID, sol_id: uuid
     sol.reviewed_by = revisor
     sol.reviewed_at = datetime.utcnow()
     await db.commit()
+    await sincronizar_programacion_sigarh(db, tenant_id, rol.mes, rol.anio)
     return await _serializa_solicitud(db, tenant_id, await _sol_orm(db, tenant_id, sol_id))
 
 

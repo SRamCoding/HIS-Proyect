@@ -4,7 +4,10 @@ export const useHospitalNav = () => {
   const route = useRoute()
 
   const tenantId = computed(() => route.query.tenant as string || '')
-  const link = (path: string) => `${path}?tenant=${tenantId.value}`
+  const link = (path: string) => {
+    const separator = path.includes('?') ? '&' : '?'
+    return `${path}${separator}tenant=${tenantId.value}`
+  }
   const activo = (path: string) => ({ 'nav-active': route.path === path })
   const tiene = (code: string) => authStore.user?.active_modules?.includes(code) ?? false
   const tieneAlguno = (codes: string[]) => codes.some(c => tiene(c))

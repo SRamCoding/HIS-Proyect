@@ -11,10 +11,11 @@
           <p class="page-subtitle">Consulta Externa · Gestión de citas médicas</p>
         </div>
       </div>
-      <NuxtLink :to="link('/app/consulta-externa/programacion-medica/create')" class="btn-primary">
-        <UIcon name="i-heroicons-plus" class="w-4 h-4" />
-        Agregar Programación
-      </NuxtLink>
+    </div>
+
+    <div class="source-banner">
+      <UIcon name="i-heroicons-information-circle" class="w-5 h-5 shrink-0" />
+      <span>Las jornadas se generan desde los roles aprobados en SIGARH. Los médicos, guardias, horarios y días se validan allí.</span>
     </div>
 
     <!-- Dashboard Widgets Grid -->
@@ -136,6 +137,9 @@
               <th class="col-hora">
                 <span class="th-content">Hora</span>
               </th>
+              <th>
+                <span class="th-content">Origen</span>
+              </th>
               <th class="col-estado">
                 <span class="th-content">Estado</span>
               </th>
@@ -171,6 +175,11 @@
               <td class="col-hora">
                 <span class="hora-text font-mono-data">{{ p.hora_inicio }} - {{ p.hora_fin }}</span>
               </td>
+              <td>
+                <span class="status-badge" :class="p.origen === 'SIGARH' ? 'status-active' : 'status-inactive'">
+                  {{ p.origen === 'SIGARH' ? 'Rol SIGARH' : 'Manual' }}
+                </span>
+              </td>
               <td class="col-estado">
                 <span class="status-badge" :class="p.estado === 'activo' ? 'status-active' : 'status-inactive'">
                   <span class="status-dot" :class="p.estado === 'activo' ? 'dot-active' : 'dot-inactive'" />
@@ -180,18 +189,11 @@
               <td class="col-actions">
                 <div class="action-buttons">
                   <NuxtLink
-                    :to="link(`/app/consulta-externa/programacion-medica/${p.id}`)"
+                    :to="link(`/app/admision/programacion-medica/${p.id}?mode=view`)"
                     class="action-btn action-view"
                     title="Ver detalle"
                   >
                     <UIcon name="i-heroicons-eye" class="w-4 h-4" />
-                  </NuxtLink>
-                  <NuxtLink
-                    :to="link(`/app/consulta-externa/programacion-medica/${p.id}`)"
-                    class="action-btn action-edit"
-                    title="Editar programación"
-                  >
-                    <UIcon name="i-heroicons-pencil-square" class="w-4 h-4" />
                   </NuxtLink>
                 </div>
               </td>
@@ -207,11 +209,7 @@
         <UIcon name="i-heroicons-calendar-days" class="w-12 h-12" style="color: var(--ink-soft)" />
       </div>
       <h3 style="color: var(--ink)">No hay programaciones registradas</h3>
-      <p style="color: var(--ink-soft)">Comienza creando una programación médica</p>
-      <NuxtLink :to="link('/app/consulta-externa/programacion-medica/create')" class="btn-primary">
-        <UIcon name="i-heroicons-plus" class="w-4 h-4" />
-        Agregar Programación
-      </NuxtLink>
+      <p style="color: var(--ink-soft)">Crea y aprueba un rol con actividad de Consulta Externa en SIGARH.</p>
      
     </div>
   </div>
@@ -329,6 +327,19 @@ onMounted(async () => {
   max-width: 1400px;
   margin: 0 auto;
   padding: 1.5rem 2rem;
+}
+
+.source-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--teal);
+  border-radius: 12px;
+  color: var(--teal);
+  background: var(--teal-soft);
+  font-size: 0.875rem;
 }
 
 /* Page Header */

@@ -6,12 +6,12 @@
         <!-- Breadcrumb + Title -->
         <div class="mb-8">
           <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
-            <NuxtLink :to="link('/app/consulta-externa/programacion-medica')" class="hover:underline flex items-center gap-1" style="color: var(--ink-soft)">
+            <NuxtLink :to="link('/app/admision/programacion-medica')" class="hover:underline flex items-center gap-1" style="color: var(--ink-soft)">
               <UIcon name="i-heroicons-calendar-days" class="w-3.5 h-3.5" />
               Programación Médica
             </NuxtLink>
             <UIcon name="i-heroicons-chevron-right" class="w-3 h-3" />
-            <span style="color: var(--ink)">Editar Programación</span>
+            <span style="color: var(--ink)">Ver Programación</span>
           </div>
           <div class="flex items-center gap-4">
             <div class="header-icon" :style="{ background: form.estado === 'activo' ? 'var(--teal-soft)' : 'var(--mist)' }">
@@ -22,7 +22,7 @@
               />
             </div>
             <div>
-              <h1 class="page-title">{{ programacion.medico_nombre || 'Editar Programación' }}</h1>
+              <h1 class="page-title">{{ programacion.medico_nombre || 'Ver Programación' }}</h1>
               <p class="page-subtitle">
                 <span class="especialidad-display">{{ programacion.especialidad_nombre || 'Sin especialidad' }}</span>
                 <span class="separator">·</span>
@@ -63,7 +63,7 @@
               </div>
               <div>
                 <h3 class="card-title">Datos de la Programación</h3>
-                <p class="card-subtitle">Actualiza la información de la programación médica</p>
+                <p class="card-subtitle">Consulta la información sincronizada desde el rol aprobado de SIGARH</p>
               </div>
             </div>
 
@@ -78,7 +78,7 @@
               </div>
             </div>
 
-            <div class="form-grid">
+            <fieldset class="form-grid form-fieldset" :disabled="soloLectura">
               <div class="form-group">
                 <label class="form-label">Fecha <span class="required">*</span></label>
                 <div class="input-wrapper">
@@ -189,7 +189,7 @@
                   />
                 </div>
               </div>
-            </div>
+            </fieldset>
 
             <!-- Preview Section -->
             <div class="preview-section">
@@ -219,20 +219,11 @@
             <!-- Actions -->
             <div class="form-actions">
               <div class="action-group">
-                <button
-                  class="btn-primary"
-                  :disabled="guardando"
-                  @click="guardar"
-                >
-                  <UIcon v-if="guardando" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
-                  <UIcon v-else name="i-heroicons-check" class="w-4 h-4" />
-                  {{ guardando ? 'Guardando...' : 'Guardar Cambios' }}
-                </button>
                 <NuxtLink
-                  :to="link('/app/consulta-externa/programacion-medica')"
+                  :to="link('/app/admision/programacion-medica')"
                   class="btn-cancel"
                 >
-                  Cancelar
+                  Volver
                 </NuxtLink>
               </div>
             </div>
@@ -362,6 +353,7 @@ const { link } = useHospitalNav()
 const route = useRoute()
 
 const progId = route.params.id as string
+const soloLectura = true
 
 const cargando = ref(true)
 const guardando = ref(false)
@@ -476,7 +468,7 @@ async function guardar() {
     })
     exito.value = ' Cambios guardados correctamente'
     setTimeout(() => {
-      navigateTo(link('/app/consulta-externa/programacion-medica'))
+      navigateTo(link('/app/admision/programacion-medica'))
     }, 1500)
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al guardar cambios'
@@ -501,6 +493,13 @@ async function guardar() {
 }
 
 .programacion-edit-main {
+  min-width: 0;
+}
+
+.form-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
   min-width: 0;
 }
 

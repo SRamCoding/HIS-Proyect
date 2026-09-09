@@ -4,7 +4,6 @@ export const useSigarhNav = () => {
 
   const tenantId = computed(() => (route.query.tenant as string) || authStore.user?.tenant_id || '')
   const link = (path: string) => `${path}?tenant=${tenantId.value}`
-  const activo = (path: string) => ({ 'nav-active': route.path === path })
   const tiene = (code: string) => authStore.user?.active_modules?.includes(code) ?? false
   const tieneAlguno = (codes: string[]) => codes.some(c => tiene(c))
 
@@ -185,5 +184,15 @@ export const useSigarhNav = () => {
     grupos.value.filter(g => tieneAlguno([g.modulo]))
   )
 
-  return { tenantId, link, activo, gruposVisibles }
+  const rutasVisibles = computed(() => gruposVisibles.value.flatMap(g =>
+    g.items.flatMap((item: any) => item.subgrupo ? item.children.map((child: any) => child.path) : [item.path])
+  ))
+  const rutaMenuActual = computed(() => route.path === '/sigarh'
+    ? '/sigarh'
+    : rutasVisibles.value
+      .filter(path => route.path === path || route.path.startsWith(`${path}/`))
+      .sort((a, b) => b.length - a.length)[0] || '')
+  const activo = (path: string) => ({ 'nav-active': rutaMenuActual.value === path })
+
+  return { tenantId, link, activo, gruposVisibles, rutaMenuActual }
 }

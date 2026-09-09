@@ -1,6 +1,6 @@
 import uuid
 from datetime import date as date_type
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.hospital.consulta_externa.schemas import ExamenLaboratorioOut, OrdenLaboratorioCreate, OrdenLaboratorioResponse
 from app.hospital.consulta_externa.schemas import CamaOut, HospitalizacionCreate, HospitalizacionResponse
@@ -13,14 +13,15 @@ from app.hospital.consulta_externa.service import get_camas_disponibles, create_
 from app.core.database import get_db
 from app.tenants.entitlements import require_module_jwt
 from app.hospital.consulta_externa.schemas import (
-    ProgramacionMedicaCreate, ProgramacionMedicaUpdate, ProgramacionMedicaResponse,
+    ProgramacionMedicaCreate, ProgramacionMedicaUpdate, ProgramacionMedicaResponse, SincronizacionSIGARHResponse,
     ServicioOut, EspecialidadOut, MedicoOut, CupoOut,
-    CitaCreate, CitaUpdate, CitaResponse,
+    CitaCreate, CitaUpdate, CitaResponse, CitaReprogramar, CitasReprogramarBloque,
 )
 from app.hospital.consulta_externa.service import (
     get_servicios, get_especialidades, get_medicos_por_especialidad,
-    create_programacion, get_programacion_by_id, list_programaciones, update_programacion,
-    get_cupos, create_cita, get_cita_by_id, list_citas, update_cita,
+    create_programacion, get_programacion_by_id, list_programaciones, update_programacion, sincronizar_programacion_sigarh,
+    get_cupos, create_cita, get_cita_by_id, list_citas, update_cita, generar_comprobante_cita_pdf,
+    reprogramar_cita, reprogramar_citas_bloque,
 )
 
 from app.hospital.consulta_externa.schemas import TriajeCreate,TriajeUpdate, TriajeResponse, CitaTriajeItem
@@ -54,6 +55,23 @@ async def listar_medicos(especialidad_id: uuid.UUID, request: Request, db: Async
 
 
 # --- Programaciones ---
+@router.post("/programacion-medica/sincronizar-sigarh", response_model=SincronizacionSIGARHResponse)
+async def sincronizar_sigarh(
+    request: Request,
+    mes: int | None = None,
+    anio: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt("consulta_externa")),
+):
+    hoy = date_type.today()
+    try:
+        return await sincronizar_programacion_sigarh(
+            db, get_tenant_id(current_user, request), mes or hoy.month, anio or hoy.year
+        )
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+
+
 @router.get("/programacion-medica", response_model=list[ProgramacionMedicaResponse])
 async def listar_programaciones(
     request: Request,
@@ -121,19 +139,6 @@ async def registrar_triaje(cita_id: uuid.UUID, data: TriajeCreate, request: Requ
 
 
     
-@router.post("/programacion-medica", response_model=ProgramacionMedicaResponse, status_code=201)
-async def crear_programacion(data: ProgramacionMedicaCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
-    return await create_programacion(db, get_tenant_id(current_user, request), data)
-
-
-@router.patch("/programacion-medica/{prog_id}", response_model=ProgramacionMedicaResponse)
-async def actualizar_programacion(prog_id: uuid.UUID, data: ProgramacionMedicaUpdate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
-    prog = await update_programacion(db, get_tenant_id(current_user, request), prog_id, data)
-    if not prog:
-        raise HTTPException(404, detail="Programación no encontrada")
-    return prog
-
-
 # --- Cupos ---
 @router.get("/citas/cupos/{programacion_id}", response_model=list[CupoOut])
 async def listar_cupos(programacion_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
@@ -150,11 +155,18 @@ async def listar_citas_endpoint(
     programacion_medica_id: uuid.UUID | None = None,
     estado: str | None = None,
     fecha: date_type | None = None,
+    fecha_desde: date_type | None = None,
+    fecha_hasta: date_type | None = None,
+    dni: str | None = None,
+    cuenta: str | None = None,
+    historia: str | None = None,
+    apellido: str | None = None,
+    medico_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_module_jwt("consulta_externa")),
 ):
     tenant_id = get_tenant_id(current_user, request)
-    return await list_citas(db, tenant_id, programacion_medica_id, estado, fecha)
+    return await list_citas(db, tenant_id, programacion_medica_id, estado, fecha, fecha_desde, fecha_hasta, dni, cuenta, historia, apellido, medico_id)
 
 
 @router.get("/citas/{cita_id}", response_model=CitaResponse)
@@ -163,6 +175,21 @@ async def obtener_cita(cita_id: uuid.UUID, request: Request, db: AsyncSession = 
     if not cita:
         raise HTTPException(404, detail="Cita no encontrada")
     return cita
+
+
+@router.get("/citas/{cita_id}/comprobante.pdf")
+async def descargar_comprobante_cita(
+    cita_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt("consulta_externa")),
+):
+    resultado = await generar_comprobante_cita_pdf(db, get_tenant_id(current_user, request), cita_id)
+    if not resultado:
+        raise HTTPException(404, detail="Cita no encontrada")
+    contenido, nombre = resultado
+    return Response(
+        content=contenido, media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{nombre}"'},
+    )
 
 
 @router.post("/citas", response_model=CitaResponse, status_code=201)
@@ -179,6 +206,25 @@ async def actualizar_cita(cita_id: uuid.UUID, data: CitaUpdate, request: Request
     if not cita:
         raise HTTPException(404, detail="Cita no encontrada")
     return cita
+
+
+@router.post("/citas/{cita_id}/reprogramar", response_model=CitaResponse)
+async def reprogramar_cita_endpoint(cita_id: uuid.UUID, data: CitaReprogramar, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+    try:
+        cita = await reprogramar_cita(db, get_tenant_id(current_user, request), cita_id, data.programacion_medica_id, data.hora_inicio, data.hora_fin, data.mensaje)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    if not cita:
+        raise HTTPException(404, detail="Cita no encontrada")
+    return cita
+
+
+@router.post("/citas/acciones/reprogramar-bloque", response_model=list[CitaResponse])
+async def reprogramar_bloque_endpoint(data: CitasReprogramarBloque, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+    try:
+        return await reprogramar_citas_bloque(db, get_tenant_id(current_user, request), data.cita_ids, data.programacion_medica_id, data.mensaje)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
 
 @router.patch("/triaje/{cita_id}", response_model=TriajeResponse)
 async def actualizar_triaje(cita_id: uuid.UUID, data: TriajeUpdate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):

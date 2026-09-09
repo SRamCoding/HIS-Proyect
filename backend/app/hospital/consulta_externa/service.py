@@ -1,7 +1,16 @@
 import uuid
+from io import BytesIO
 from datetime import datetime, timedelta, date as date_type
+from calendar import monthrange
+from xml.sax.saxutils import escape
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 from app.sigarh.laboratorio.models import ExamenLaboratorio
 from app.sigarh.imagenologia.models import ExamenImagenologia
@@ -14,7 +23,8 @@ from app.hospital.consulta_externa.schemas import (
     ProgramacionMedicaCreate, ProgramacionMedicaUpdate, CitaCreate, CitaUpdate,TriajeCreate, TriajeUpdate, AtencionMedicaCreate, AtencionMedicaUpdate, AtencionMedicaResponse
 )
 from app.sigarh.rrhh.models import Empleado, Especialidad, EmpleadoEspecialidad
-from app.sigarh.mantenimiento.models import Servicio
+from app.sigarh.mantenimiento.models import Servicio, Actividad, HorarioGuardia
+from app.sigarh.creacion_roles.models import Rol, RolEmpleado, RolActividad, RolTurno
 
 
 # ─── Catalogos desde SIGARH ─────────────────────────────────────────────
@@ -43,6 +53,108 @@ async def get_medicos_por_especialidad(db: AsyncSession, tenant_id: uuid.UUID, e
 
 
 # ─── Programaciones ─────────────────────────────────────────────────────
+async def sincronizar_programacion_sigarh(
+    db: AsyncSession, tenant_id: uuid.UUID, mes: int, anio: int
+) -> dict:
+    """Materializa como agenda diaria las actividades asistenciales de roles aprobados."""
+    if mes < 1 or mes > 12:
+        raise ValueError("El mes debe estar entre 1 y 12")
+
+    result = await db.execute(
+        select(Rol, RolTurno, Actividad, HorarioGuardia, Empleado)
+        .join(RolEmpleado, RolEmpleado.rol_id == Rol.id)
+        .join(RolActividad, RolActividad.rol_empleado_id == RolEmpleado.id)
+        .join(RolTurno, RolTurno.rol_actividad_id == RolActividad.id)
+        .join(Actividad, Actividad.id == RolActividad.actividad_id)
+        .join(HorarioGuardia, HorarioGuardia.id == RolTurno.horario_guardia_id)
+        .join(Empleado, Empleado.id == RolEmpleado.empleado_id)
+        .where(
+            Rol.tenant_id == tenant_id,
+            Rol.mes == mes,
+            Rol.anio == anio,
+            Rol.status == "approved",
+            Empleado.tenant_id == tenant_id,
+            Empleado.is_active == True,
+            Actividad.tenant_id == tenant_id,
+            Actividad.is_active == True,
+            HorarioGuardia.tenant_id == tenant_id,
+            HorarioGuardia.is_active == True,
+            or_(
+                Actividad.requiere_consultorio == True,
+                func.lower(Actividad.nombre).in_(("consulta externa", "atencion ambulatoria", "atención ambulatoria")),
+            ),
+        )
+    )
+    filas = result.all()
+
+    empleado_ids = {empleado.id for *_, empleado in filas}
+    especialidad_por_empleado: dict[uuid.UUID, uuid.UUID] = {}
+    if empleado_ids:
+        especialidades = await db.execute(
+            select(EmpleadoEspecialidad.empleado_id, EmpleadoEspecialidad.especialidad_id)
+            .where(EmpleadoEspecialidad.empleado_id.in_(empleado_ids))
+            .order_by(EmpleadoEspecialidad.validado.desc(), EmpleadoEspecialidad.created_at)
+        )
+        for empleado_id, especialidad_id in especialidades.all():
+            especialidad_por_empleado.setdefault(empleado_id, especialidad_id)
+
+    ultimo_dia = monthrange(anio, mes)[1]
+    existentes_result = await db.execute(
+        select(ProgramacionMedica).where(
+            ProgramacionMedica.tenant_id == tenant_id,
+            ProgramacionMedica.origen_sigarh_turno_id.is_not(None),
+            ProgramacionMedica.fecha.between(date_type(anio, mes, 1), date_type(anio, mes, ultimo_dia)),
+        )
+    )
+    existentes = {(p.origen_sigarh_turno_id, p.fecha): p for p in existentes_result.scalars().all()}
+    creadas = actualizadas = omitidas = 0
+    claves_vigentes: set[tuple[uuid.UUID, date_type]] = set()
+
+    for rol, turno, actividad, horario, empleado in filas:
+        dias = {int(d) for d in (turno.dias_semana or []) if str(d).isdigit() and 0 <= int(d) <= 6}
+        especialidad_id = especialidad_por_empleado.get(empleado.id)
+        if not dias or not especialidad_id:
+            omitidas += 1
+            continue
+
+        for dia_mes in range(1, ultimo_dia + 1):
+            fecha = date_type(anio, mes, dia_mes)
+            if (fecha.weekday() + 1) % 7 not in dias:  # SIGARH usa domingo=0.
+                continue
+            claves_vigentes.add((turno.id, fecha))
+            valores = {
+                "medico_id": empleado.id,
+                "servicio_id": rol.servicio_id or empleado.servicio_id,
+                "especialidad_id": especialidad_id,
+                "turno": horario.nombre[:20],
+                "hora_inicio": horario.hora_inicio,
+                "hora_fin": horario.hora_fin,
+                "tipo_servicio": "CONSULTORIO_EXTERNO",
+                "descripcion": f"SIGARH: {actividad.nombre} · rol aprobado {mes:02d}/{anio}",
+                "estado": "activo",
+            }
+            programacion = existentes.get((turno.id, fecha))
+            if programacion is None:
+                db.add(ProgramacionMedica(
+                    tenant_id=tenant_id, origen_sigarh_turno_id=turno.id, fecha=fecha,
+                    tiempo_promedio_atencion=15, mostrar_en_consultorio=True, **valores,
+                ))
+                creadas += 1
+            elif any(getattr(programacion, campo) != valor for campo, valor in valores.items()):
+                for campo, valor in valores.items():
+                    setattr(programacion, campo, valor)
+                actualizadas += 1
+
+    # Si el rol deja de estar aprobado o cambia sus días, ya no debe ofrecer nuevos cupos.
+    for clave, programacion in existentes.items():
+        if clave not in claves_vigentes and programacion.estado == "activo":
+            programacion.estado = "inactivo"
+            actualizadas += 1
+
+    await db.commit()
+    return {"creadas": creadas, "actualizadas": actualizadas, "omitidas": omitidas, "mes": mes, "anio": anio}
+
+
 async def create_programacion(db: AsyncSession, tenant_id: uuid.UUID, data: ProgramacionMedicaCreate) -> dict:
     prog = ProgramacionMedica(tenant_id=tenant_id, **data.model_dump())
     db.add(prog)
@@ -71,6 +183,10 @@ async def list_programaciones(
     medico_id: uuid.UUID | None = None,
     fecha: date_type | None = None,
 ) -> list[dict]:
+    fecha_sincronizacion = fecha or date_type.today()
+    await sincronizar_programacion_sigarh(
+        db, tenant_id, fecha_sincronizacion.month, fecha_sincronizacion.year
+    )
     query = (
         select(ProgramacionMedica, Empleado, Servicio, Especialidad)
         .join(Empleado, Empleado.id == ProgramacionMedica.medico_id)
@@ -111,6 +227,8 @@ def _prog_to_dict(prog: ProgramacionMedica, medico: Empleado, servicio: Servicio
         "servicio_nombre": servicio.nombre if servicio else None,
         "especialidad_id": prog.especialidad_id,
         "especialidad_nombre": especialidad.nombre if especialidad else None,
+        "origen_sigarh_turno_id": prog.origen_sigarh_turno_id,
+        "origen": "SIGARH" if prog.origen_sigarh_turno_id else "MANUAL",
         "fecha": prog.fecha,
         "turno": prog.turno,
         "hora_inicio": prog.hora_inicio,
@@ -213,6 +331,29 @@ async def get_cupos(db: AsyncSession, tenant_id: uuid.UUID, programacion_id: uui
 
 # ─── Citas ───────────────────────────────────────────────────────────────
 async def create_cita(db: AsyncSession, tenant_id: uuid.UUID, data: CitaCreate) -> dict:
+    programacion_result = await db.execute(
+        select(ProgramacionMedica).where(
+            ProgramacionMedica.id == data.programacion_medica_id,
+            ProgramacionMedica.tenant_id == tenant_id,
+            ProgramacionMedica.estado == "activo",
+        )
+    )
+    programacion = programacion_result.scalar_one_or_none()
+    if not programacion:
+        raise ValueError("La programación no existe o no está activa")
+
+    paciente_result = await db.execute(
+        select(Patient.id).where(Patient.id == data.patient_id, Patient.tenant_id == tenant_id)
+    )
+    if paciente_result.scalar_one_or_none() is None:
+        raise ValueError("El paciente no pertenece al hospital")
+
+    slots_validos = set(_generar_slots(
+        programacion.hora_inicio, programacion.hora_fin, programacion.tiempo_promedio_atencion
+    ))
+    if (data.hora_inicio, data.hora_fin) not in slots_validos:
+        raise ValueError("El horario seleccionado no pertenece a la programación médica")
+
     existing = await db.execute(
         select(Cita).where(
             Cita.programacion_medica_id == data.programacion_medica_id,
@@ -231,13 +372,20 @@ async def create_cita(db: AsyncSession, tenant_id: uuid.UUID, data: CitaCreate) 
 
 async def get_cita_by_id(db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID) -> dict | None:
     result = await db.execute(
-        select(Cita, Patient).join(Patient, Patient.id == Cita.patient_id)
+        select(Cita, Patient, ProgramacionMedica, Empleado, Servicio, Especialidad, ClinicalRecord)
+        .join(Patient, Patient.id == Cita.patient_id)
+        .join(ProgramacionMedica, ProgramacionMedica.id == Cita.programacion_medica_id)
+        .join(Empleado, Empleado.id == ProgramacionMedica.medico_id)
+        .outerjoin(Servicio, Servicio.id == ProgramacionMedica.servicio_id)
+        .outerjoin(Especialidad, Especialidad.id == ProgramacionMedica.especialidad_id)
+        .outerjoin(ClinicalRecord, ClinicalRecord.patient_id == Patient.id)
         .where(Cita.tenant_id == tenant_id, Cita.id == cita_id)
     )
     row = result.first()
     if not row:
         return None
-    return _cita_to_dict(*row)
+    cita, paciente, programacion, medico, servicio, especialidad, historia = row
+    return _cita_to_dict(cita, paciente, programacion, medico, servicio, especialidad, historia)
 
 
 async def list_citas(
@@ -245,11 +393,22 @@ async def list_citas(
     programacion_medica_id: uuid.UUID | None = None,
     estado: str | None = None,
     fecha: date_type | None = None,
+    fecha_desde: date_type | None = None,
+    fecha_hasta: date_type | None = None,
+    dni: str | None = None,
+    cuenta: str | None = None,
+    historia: str | None = None,
+    apellido: str | None = None,
+    medico_id: uuid.UUID | None = None,
 ) -> list[dict]:
     query = (
-        select(Cita, Patient, ProgramacionMedica)
+        select(Cita, Patient, ProgramacionMedica, Empleado, Servicio, Especialidad, ClinicalRecord)
         .join(Patient, Patient.id == Cita.patient_id)
         .join(ProgramacionMedica, ProgramacionMedica.id == Cita.programacion_medica_id)
+        .join(Empleado, Empleado.id == ProgramacionMedica.medico_id)
+        .outerjoin(Servicio, Servicio.id == ProgramacionMedica.servicio_id)
+        .outerjoin(Especialidad, Especialidad.id == ProgramacionMedica.especialidad_id)
+        .outerjoin(ClinicalRecord, ClinicalRecord.patient_id == Patient.id)
         .where(Cita.tenant_id == tenant_id)
     )
     if programacion_medica_id:
@@ -258,8 +417,83 @@ async def list_citas(
         query = query.where(Cita.estado == estado)
     if fecha:
         query = query.where(ProgramacionMedica.fecha == fecha)
+    if fecha_desde:
+        query = query.where(ProgramacionMedica.fecha >= fecha_desde)
+    if fecha_hasta:
+        query = query.where(ProgramacionMedica.fecha <= fecha_hasta)
+    if dni:
+        query = query.where(Patient.dni.ilike(f"%{dni.strip()}%"))
+    if cuenta:
+        query = query.where(Cita.numero_cuenta.ilike(f"%{cuenta.strip()}%"))
+    if historia:
+        query = query.where(ClinicalRecord.record_number.ilike(f"%{historia.strip()}%"))
+    if apellido:
+        query = query.where(or_(Patient.last_name_paterno.ilike(f"%{apellido.strip()}%"), Patient.last_name_materno.ilike(f"%{apellido.strip()}%")))
+    if medico_id:
+        query = query.where(ProgramacionMedica.medico_id == medico_id)
     result = await db.execute(query.order_by(Cita.hora_inicio))
-    return [_cita_to_dict(c, p) for c, p, prog in result.all()]
+    return [_cita_to_dict(*row) for row in result.all()]
+
+
+async def reprogramar_cita(
+    db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID,
+    programacion_id: uuid.UUID, hora_inicio: str, hora_fin: str, mensaje: str | None = None,
+) -> dict | None:
+    cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id).with_for_update())
+    if not cita:
+        return None
+    if cita.estado in ("atendida", "cancelada"):
+        raise ValueError(f"No se puede reprogramar una cita {cita.estado}")
+    programacion = await db.scalar(select(ProgramacionMedica).where(
+        ProgramacionMedica.id == programacion_id,
+        ProgramacionMedica.tenant_id == tenant_id,
+        ProgramacionMedica.estado == "activo",
+        ProgramacionMedica.origen_sigarh_turno_id.is_not(None),
+    ))
+    if not programacion:
+        raise ValueError("La programación seleccionada no está autorizada en SIGARH")
+    cupos = await get_cupos(db, tenant_id, programacion_id)
+    if not cupos or not any(c["hora_inicio"] == hora_inicio and c["hora_fin"] == hora_fin and c["disponible"] for c in cupos):
+        raise ValueError("El horario ya no está disponible")
+    cita.programacion_medica_id = programacion_id
+    cita.hora_inicio = hora_inicio
+    cita.hora_fin = hora_fin
+    if mensaje:
+        cita.observacion = "\n".join(filter(None, [cita.observacion, f"Reprogramación: {mensaje.strip()}"]))
+    await db.commit()
+    return await get_cita_by_id(db, tenant_id, cita_id)
+
+
+async def reprogramar_citas_bloque(
+    db: AsyncSession, tenant_id: uuid.UUID, cita_ids: list[uuid.UUID], programacion_id: uuid.UUID,
+    mensaje: str | None = None,
+) -> list[dict]:
+    programacion = await db.scalar(select(ProgramacionMedica).where(
+        ProgramacionMedica.id == programacion_id, ProgramacionMedica.tenant_id == tenant_id,
+        ProgramacionMedica.estado == "activo", ProgramacionMedica.origen_sigarh_turno_id.is_not(None),
+    ))
+    if not programacion:
+        raise ValueError("La programación seleccionada no está autorizada en SIGARH")
+    cupos = [c for c in (await get_cupos(db, tenant_id, programacion_id) or []) if c["disponible"]]
+    if len(cupos) < len(cita_ids):
+        raise ValueError(f"Solo hay {len(cupos)} cupos libres para {len(cita_ids)} citas")
+    citas = (await db.scalars(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id.in_(cita_ids)).with_for_update())).all()
+    if len(citas) != len(set(cita_ids)):
+        raise ValueError("Una o más citas no existen")
+    if any(c.estado in ("atendida", "cancelada") for c in citas):
+        raise ValueError("No se pueden reprogramar citas atendidas o canceladas")
+    for cita, cupo in zip(sorted(citas, key=lambda c: c.hora_inicio), cupos):
+        cita.programacion_medica_id = programacion_id
+        cita.hora_inicio = cupo["hora_inicio"]
+        cita.hora_fin = cupo["hora_fin"]
+        if mensaje:
+            texto = mensaje.replace("{paciente}", (await get_cita_by_id(db, tenant_id, cita.id) or {}).get("paciente_nombre", "paciente"))
+            cita.observacion = "\n".join(filter(None, [cita.observacion, f"Reprogramación: {texto.strip()}"]))
+    await db.commit()
+    resultados = []
+    for cita in citas:
+        resultados.append(await get_cita_by_id(db, tenant_id, cita.id))
+    return resultados
 
 
 async def update_cita(db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: CitaUpdate) -> dict | None:
@@ -273,8 +507,12 @@ async def update_cita(db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID
     return await get_cita_by_id(db, tenant_id, cita_id)
 
 
-def _cita_to_dict(cita: Cita, paciente: Patient) -> dict:
-    return {
+def _cita_to_dict(
+    cita: Cita, paciente: Patient, programacion: ProgramacionMedica | None = None,
+    medico: Empleado | None = None, servicio: Servicio | None = None,
+    especialidad: Especialidad | None = None, historia: ClinicalRecord | None = None,
+) -> dict:
+    data = {
         "id": cita.id,
         "programacion_medica_id": cita.programacion_medica_id,
         "patient_id": cita.patient_id,
@@ -291,6 +529,95 @@ def _cita_to_dict(cita: Cita, paciente: Patient) -> dict:
         "estado": cita.estado,
         "created_at": cita.created_at,
     }
+    if programacion:
+        data.update({
+            "fecha": programacion.fecha,
+            "turno": programacion.turno,
+            "medico_id": programacion.medico_id,
+            "medico_nombre": medico.nombre_completo if medico else None,
+            "servicio_nombre": servicio.nombre if servicio else None,
+            "especialidad_nombre": especialidad.nombre if especialidad else None,
+            "paciente_record": historia.record_number if historia else None,
+            "paciente_insurance": paciente.insurance_type,
+            "paciente_telefono": paciente.phone,
+        })
+    return data
+
+
+async def generar_comprobante_cita_pdf(
+    db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID
+) -> tuple[bytes, str] | None:
+    cita = await get_cita_by_id(db, tenant_id, cita_id)
+    if not cita:
+        return None
+    hospital = (await db.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one_or_none()
+
+    codigo = f"CITA-{str(cita_id).split('-')[0].upper()}"
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4, rightMargin=18 * mm, leftMargin=18 * mm,
+        topMargin=15 * mm, bottomMargin=15 * mm,
+        title=f"Comprobante de cita {codigo}", author=hospital.name if hospital else "Hospital",
+    )
+    styles = getSampleStyleSheet()
+    title = ParagraphStyle("CitaTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=17,
+                           leading=21, alignment=TA_CENTER, textColor=colors.HexColor("#123F59"), spaceAfter=4 * mm)
+    center = ParagraphStyle("CitaCenter", parent=styles["Normal"], alignment=TA_CENTER, fontSize=9,
+                            textColor=colors.HexColor("#4B6472"), leading=12)
+    normal = ParagraphStyle("CitaNormal", parent=styles["Normal"], fontSize=9, leading=12)
+    label = ParagraphStyle("CitaLabel", parent=normal, fontName="Helvetica-Bold", textColor=colors.HexColor("#425968"))
+
+    def p(value, style=normal):
+        return Paragraph(escape(str(value if value not in (None, "") else "—")), style)
+
+    fecha = cita.get("fecha")
+    fecha_texto = fecha.strftime("%d/%m/%Y") if fecha else "—"
+    medico = cita.get("medico_nombre") or "—"
+    cmp = ""
+    body = [
+        p((hospital.name if hospital else "ESTABLECIMIENTO DE SALUD").upper(), title),
+        p("CONSTANCIA DE CITA MÉDICA", ParagraphStyle("DocTitle", parent=title, fontSize=14, textColor=colors.black)),
+        p(f"Código de cita: {codigo}", center), Spacer(1, 5 * mm),
+    ]
+    header_data = [
+        [p("ESTABLECIMIENTO", label), p(hospital.name if hospital else "—"), p("RUC", label), p(hospital.ruc if hospital else "—")],
+        [p("DIRECCIÓN", label), p(hospital.address if hospital else "—"), p("TELÉFONO", label), p(hospital.phone if hospital else "—")],
+    ]
+    detail_data = [
+        [p("PACIENTE", label), p(cita["paciente_nombre"]), p("DNI / DOCUMENTO", label), p(cita.get("paciente_dni"))],
+        [p("HISTORIA CLÍNICA", label), p(cita.get("paciente_record")), p("N.° CUENTA", label), p(cita.get("numero_cuenta"))],
+        [p("FECHA", label), p(fecha_texto), p("HORA", label), p(f'{cita["hora_inicio"]} - {cita["hora_fin"]}')],
+        [p("ESPECIALIDAD", label), p(cita.get("especialidad_nombre")), p("SERVICIO", label), p(cita.get("servicio_nombre"))],
+        [p("MÉDICO", label), p(medico + cmp), p("TURNO", label), p(cita.get("turno"))],
+        [p("TIPO DE CONSULTA", label), p(cita.get("tipo_consulta")), p("ESTADO", label), p(str(cita.get("estado", "")).upper())],
+        [p("FINANCIAMIENTO", label), p(cita.get("fuente_financiamiento")), p("PRODUCTO / PLAN", label), p(cita.get("producto_plan"))],
+        [p("OBSERVACIONES", label), p(cita.get("observacion")), "", ""],
+    ]
+    for data in (header_data, detail_data):
+        table = Table(data, colWidths=[35 * mm, 58 * mm, 35 * mm, 48 * mm], hAlign="CENTER")
+        table.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#B8C9D2")),
+            ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#EAF4F5")),
+            ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#EAF4F5")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6), ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("SPAN", (1, -1), (3, -1)) if data is detail_data else ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        body.extend([table, Spacer(1, 5 * mm)])
+    body.extend([
+        p("Indicaciones", ParagraphStyle("Instructions", parent=label, fontSize=10, spaceAfter=2 * mm)),
+        p("Presentarse 30 minutos antes de la hora indicada con su documento de identidad y esta constancia. "
+          "En caso de no poder asistir, comuníquese con el establecimiento para reprogramar."),
+        Spacer(1, 14 * mm),
+        Table([["______________________________", "______________________________"],
+               [p("Firma / sello del establecimiento", center), p("Firma del paciente", center)]],
+              colWidths=[88 * mm, 88 * mm], style=TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER")])) ,
+        Spacer(1, 8 * mm),
+        p(f"Generado el {datetime.now().strftime('%d/%m/%Y %H:%M')} · {codigo}", center),
+    ])
+    doc.build(body)
+    return buffer.getvalue(), f"cita-{codigo}.pdf"
 
 
 

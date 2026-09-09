@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from sqlalchemy import String, Boolean, DateTime, Date, Text, Integer, Float, ForeignKey
+from sqlalchemy import String, Boolean, DateTime, Date, Text, Integer, Float, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -11,6 +11,9 @@ class ProgramacionMedica(Base):
     (Consulta Externa, Imagenologia, Laboratorio, etc). especialidad_id es opcional
     porque servicios como Imagenes/Lab no siempre tienen especialidad medica asociada."""
     __tablename__ = "programaciones_medicas"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "origen_sigarh_turno_id", "fecha", name="uq_programacion_sigarh_turno_fecha"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
@@ -18,6 +21,9 @@ class ProgramacionMedica(Base):
     medico_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="CASCADE"))
     servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="SET NULL"), nullable=True)
     especialidad_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="SET NULL"), nullable=True)
+    origen_sigarh_turno_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sigarh_roles_turno_turnos.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     fecha: Mapped[date] = mapped_column(Date)
     turno: Mapped[str] = mapped_column(String(20))

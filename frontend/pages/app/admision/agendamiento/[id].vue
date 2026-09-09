@@ -240,6 +240,15 @@
             <div class="form-actions">
               <div class="action-group">
                 <button
+                  class="btn-cancel"
+                  :disabled="imprimiendoId === citaId"
+                  @click="imprimirComprobante"
+                >
+                  <UIcon v-if="imprimiendoId === citaId" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
+                  <UIcon v-else name="i-heroicons-printer" class="w-4 h-4" />
+                  {{ imprimiendoId === citaId ? 'Generando...' : 'Imprimir cita' }}
+                </button>
+                <button
                   v-if="cita.estado === 'separada'"
                   class="btn-primary"
                   style="background: var(--blue)"
@@ -413,6 +422,7 @@ definePageMeta({ layout: 'app', middleware: ['auth'] })
 
 const { api } = useApi()
 const { link } = useHospitalNav()
+const { abrirComprobante, imprimiendoId } = useCitaPdf()
 const route = useRoute()
 
 const citaId = route.params.id as string
@@ -546,6 +556,15 @@ async function confirmarCita() {
     error.value = e?.data?.detail || 'Error al confirmar la cita'
   } finally {
     confirmando.value = false
+  }
+}
+
+async function imprimirComprobante() {
+  error.value = ''
+  try {
+    await abrirComprobante(citaId)
+  } catch (e: any) {
+    error.value = e?.data?.detail || 'No se pudo generar el comprobante de la cita'
   }
 }
 </script>

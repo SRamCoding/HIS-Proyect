@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class ProgramacionMedicaCreate(BaseModel):
@@ -43,6 +43,8 @@ class ProgramacionMedicaResponse(BaseModel):
     servicio_nombre: str | None
     especialidad_id: uuid.UUID | None
     especialidad_nombre: str | None
+    origen_sigarh_turno_id: uuid.UUID | None = None
+    origen: str = "MANUAL"
     fecha: date
     turno: str
     hora_inicio: str
@@ -55,6 +57,14 @@ class ProgramacionMedicaResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class SincronizacionSIGARHResponse(BaseModel):
+    creadas: int
+    actualizadas: int
+    omitidas: int
+    mes: int
+    anio: int
 
 
 class ServicioOut(BaseModel):
@@ -113,6 +123,19 @@ class CitaUpdate(BaseModel):
     producto_plan: str | None = None
 
 
+class CitaReprogramar(BaseModel):
+    programacion_medica_id: uuid.UUID
+    hora_inicio: str
+    hora_fin: str
+    mensaje: str | None = Field(default=None, max_length=500)
+
+
+class CitasReprogramarBloque(BaseModel):
+    cita_ids: list[uuid.UUID] = Field(min_length=1)
+    programacion_medica_id: uuid.UUID
+    mensaje: str | None = Field(default=None, max_length=500)
+
+
 class CitaResponse(BaseModel):
     id: uuid.UUID
     programacion_medica_id: uuid.UUID
@@ -129,6 +152,15 @@ class CitaResponse(BaseModel):
     producto_plan: str | None
     estado: str
     created_at: datetime
+    fecha: date | None = None
+    turno: str | None = None
+    medico_id: uuid.UUID | None = None
+    medico_nombre: str | None = None
+    servicio_nombre: str | None = None
+    especialidad_nombre: str | None = None
+    paciente_record: str | None = None
+    paciente_insurance: str | None = None
+    paciente_telefono: str | None = None
 
     model_config = {"from_attributes": True}
 

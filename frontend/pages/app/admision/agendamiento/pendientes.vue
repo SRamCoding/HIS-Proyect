@@ -173,6 +173,15 @@
               </td>
               <td class="col-actions">
                 <div class="action-buttons">
+                  <button
+                    class="action-btn action-view"
+                    title="Imprimir comprobante"
+                    :disabled="imprimiendoId === c.id"
+                    @click="imprimir(c.id)"
+                  >
+                    <UIcon v-if="imprimiendoId === c.id" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
+                    <UIcon v-else name="i-heroicons-printer" class="w-4 h-4" />
+                  </button>
                   <button 
                     class="action-btn action-confirm" 
                     title="Confirmar cita"
@@ -217,12 +226,22 @@ definePageMeta({ layout: 'app', middleware: ['auth'] })
 
 const { api } = useApi()
 const { link } = useHospitalNav()
+const { abrirComprobante, imprimiendoId } = useCitaPdf()
 
 // Estado
 const citas = ref<any[]>([])
 const cargando = ref(false)
 const error = ref('')
 const confirmandoId = ref('')
+
+async function imprimir(citaId: string) {
+  error.value = ''
+  try {
+    await abrirComprobante(citaId)
+  } catch (e: any) {
+    error.value = e?.data?.detail || 'No se pudo generar el comprobante de la cita'
+  }
+}
 
 // Filtros
 const filtros = reactive({

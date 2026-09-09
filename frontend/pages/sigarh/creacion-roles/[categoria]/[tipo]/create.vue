@@ -9,6 +9,7 @@ const categoria = computed(() => route.params.categoria as string)
 const tipo = computed(() => route.params.tipo as string)
 
 const saving = ref(false)
+const loadingCatalogos = ref(true)
 const error = ref('')
 const departamentos = ref<any[]>([])
 const servicios = ref<any[]>([])
@@ -18,6 +19,7 @@ const form = reactive({ departamento_id: '', servicio_id: '', mes: now.getMonth(
 const serviciosFiltrados = computed(() =>
   form.departamento_id ? servicios.value.filter(s => s.departamento_id === form.departamento_id) : servicios.value
 )
+const catalogosIncompletos = computed(() => !departamentos.value.length || !servicios.value.length)
 
 const crear = async () => {
   if (!form.departamento_id) { error.value = 'El departamento es requerido'; return }
@@ -36,12 +38,16 @@ const crear = async () => {
 onMounted(async () => {
   try {
     const [deps, servs] = await Promise.all([
-      api<any[]>('/sigarh/mantenimiento/departamentos').catch(() => []),
-      api<any[]>('/sigarh/mantenimiento/servicios').catch(() => []),
+      api<any[]>('/sigarh/mantenimiento/departamentos'),
+      api<any[]>('/sigarh/mantenimiento/servicios'),
     ])
-    departamentos.value = deps
-    servicios.value = servs
-  } catch { error.value = 'Error al cargar catálogos' }
+    departamentos.value = deps.filter(d => d.is_active)
+    servicios.value = servs.filter(s => s.is_active)
+  } catch (e: any) {
+    error.value = e?.data?.detail || 'No se pudieron cargar los catálogos de departamentos y servicios'
+  } finally {
+    loadingCatalogos.value = false
+  }
 })
 </script>
 
@@ -70,11 +76,20 @@ onMounted(async () => {
       <SFormCard v-else title="Datos generales del rol" subtitle="Define el ámbito y el período de la programación"
         icon="i-heroicons-cog-6-tooth" icon-bg="var(--navy-soft)" icon-color="var(--navy)" :error="error">
 
+        <div v-if="!loadingCatalogos && catalogosIncompletos" class="form-group full-width rounded-lg border p-4">
+          <p class="font-semibold">Falta configurar la estructura asistencial.</p>
+          <p class="field-hint mb-3">Crea al menos un departamento y un servicio asociado antes de generar roles.</p>
+          <div class="flex flex-wrap gap-3 text-sm">
+            <NuxtLink :to="`/sigarh/mantenimiento/departamentos?tenant=${tenantId}`" class="hover:underline" style="color: var(--teal)">Configurar departamentos</NuxtLink>
+            <NuxtLink :to="`/sigarh/mantenimiento/servicios?tenant=${tenantId}`" class="hover:underline" style="color: var(--teal)">Configurar servicios</NuxtLink>
+          </div>
+        </div>
+
         <div class="form-group">
           <label class="form-label">Departamento <span class="required">*</span></label>
           <div class="input-wrapper">
             <UIcon name="i-heroicons-building-office-2" class="input-icon" />
-            <select v-model="form.departamento_id" class="input-clinical" @change="form.servicio_id = ''; error = ''">
+            <select v-model="form.departamento_id" class="input-clinical" :disabled="loadingCatalogos || !departamentos.length" @change="form.servicio_id = ''; error = ''">
               <option value="">Seleccione un departamento</option>
               <option v-for="d in departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option>
             </select>
@@ -86,7 +101,7 @@ onMounted(async () => {
           <label class="form-label">Servicio <span class="required">*</span></label>
           <div class="input-wrapper">
             <UIcon name="i-heroicons-squares-2x2" class="input-icon" />
-            <select v-model="form.servicio_id" class="input-clinical" :disabled="!form.departamento_id" @change="error = ''">
+            <select v-model="form.servicio_id" class="input-clinical" :disabled="loadingCatalogos || !form.departamento_id" @change="error = ''">
               <option value="">Seleccione un servicio</option>
               <option v-for="s in serviciosFiltrados" :key="s.id" :value="s.id">{{ s.nombre }}</option>
             </select>
@@ -114,6 +129,7 @@ onMounted(async () => {
 
         <template #actions>
           <SFormActions :saving="saving" save-text="Crear y continuar" saving-text="Creando..."
+            :disabled="loadingCatalogos || catalogosIncompletos"
             :cancel-to="`/sigarh/creacion-roles/${categoria}/${tipo}?tenant=${tenantId}`"
             @save="crear" />
         </template>

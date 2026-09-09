@@ -6,7 +6,7 @@
         <!-- Breadcrumb + Title -->
         <div class="mb-8">
           <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
-            <NuxtLink :to="link('/app/consulta-externa/programacion-medica')" class="hover:underline flex items-center gap-1" style="color: var(--ink-soft)">
+            <NuxtLink :to="link('/app/admision/programacion-medica')" class="hover:underline flex items-center gap-1" style="color: var(--ink-soft)">
               <UIcon name="i-heroicons-calendar-days" class="w-3.5 h-3.5" />
               Programación Médica
             </NuxtLink>
@@ -232,7 +232,7 @@
                 {{ guardando ? 'Guardando...' : 'Guardar Programación' }}
               </button>
               <NuxtLink
-                :to="link('/app/consulta-externa/programacion-medica')"
+                :to="link('/app/admision/programacion-medica')"
                 class="btn-cancel"
               >
                 Cancelar
@@ -352,7 +352,7 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ layout: 'app', middleware: ['auth'] })
+definePageMeta({ layout: 'app', middleware: ['auth', 'programacion-sigarh'] })
 
 const { api } = useApi()
 const { link } = useHospitalNav()
@@ -528,7 +528,7 @@ async function guardar() {
       }
     })
     exito.value = 'Programación registrada correctamente'
-    setTimeout(() => navigateTo(link('/app/consulta-externa/programacion-medica')), 1500)
+    setTimeout(() => navigateTo(link('/app/admision/programacion-medica')), 1500)
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al guardar la programación'
   } finally {

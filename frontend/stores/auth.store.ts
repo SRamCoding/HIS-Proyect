@@ -67,8 +67,14 @@ export const useAuthStore = defineStore('auth', {
         if (response.user) this.user = response.user
         return true
       } catch {
+        this.clearSession()
         return false
       }
+    },
+    clearSession() {
+      this.token = null
+      this.refreshToken = null
+      this.user = null
     },
     async logout() {
       const config = useRuntimeConfig()
@@ -78,10 +84,12 @@ export const useAuthStore = defineStore('auth', {
           headers: { Authorization: `Bearer ${this.token}` },
         })
       } catch {}
-      this.token = null
-      this.refreshToken = null
-      this.user = null
+      this.clearSession()
     },
   },
-  persist: true,
+  // Cada pestaña mantiene su propia sesión. Esto permite usar Admin, App y
+  // SIGARH simultáneamente sin que el último login sobrescriba a los demás.
+  persist: {
+    storage: persistedState.sessionStorage,
+  },
 })

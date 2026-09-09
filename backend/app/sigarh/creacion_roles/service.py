@@ -24,6 +24,25 @@ class ReglaNegocioError(Exception):
 
 # ─── Carga ───────────────────────────────────────────────────────────────────
 
+async def _validar_ambito(db, tenant_id, departamento_id, servicio_id) -> None:
+    departamento = await db.scalar(select(Departamento).where(
+        Departamento.id == departamento_id,
+        Departamento.tenant_id == tenant_id,
+        Departamento.is_active.is_(True),
+    ))
+    if not departamento:
+        raise ReglaNegocioError("El departamento no existe o está inactivo.")
+    servicio = await db.scalar(select(Servicio).where(
+        Servicio.id == servicio_id,
+        Servicio.tenant_id == tenant_id,
+        Servicio.is_active.is_(True),
+    ))
+    if not servicio:
+        raise ReglaNegocioError("El servicio no existe o está inactivo.")
+    if servicio.departamento_id != departamento_id:
+        raise ReglaNegocioError("El servicio seleccionado no pertenece al departamento.")
+
+
 def _rol_stmt():
     return select(Rol).options(
         selectinload(Rol.empleados)
@@ -169,6 +188,7 @@ async def listar_roles(
 # ─── CRUD cabecera ───────────────────────────────────────────────────────────
 
 async def crear_rol(db: AsyncSession, tenant_id: uuid.UUID, data, usuario: str | None) -> dict:
+    await _validar_ambito(db, tenant_id, data.departamento_id, data.servicio_id)
     # Regla de la variante médica ordinaria: no duplicar dep+serv+mes+anio
     if data.categoria_personal == "medicos" and data.tipo_rol == "ordinario":
         dup = await db.scalar(select(func.count()).select_from(Rol).where(
@@ -203,7 +223,13 @@ async def actualizar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UU
         return None
     if rol.status not in EDITABLE:
         raise ReglaNegocioError("Solo se pueden editar roles en borrador o rechazados.")
-    for f, v in data.model_dump(exclude_unset=True).items():
+    cambios = data.model_dump(exclude_unset=True)
+    departamento_id = cambios.get("departamento_id", rol.departamento_id)
+    servicio_id = cambios.get("servicio_id", rol.servicio_id)
+    if departamento_id is None or servicio_id is None:
+        raise ReglaNegocioError("El departamento y el servicio son obligatorios.")
+    await _validar_ambito(db, tenant_id, departamento_id, servicio_id)
+    for f, v in cambios.items():
         setattr(rol, f, v)
     await db.commit()
     return await serializar_uno(db, tenant_id, await obtener_rol_orm(db, rol_id, tenant_id))

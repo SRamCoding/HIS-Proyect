@@ -1,9 +1,9 @@
   <template>
-    <div class="min-h-screen flex" style="background: var(--mist)">
+    <div class="h-screen overflow-hidden flex" style="background: var(--mist)">
 
       <!-- SIDEBAR -->
       <aside
-        class="flex flex-col shrink-0 transition-all duration-300"
+        class="h-screen flex flex-col shrink-0 transition-all duration-300"
         :style="{ width: collapsed ? '64px' : '240px', background: 'var(--navy)', color: 'white' }"
       >
         <!-- Logo -->
@@ -15,7 +15,7 @@
         </div>
 
         <!-- Nav -->
-        <nav class="flex-1 overflow-y-auto overflow-x-hidden py-3 space-y-0.5 px-2">
+        <nav ref="navRef" class="sigarh-nav flex-1 overflow-y-auto overflow-x-hidden py-3 space-y-0.5 px-2">
 
     <!-- Escritorio -->
     <NuxtLink :to="link('/sigarh')" class="nav-link" :class="activo('/sigarh')">
@@ -191,17 +191,19 @@
 
   <script setup lang="ts">
   const authStore = useAuthStore()
-  const { link, activo, gruposVisibles } = useSigarhNav()
+  const { link, activo, gruposVisibles, rutaMenuActual } = useSigarhNav()
   const route = useRoute()
+  const navRef = ref<HTMLElement | null>(null)
   // Estado subgrupos (Cambio de Turno, Papeletas, etc.)
   const subgruposAbiertos = ref<Record<string, boolean>>({})
 
   function subgrupoAbierto(key: string): boolean {
-    return subgruposAbiertos.value[key] !== false // abierto por defecto
+    return subgruposAbiertos.value[key] === true
   }
 
   function toggleSubgrupo(key: string) {
-    subgruposAbiertos.value[key] = !subgrupoAbierto(key)
+    const abrir = !subgrupoAbierto(key)
+    subgruposAbiertos.value = { [key]: abrir }
   }
   // Saludo dinámico según la hora del día
   const horaActual = new Date().getHours()
@@ -233,12 +235,38 @@
   const gruposAbiertos = ref<Record<string, boolean>>({})
 
   function grupoAbierto(label: string): boolean {
-    return gruposAbiertos.value[label] !== false // abierto por defecto
+    return gruposAbiertos.value[label] === true
   }
 
   function toggleGrupo(label: string) {
-    gruposAbiertos.value[label] = !grupoAbierto(label)
+    const abrir = !grupoAbierto(label)
+    gruposAbiertos.value = { [label]: abrir }
   }
+
+  function sincronizarMenu() {
+    const ruta = rutaMenuActual.value
+    const grupo = gruposVisibles.value.find((g: any) => g.items.some((item: any) =>
+      item.subgrupo
+        ? item.children.some((child: any) => child.path === ruta)
+        : item.path === ruta
+    ))
+    gruposAbiertos.value = grupo ? { [grupo.label]: true } : {}
+
+    const subgrupo = grupo?.items.find((item: any) =>
+      item.subgrupo && item.children.some((child: any) => child.path === ruta)
+    ) as any
+    subgruposAbiertos.value = subgrupo ? { [`${grupo!.label}${subgrupo.label}`]: true } : {}
+
+    nextTick(() => {
+      navRef.value?.querySelector('.nav-active')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
+  }
+
+  watch(
+    [() => route.path, () => gruposVisibles.value.map((g: any) => g.label).join('|')],
+    sincronizarMenu,
+    { immediate: true },
+  )
 
   // Icono por nombre de item
   function iconoItem(label: string): string {
