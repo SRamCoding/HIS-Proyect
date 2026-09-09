@@ -1,9 +1,9 @@
-import uuid
+﻿import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.sigarh.infraestructura_hosp.models import Piso, Sala, Cama
-from app.hospital.gestion_pacientes.models import Patient
+from app.hospital.admision.models import Patient
 from app.hospital.consulta_externa.models import Hospitalizacion, AtencionMedica, Cita
 
 

@@ -1,4 +1,4 @@
-<template>
+?<template>
   <div class="atencion-create-container">
     <div class="atencion-create-grid">
       <!-- Main Content -->
@@ -377,13 +377,13 @@
                 <div class="input-wrapper">
                   <UIcon name="i-heroicons-arrow-right-circle" class="input-icon" />
                   <select v-model="form.destino_atencion" class="input-clinical" :disabled="firmado">
-                    <option value="ALTA">🏠 Alta / Domicilio</option>
-                    <option value="HOSPITALIZACION">🏥 Hospitalización</option>
-                    <option value="REFERENCIA">📋 Referencia</option>
-                    <option value="INTERCONSULTA">🔄 Interconsulta</option>
-                    <option value="LABORATORIO">🧪 Laboratorio</option>
-                    <option value="IMAGEN">🩻 Imágenes</option>
-                    <option value="FARMACIA">💊 Farmacia</option>
+                    <option value="ALTA">Alta / Domicilio</option>
+                    <option value="HOSPITALIZACION">Hospitalización</option>
+                    <option value="REFERENCIA">Referencia</option>
+                    <option value="INTERCONSULTA">Interconsulta</option>
+                    <option value="LABORATORIO">Laboratorio</option>
+                    <option value="IMAGEN">Imágenes</option>
+                    <option value="FARMACIA">Farmacia</option>
                   </select>
                 </div>
               </div>
@@ -414,6 +414,18 @@
             @alta-registrada="handleAltaRegistrada"
             @error="error = $event"
           />
+
+          <AtencionMedicaOrdenLaboratorio
+  v-if="form.destino_atencion === 'LABORATORIO' && existeAtencion"
+  :cita-id="citaId"
+  @generada="exito = 'Orden de laboratorio generada correctamente'"
+/>
+
+
+<AtencionMedicaOrdenImagen v-if="form.destino_atencion === 'IMAGEN' && existeAtencion" :cita-id="citaId" @generada="exito = 'Orden de imagen generada correctamente'" />
+<AtencionMedicaInterconsultaForm v-if="form.destino_atencion === 'INTERCONSULTA' && existeAtencion" :cita-id="citaId" @generada="exito = 'Interconsulta generada correctamente'" />
+
+<AtencionMedicaReferenciaForm v-if="form.destino_atencion === 'REFERENCIA' && existeAtencion" :cita-id="citaId" @generada="exito = 'Referencia generada correctamente'" />
 
           <!-- Actions -->
           <section class="form-card" style="margin-bottom: 0;">
@@ -714,7 +726,7 @@ async function guardarAntecedentes() {
   error.value = ''
   exito.value = ''
   try {
-    await api(`/app/gestion-pacientes/${patientId.value}`, { method: 'PATCH', body: antecedentes })
+    await api(`/app/admision/${patientId.value}`, { method: 'PATCH', body: antecedentes })
     exito.value = 'Antecedentes actualizados correctamente'
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al guardar antecedentes'
@@ -824,7 +836,7 @@ onMounted(async () => {
           especialidad_nombre: cita.especialidad_nombre,
           triaje: null
         }
-        const paciente = await api(`/app/gestion-pacientes/${cita.patient_id}`)
+        const paciente = await api(`/app/admision/${cita.patient_id}`)
         atencion.value.paciente_edad = paciente.age
         antecedentes.antecedente_quirurgico = paciente.antecedente_quirurgico || ''
         antecedentes.antecedente_patologico = paciente.antecedente_patologico || ''

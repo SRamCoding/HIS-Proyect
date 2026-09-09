@@ -8,13 +8,28 @@ from app.tenants.entitlements import require_module_jwt
 from app.sigarh.config_farmacia.schemas import (
     AlmacenCreate, AlmacenUpdate, AlmacenResponse,
     MedicamentoCreate, MedicamentoUpdate, MedicamentoResponse, MedicamentoListItem,
+    ProveedorCreate, CatalogoFarmaciaCreate,
 )
 from app.sigarh.config_farmacia.service import (
     listar_almacenes, obtener_almacen, crear_almacen, actualizar_almacen, eliminar_almacen,
     listar_medicamentos, obtener_medicamento, crear_medicamento, actualizar_medicamento, eliminar_medicamento,
+    listar_proveedores, crear_proveedor, listar_catalogo, crear_catalogo,
 )
 
 router = APIRouter()
+
+@router.get("/proveedores")
+async def proveedores(request:Request,db:AsyncSession=Depends(get_db),tenant=Depends(require_module_jwt("sigarh_config_farmacia")),current_user:dict=Depends(get_current_user)):
+    return await listar_proveedores(db,get_tenant_id(current_user,request))
+@router.post("/proveedores",status_code=201)
+async def nuevo_proveedor(request:Request,data:ProveedorCreate,db:AsyncSession=Depends(get_db),tenant=Depends(require_module_jwt("sigarh_config_farmacia")),current_user:dict=Depends(get_current_user)):
+    return await crear_proveedor(db,get_tenant_id(current_user,request),data)
+@router.get("/catalogos/{categoria}")
+async def catalogos_farmacia(request:Request,categoria:str,db:AsyncSession=Depends(get_db),tenant=Depends(require_module_jwt("sigarh_config_farmacia")),current_user:dict=Depends(get_current_user)):
+    return await listar_catalogo(db,get_tenant_id(current_user,request),categoria)
+@router.post("/catalogos",status_code=201)
+async def nuevo_catalogo(request:Request,data:CatalogoFarmaciaCreate,db:AsyncSession=Depends(get_db),tenant=Depends(require_module_jwt("sigarh_config_farmacia")),current_user:dict=Depends(get_current_user)):
+    return await crear_catalogo(db,get_tenant_id(current_user,request),data)
 
 
 def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:

@@ -132,7 +132,14 @@ class MedicamentoListItem(BaseModel):
     nombre_generico: str | None
     presentacion: str | None
     unidad: str | None
+    concentracion: str | None
+    forma_farmaceutica: str | None
     stock_minimo_alerta: int
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+class ProveedorCreate(BaseModel):
+    ruc: str; razon_social: str; direccion: str | None=None; telefono: str | None=None; email: str | None=None; registro_digemid: str | None=None; is_active: bool=True
+class CatalogoFarmaciaCreate(BaseModel):
+    categoria: str; codigo: str; nombre: str; is_active: bool=True

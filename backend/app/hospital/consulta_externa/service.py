@@ -3,9 +3,11 @@ from datetime import datetime, timedelta, date as date_type
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 
-
-from app.hospital.gestion_pacientes.models import Patient, ClinicalRecord
-from app.hospital.consulta_externa.models import ProgramacionMedica, Cita, Triaje, AtencionMedica, AtencionDiagnostico, Receta, RecetaItem, Hospitalizacion
+from app.sigarh.laboratorio.models import ExamenLaboratorio
+from app.sigarh.imagenologia.models import ExamenImagenologia
+from app.tenants.hospitales.models import Tenant
+from app.hospital.admision.models import Patient, ClinicalRecord
+from app.hospital.consulta_externa.models import ProgramacionMedica, Cita, Triaje, AtencionMedica, AtencionDiagnostico, Receta, RecetaItem, Hospitalizacion, OrdenLaboratorio, OrdenLaboratorioItem, OrdenImagen, OrdenImagenItem, Interconsulta, Referencia
 from app.sigarh.general.models import DiagnosticoCIE10
 
 from app.hospital.consulta_externa.schemas import (
@@ -693,3 +695,300 @@ async def dar_alta_hospitalizacion(db: AsyncSession, tenant_id: uuid.UUID, cita_
     hosp.fecha_alta = datetime.utcnow()
     await db.commit()
     return await get_hospitalizacion(db, tenant_id, cita_id)
+
+async def get_examenes_laboratorio(db: AsyncSession, tenant_id: uuid.UUID, q: str | None = None) -> list[ExamenLaboratorio]:
+    query = select(ExamenLaboratorio).where(ExamenLaboratorio.tenant_id == tenant_id, ExamenLaboratorio.is_active == True)
+    if q:
+        query = query.where(or_(ExamenLaboratorio.nombre.ilike(f"%{q}%"), ExamenLaboratorio.codigo.ilike(f"%{q}%")))
+    result = await db.execute(query.order_by(ExamenLaboratorio.nombre).limit(50))
+    return result.scalars().all()
+
+
+def _generar_numero_orden(secuencia: int) -> str:
+    return f"LAB-{datetime.utcnow().year}-{secuencia:06d}"
+
+
+async def create_orden_laboratorio(db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: "OrdenLaboratorioCreate") -> dict:
+    result = await db.execute(select(AtencionMedica).where(AtencionMedica.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id).with_for_update())
+    atencion = result.scalar_one_or_none()
+    if not atencion:
+        raise ValueError("Debe registrar la atencion medica antes de generar la orden")
+    if atencion.destino_atencion != "LABORATORIO":
+        raise ValueError("El destino de la atencion debe ser LABORATORIO")
+
+    existing = await db.execute(select(OrdenLaboratorio).where(OrdenLaboratorio.atencion_medica_id == atencion.id))
+    if existing.scalar_one_or_none():
+        raise ValueError("Esta atencion ya tiene una orden de laboratorio generada")
+
+    if not data.examen_ids or len(set(data.examen_ids)) != len(data.examen_ids):
+        raise ValueError("Seleccione exámenes sin duplicados")
+    examenes_validos = (await db.scalars(select(ExamenLaboratorio.id).where(
+        ExamenLaboratorio.tenant_id == tenant_id,
+        ExamenLaboratorio.is_active.is_(True),
+        ExamenLaboratorio.id.in_(data.examen_ids),
+    ))).all()
+    if len(examenes_validos) != len(data.examen_ids):
+        raise ValueError("Examen no disponible en este hospital")
+    from app.hospital.laboratorio.service import number
+    orden = OrdenLaboratorio(
+        tenant_id=tenant_id, atencion_medica_id=atencion.id,
+        numero_orden=await number(db, tenant_id, "OL"),
+        indicacion_clinica=data.indicacion_clinica,
+    )
+    db.add(orden)
+    await db.flush()
+
+    for examen_id in data.examen_ids:
+        db.add(OrdenLaboratorioItem(orden_id=orden.id, examen_id=examen_id))
+
+    await db.commit()
+    return await get_orden_laboratorio(db, tenant_id, cita_id)
+
+
+async def get_orden_laboratorio(db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID) -> dict | None:
+    result = await db.execute(
+        select(OrdenLaboratorio, AtencionMedica)
+        .join(AtencionMedica, AtencionMedica.id == OrdenLaboratorio.atencion_medica_id)
+        .where(OrdenLaboratorio.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id)
+    )
+    row = result.first()
+    if not row:
+        return None
+    orden, _ = row
+
+    items_result = await db.execute(
+        select(OrdenLaboratorioItem, ExamenLaboratorio)
+        .join(ExamenLaboratorio, ExamenLaboratorio.id == OrdenLaboratorioItem.examen_id)
+        .where(OrdenLaboratorioItem.orden_id == orden.id)
+    )
+    items = [
+        {"id": i.id, "examen_id": i.examen_id, "codigo": e.codigo, "nombre": e.nombre, "categoria": e.categoria, "tipo_muestra": e.tipo_muestra}
+        for i, e in items_result.all()
+    ]
+    return {
+        "id": orden.id, "atencion_medica_id": orden.atencion_medica_id, "numero_orden": orden.numero_orden,
+        "indicacion_clinica": orden.indicacion_clinica, "estado": orden.estado, "items": items, "created_at": orden.created_at,
+    }
+
+
+
+
+# --- Imagen ---
+async def get_examenes_imagen(db: AsyncSession, tenant_id: uuid.UUID, q: str | None = None) -> list[ExamenImagenologia]:
+    query = select(ExamenImagenologia).where(ExamenImagenologia.tenant_id == tenant_id, ExamenImagenologia.is_active == True)
+    if q:
+        query = query.where(or_(ExamenImagenologia.nombre.ilike(f"%{q}%"), ExamenImagenologia.codigo.ilike(f"%{q}%")))
+    result = await db.execute(query.order_by(ExamenImagenologia.nombre).limit(50))
+    return result.scalars().all()
+
+
+def _generar_numero_orden_imagen(secuencia: int) -> str:
+    return f"IMG-{datetime.utcnow().year}-{secuencia:06d}"
+
+
+async def create_orden_imagen(db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: "OrdenImagenCreate") -> dict:
+    result = await db.execute(select(AtencionMedica).where(AtencionMedica.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id))
+    atencion = result.scalar_one_or_none()
+    if not atencion:
+        raise ValueError("Debe registrar la atencion medica antes de generar la orden")
+    if atencion.destino_atencion != "IMAGEN":
+        raise ValueError("El destino de la atencion debe ser IMAGEN")
+
+    existing = await db.execute(select(OrdenImagen).where(OrdenImagen.atencion_medica_id == atencion.id))
+    if existing.scalar_one_or_none():
+        raise ValueError("Esta atencion ya tiene una orden de imagen generada")
+
+    count = await db.scalar(select(func.count(OrdenImagen.id)))
+    orden = OrdenImagen(
+        tenant_id=tenant_id, atencion_medica_id=atencion.id,
+        numero_orden=_generar_numero_orden_imagen((count or 0) + 1),
+        indicacion_clinica=data.indicacion_clinica,
+    )
+    db.add(orden)
+    await db.flush()
+    for examen_id in data.examen_ids:
+        db.add(OrdenImagenItem(orden_id=orden.id, examen_id=examen_id))
+    await db.commit()
+    return await get_orden_imagen(db, tenant_id, cita_id)
+
+
+async def get_orden_imagen(db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID) -> dict | None:
+    result = await db.execute(
+        select(OrdenImagen, AtencionMedica)
+        .join(AtencionMedica, AtencionMedica.id == OrdenImagen.atencion_medica_id)
+        .where(OrdenImagen.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id)
+    )
+    row = result.first()
+    if not row:
+        return None
+    orden, _ = row
+    items_result = await db.execute(
+        select(OrdenImagenItem, ExamenImagenologia)
+        .join(ExamenImagenologia, ExamenImagenologia.id == OrdenImagenItem.examen_id)
+        .where(OrdenImagenItem.orden_id == orden.id)
+    )
+    items = [
+        {"id": i.id, "examen_id": i.examen_id, "codigo": e.codigo, "nombre": e.nombre, "modalidad": e.modalidad, "parte_cuerpo": e.parte_cuerpo}
+        for i, e in items_result.all()
+    ]
+    return {"id": orden.id, "atencion_medica_id": orden.atencion_medica_id, "numero_orden": orden.numero_orden,
+            "indicacion_clinica": orden.indicacion_clinica, "estado": orden.estado, "items": items, "created_at": orden.created_at}
+
+
+# --- Interconsulta ---
+async def create_interconsulta(db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: "InterconsultaCreate") -> dict:
+    result = await db.execute(select(AtencionMedica).where(AtencionMedica.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id))
+    atencion = result.scalar_one_or_none()
+    if not atencion:
+        raise ValueError("Debe registrar la atencion medica antes de generar la interconsulta")
+    if atencion.destino_atencion != "INTERCONSULTA":
+        raise ValueError("El destino de la atencion debe ser INTERCONSULTA")
+
+    existing = await db.execute(select(Interconsulta).where(Interconsulta.atencion_medica_id == atencion.id))
+    if existing.scalar_one_or_none():
+        raise ValueError("Esta atencion ya tiene una interconsulta generada")
+
+    interc = Interconsulta(tenant_id=tenant_id, atencion_medica_id=atencion.id, **data.model_dump())
+    db.add(interc)
+    await db.commit()
+    return await get_interconsulta(db, tenant_id, cita_id)
+
+
+async def get_interconsulta(db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID) -> dict | None:
+    result = await db.execute(
+        select(Interconsulta, AtencionMedica, Cita, Patient, Especialidad)
+        .join(AtencionMedica, AtencionMedica.id == Interconsulta.atencion_medica_id)
+        .join(Cita, Cita.id == AtencionMedica.cita_id)
+        .join(Patient, Patient.id == Cita.patient_id)
+        .join(Especialidad, Especialidad.id == Interconsulta.especialidad_destino_id)
+        .where(Interconsulta.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id)
+    )
+    row = result.first()
+    if not row:
+        return None
+    return await _interconsulta_row_to_dict(db, row)
+
+
+async def list_interconsultas_pendientes(db: AsyncSession, tenant_id: uuid.UUID, especialidad_id: uuid.UUID | None = None) -> list[dict]:
+    query = (
+        select(Interconsulta, AtencionMedica, Cita, Patient, Especialidad)
+        .join(AtencionMedica, AtencionMedica.id == Interconsulta.atencion_medica_id)
+        .join(Cita, Cita.id == AtencionMedica.cita_id)
+        .join(Patient, Patient.id == Cita.patient_id)
+        .join(Especialidad, Especialidad.id == Interconsulta.especialidad_destino_id)
+        .where(Interconsulta.tenant_id == tenant_id, Interconsulta.estado == "pendiente")
+        .order_by(Interconsulta.urgente.desc(), Interconsulta.created_at)
+    )
+    if especialidad_id:
+        query = query.where(Interconsulta.especialidad_destino_id == especialidad_id)
+    result = await db.execute(query)
+    return [await _interconsulta_row_to_dict(db, row) for row in result.all()]
+
+
+async def _interconsulta_row_to_dict(db: AsyncSession, row) -> dict:
+    interc, atencion, cita, paciente, especialidad = row
+    diagnostico_codigo = diagnostico_desc = None
+    if interc.diagnostico_id:
+        dx_result = await db.execute(select(DiagnosticoCIE10).where(DiagnosticoCIE10.id == interc.diagnostico_id))
+        dx = dx_result.scalar_one_or_none()
+        if dx:
+            diagnostico_codigo, diagnostico_desc = dx.codigo_cie10, dx.descripcion
+    return {
+        "id": interc.id, "atencion_medica_id": interc.atencion_medica_id,
+        "paciente_nombre": paciente.full_name, "paciente_dni": paciente.dni,
+        "especialidad_destino_id": interc.especialidad_destino_id, "especialidad_destino_nombre": especialidad.nombre,
+        "diagnostico_codigo": diagnostico_codigo, "diagnostico_descripcion": diagnostico_desc,
+        "motivo": interc.motivo, "urgente": interc.urgente, "estado": interc.estado,
+        "cita_generada_id": interc.cita_generada_id, "created_at": interc.created_at,
+    }
+
+
+async def programar_interconsulta(db: AsyncSession, tenant_id: uuid.UUID, interconsulta_id: uuid.UUID, programacion_medica_id: uuid.UUID, hora_inicio: str, hora_fin: str) -> dict:
+    result = await db.execute(select(Interconsulta).where(Interconsulta.tenant_id == tenant_id, Interconsulta.id == interconsulta_id))
+    interc = result.scalar_one_or_none()
+    if not interc:
+        raise ValueError("Interconsulta no encontrada")
+    if interc.estado != "pendiente":
+        raise ValueError("Esta interconsulta ya fue programada")
+
+    atencion_result = await db.execute(select(AtencionMedica).where(AtencionMedica.id == interc.atencion_medica_id))
+    atencion = atencion_result.scalar_one_or_none()
+    cita_result = await db.execute(select(Cita).where(Cita.id == atencion.cita_id))
+    cita_original = cita_result.scalar_one_or_none()
+
+    nueva_cita = await create_cita(db, tenant_id, CitaCreate(
+        programacion_medica_id=programacion_medica_id, patient_id=cita_original.patient_id,
+        hora_inicio=hora_inicio, hora_fin=hora_fin, tipo_consulta="Interconsulta", observacion=interc.motivo,
+    ))
+
+    interc.estado = "programada"
+    interc.cita_generada_id = nueva_cita["id"]
+    await db.commit()
+    return await get_interconsulta(db, tenant_id, cita_original.id) if False else nueva_cita
+
+
+
+def _generar_numero_referencia(secuencia: int) -> str:
+    return f"REF-{datetime.utcnow().year}-{secuencia:06d}"
+
+
+async def get_tenants_disponibles(db: AsyncSession, tenant_id_actual: uuid.UUID) -> list[Tenant]:
+    result = await db.execute(select(Tenant).where(Tenant.id != tenant_id_actual, Tenant.is_active == True).order_by(Tenant.name))
+    return result.scalars().all()
+
+
+async def create_referencia(db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: "ReferenciaCreate") -> dict:
+    result = await db.execute(select(AtencionMedica).where(AtencionMedica.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id))
+    atencion = result.scalar_one_or_none()
+    if not atencion:
+        raise ValueError("Debe registrar la atencion medica antes de generar la referencia")
+    if atencion.destino_atencion != "REFERENCIA":
+        raise ValueError("El destino de la atencion debe ser REFERENCIA")
+
+    existing = await db.execute(select(Referencia).where(Referencia.atencion_medica_id == atencion.id))
+    if existing.scalar_one_or_none():
+        raise ValueError("Esta atencion ya tiene una referencia generada")
+
+    count = await db.scalar(select(func.count(Referencia.id)))
+    ref = Referencia(
+        tenant_id=tenant_id, atencion_medica_id=atencion.id,
+        numero_referencia=_generar_numero_referencia((count or 0) + 1),
+        **data.model_dump(),
+    )
+    db.add(ref)
+    await db.commit()
+    return await get_referencia(db, tenant_id, cita_id)
+
+
+async def get_referencia(db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID) -> dict | None:
+    result = await db.execute(
+        select(Referencia, AtencionMedica)
+        .join(AtencionMedica, AtencionMedica.id == Referencia.atencion_medica_id)
+        .where(Referencia.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id)
+    )
+    row = result.first()
+    if not row:
+        return None
+    ref, _ = row
+
+    tenant_destino_nombre = None
+    if ref.tenant_destino_id:
+        t_result = await db.execute(select(Tenant).where(Tenant.id == ref.tenant_destino_id))
+        t = t_result.scalar_one_or_none()
+        tenant_destino_nombre = t.name if t else None
+
+    diagnostico_codigo = diagnostico_desc = None
+    if ref.diagnostico_id:
+        dx_result = await db.execute(select(DiagnosticoCIE10).where(DiagnosticoCIE10.id == ref.diagnostico_id))
+        dx = dx_result.scalar_one_or_none()
+        if dx:
+            diagnostico_codigo, diagnostico_desc = dx.codigo_cie10, dx.descripcion
+
+    return {
+        "id": ref.id, "atencion_medica_id": ref.atencion_medica_id, "numero_referencia": ref.numero_referencia,
+        "codigo_renipress_destino": ref.codigo_renipress_destino, "nombre_ipress_destino": ref.nombre_ipress_destino,
+        "tenant_destino_id": ref.tenant_destino_id, "tenant_destino_nombre": tenant_destino_nombre,
+        "especialidad_destino": ref.especialidad_destino,
+        "diagnostico_codigo": diagnostico_codigo, "diagnostico_descripcion": diagnostico_desc,
+        "motivo": ref.motivo, "estado": ref.estado, "created_at": ref.created_at,
+    }
