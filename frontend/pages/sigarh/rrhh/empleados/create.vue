@@ -25,12 +25,9 @@ const bancosPeru = [
   'Scotiabank Perú', 'BanBif', 'Banco Pichincha', 'MiBanco', 'Banco GNB Perú',
   'BCRP', 'Citibank Perú', 'Banco Falabella', 'Banco Ripley', 'Banco Azteca', 'Compartamos Financiera',
 ]
-const ubigeoDepartamentos = [
-  '01 Amazonas', '02 Áncash', '03 Apurímac', '04 Arequipa', '05 Ayacucho', '06 Cajamarca',
-  '07 Callao', '08 Cusco', '09 Huancavelica', '10 Huánuco', '11 Ica', '12 Junín',
-  '13 La Libertad', '14 Lambayeque', '15 Lima', '16 Loreto', '17 Madre de Dios', '18 Moquegua',
-  '19 Pasco', '20 Piura', '21 Puno', '22 San Martín', '23 Tacna', '24 Tumbes', '25 Ucayali',
-].map(s => ({ codigo: s.slice(0, 2), nombre: s.slice(3) }))
+const ubigeoDeps = ref<{ id: string; nombre: string }[]>([])
+const ubigeoProvs = ref<{ id: string; nombre: string }[]>([])
+const ubigeoDists = ref<{ id: string; nombre: string }[]>([])
 
 const tiposTrabajador = ref<any[]>([])
 const nivelesRemunerativos = ref<any[]>([])
@@ -129,24 +126,57 @@ watch(() => form.dni, (v) => {
   }
 })
 
-// Consulta a RENIEC para autocompletar nombres. Solo disponible cuando NO es
-// registro manual (el casillero de arriba). Es un stub hasta integrar el servicio real.
+// Consulta el DNI en el servicio externo (a través del backend) para autocompletar
+// nombres. Solo disponible cuando NO es registro manual (el casillero de arriba).
 const consultarDni = async () => {
   if (registroManual.value || form.dni.length !== 8) return
   consultandoDni.value = true; dniMsg.value = ''; dniError.value = false
   try {
     await checkDni()
     if (dniExiste.value) return  // el error ya se muestra bajo el campo
-    await new Promise(r => setTimeout(r, 700))
-    dniMsg.value = 'Consulta realizada. Verifica los nombres o corrígelos.'
+    const d = await api<any>(`/sigarh/rrhh/dni-lookup/${form.dni}`)
+    form.nombres = d.nombres || form.nombres
+    form.apellido_paterno = d.apellido_paterno || form.apellido_paterno
+    form.apellido_materno = d.apellido_materno || form.apellido_materno
+    dniMsg.value = 'Datos traídos del servicio de identidad. Verifícalos.'
     dniCargado.value = true
-  } catch {
-    dniMsg.value = 'No se pudo consultar el DNI. Activa el registro manual para ingresarlo a mano.'
+  } catch (e: any) {
+    const code = e?.status ?? e?.statusCode ?? e?.response?.status ?? e?.data?.status
+    if (code === 404) {
+      dniMsg.value = 'El DNI no figura en el servicio. Activa "Registro manual" e ingresa los datos a mano.'
+    } else {
+      dniMsg.value = 'El servicio de identidad no respondió. Puedes continuar con registro manual.'
+    }
     dniError.value = true
   } finally {
     consultandoDni.value = false
   }
 }
+
+// ── Ubigeo en cascada (catálogo local compartido, vía backend) ──
+const loadDepartamentos = async () => {
+  try { ubigeoDeps.value = await api('/sigarh/rrhh/ubigeo/departamentos') } catch { ubigeoDeps.value = [] }
+}
+const loadProvincias = async (depId: string) => {
+  if (!depId) { ubigeoProvs.value = []; return }
+  try { ubigeoProvs.value = await api(`/sigarh/rrhh/ubigeo/provincias/${depId}`) } catch { ubigeoProvs.value = [] }
+}
+const loadDistritos = async (provId: string) => {
+  if (!provId) { ubigeoDists.value = []; return }
+  try { ubigeoDists.value = await api(`/sigarh/rrhh/ubigeo/distritos/${provId}`) } catch { ubigeoDists.value = [] }
+}
+watch(() => form.departamento_ubigeo, (dep) => {
+  form.provincia_ubigeo = ''
+  form.distrito_ubigeo = ''
+  ubigeoProvs.value = []
+  ubigeoDists.value = []
+  loadProvincias(dep)
+})
+watch(() => form.provincia_ubigeo, (prov) => {
+  form.distrito_ubigeo = ''
+  ubigeoDists.value = []
+  loadDistritos(prov)
+})
 
 const validateStep = (step: number): boolean => {
   if (step === 0) {
@@ -242,6 +272,7 @@ onMounted(async () => {
     tiposTrabajador.value = tt; nivelesRemunerativos.value = nr; gruposOcupacionales.value = go
     departamentos.value = dep; servicios.value = ser; especialidades.value = esp
   } catch (e: any) { error.value = apiErr(e, 'Error al cargar catálogos') }
+  loadDepartamentos()
 })
 </script>
 
@@ -543,16 +574,29 @@ onMounted(async () => {
         <div class="form-group">
           <label class="form-label">Departamento</label>
           <div class="input-wrapper"><UIcon name="i-heroicons-map-pin" class="input-icon" />
-            <select v-model="form.departamento_ubigeo" class="input-clinical"><option value="">Seleccione</option><option v-for="d in ubigeoDepartamentos" :key="d.codigo" :value="d.codigo">{{ d.nombre }}</option></select>
+            <select v-model="form.departamento_ubigeo" class="input-clinical">
+              <option value="">Seleccione</option>
+              <option v-for="d in ubigeoDeps" :key="d.id" :value="d.id">{{ d.nombre }}</option>
+            </select>
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">Provincia</label>
-          <div class="input-wrapper"><UIcon name="i-heroicons-map-pin" class="input-icon" /><input v-model="form.provincia_ubigeo" class="input-clinical" placeholder="Provincia" /></div>
+          <div class="input-wrapper"><UIcon name="i-heroicons-map-pin" class="input-icon" />
+            <select v-model="form.provincia_ubigeo" class="input-clinical" :disabled="!form.departamento_ubigeo">
+              <option value="">{{ form.departamento_ubigeo ? 'Seleccione' : 'Elige un departamento' }}</option>
+              <option v-for="p in ubigeoProvs" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+            </select>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Distrito</label>
-          <div class="input-wrapper"><UIcon name="i-heroicons-map-pin" class="input-icon" /><input v-model="form.distrito_ubigeo" class="input-clinical" placeholder="Distrito" /></div>
+          <div class="input-wrapper"><UIcon name="i-heroicons-map-pin" class="input-icon" />
+            <select v-model="form.distrito_ubigeo" class="input-clinical" :disabled="!form.provincia_ubigeo">
+              <option value="">{{ form.provincia_ubigeo ? 'Seleccione' : 'Elige una provincia' }}</option>
+              <option v-for="d in ubigeoDists" :key="d.id" :value="d.id">{{ d.nombre }}</option>
+            </select>
+          </div>
         </div>
         <div class="form-group full-width">
           <label class="form-label">Dirección</label>

@@ -1,6 +1,4 @@
 import uuid
-import httpx
-from app.core.config import settings
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
@@ -9,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from app.hospital.admision.models import Patient, ClinicalRecord, ClinicalRecordMovement
 from app.hospital.admision.schemas import PatientCreate, PatientUpdate
 from app.shared.ubigeo.models import UbigeoDepartamento, UbigeoProvincia, UbigeoDistrito
+from app.shared.dni import lookup_dni_externo  # noqa: F401  (re-exportado: usado por el router)
 
 
 def generate_record_number(sequence: int) -> str:
@@ -78,26 +77,6 @@ async def get_patient_by_dni(db: AsyncSession, tenant_id: uuid.UUID, dni: str) -
     )
     return result.scalar_one_or_none()
 
-
-# --- Consulta DNI externa (servicio propio, ver dni_app.py) ---
-async def lookup_dni_externo(dni: str) -> dict | None:
-    """Devuelve {'nombres', 'apellidoPaterno', 'apellidoMaterno'} o None si no se encontro
-    o el servicio no esta disponible. Nunca lanza excepcion — el registro manual
-    debe seguir funcionando si este servicio falla o esta apagado."""
-    if not settings.DNI_API_URL or not settings.DNI_API_KEY:
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                settings.DNI_API_URL,
-                json={"dni": dni},
-                headers={"X-API-Key": settings.DNI_API_KEY},
-            )
-        if resp.status_code != 200:
-            return None
-        return resp.json()
-    except (httpx.TimeoutException, httpx.ConnectError):
-        return None
 
 async def get_patient_by_id(db: AsyncSession, tenant_id: uuid.UUID, patient_id: uuid.UUID) -> Patient | None:
     result = await db.execute(

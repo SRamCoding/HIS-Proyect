@@ -16,12 +16,22 @@ const bancosPeru = [
   'Scotiabank Perú', 'BanBif', 'Banco Pichincha', 'MiBanco', 'Banco GNB Perú',
   'BCRP', 'Citibank Perú', 'Banco Falabella', 'Banco Ripley', 'Banco Azteca', 'Compartamos Financiera',
 ]
-const ubigeoDepartamentos = [
-  '01 Amazonas', '02 Áncash', '03 Apurímac', '04 Arequipa', '05 Ayacucho', '06 Cajamarca',
-  '07 Callao', '08 Cusco', '09 Huancavelica', '10 Huánuco', '11 Ica', '12 Junín',
-  '13 La Libertad', '14 Lambayeque', '15 Lima', '16 Loreto', '17 Madre de Dios', '18 Moquegua',
-  '19 Pasco', '20 Piura', '21 Puno', '22 San Martín', '23 Tacna', '24 Tumbes', '25 Ucayali',
-].map(s => ({ codigo: s.slice(0, 2), nombre: s.slice(3) }))
+const ubigeoDeps = ref<{ id: string; nombre: string }[]>([])
+const ubigeoProvs = ref<{ id: string; nombre: string }[]>([])
+const ubigeoDists = ref<{ id: string; nombre: string }[]>([])
+let ubigeoReady = false  // evita que los watchers limpien los valores durante la carga inicial
+
+const loadDepartamentos = async () => {
+  try { ubigeoDeps.value = await api('/sigarh/rrhh/ubigeo/departamentos') } catch { ubigeoDeps.value = [] }
+}
+const loadProvincias = async (depId: string) => {
+  if (!depId) { ubigeoProvs.value = []; return }
+  try { ubigeoProvs.value = await api(`/sigarh/rrhh/ubigeo/provincias/${depId}`) } catch { ubigeoProvs.value = [] }
+}
+const loadDistritos = async (provId: string) => {
+  if (!provId) { ubigeoDists.value = []; return }
+  try { ubigeoDists.value = await api(`/sigarh/rrhh/ubigeo/distritos/${provId}`) } catch { ubigeoDists.value = [] }
+}
 
 const tiposTrabajador = ref<any[]>([])
 const nivelesRemunerativos = ref<any[]>([])
@@ -45,6 +55,21 @@ const form = reactive({
   especialidades: [] as any[],
   banco: '', ruc: '', numero_cuenta: '', numero_cci: '', tipo_cuenta: '',
   departamento_ubigeo: '', provincia_ubigeo: '', distrito_ubigeo: '', direccion: '',
+})
+
+watch(() => form.departamento_ubigeo, (dep) => {
+  if (!ubigeoReady) return
+  form.provincia_ubigeo = ''
+  form.distrito_ubigeo = ''
+  ubigeoProvs.value = []
+  ubigeoDists.value = []
+  loadProvincias(dep)
+})
+watch(() => form.provincia_ubigeo, (prov) => {
+  if (!ubigeoReady) return
+  form.distrito_ubigeo = ''
+  ubigeoDists.value = []
+  loadDistritos(prov)
 })
 
 const fullName = computed(() => [form.nombres, form.apellido_paterno, form.apellido_materno].filter(Boolean).join(' '))
@@ -186,6 +211,12 @@ onMounted(async () => {
     }))
     tiposTrabajador.value = tt; nivelesRemunerativos.value = nr; gruposOcupacionales.value = go
     departamentos.value = dep; servicios.value = ser; especialidades.value = esp
+
+    // Ubigeo: cargar catálogos y precargar las cascadas según el ubigeo guardado
+    await loadDepartamentos()
+    if (form.departamento_ubigeo) await loadProvincias(form.departamento_ubigeo)
+    if (form.provincia_ubigeo) await loadDistritos(form.provincia_ubigeo)
+    ubigeoReady = true
   } catch (e: any) {
     error.value = 'No se pudo cargar el empleado'
   } finally { loading.value = false }
@@ -420,16 +451,29 @@ onMounted(async () => {
           <div class="form-group">
             <label class="form-label">Departamento</label>
             <div class="input-wrapper"><UIcon name="i-heroicons-map-pin" class="input-icon" />
-              <select v-model="form.departamento_ubigeo" class="input-clinical"><option value="">Seleccione</option><option v-for="d in ubigeoDepartamentos" :key="d.codigo" :value="d.codigo">{{ d.nombre }}</option></select>
+              <select v-model="form.departamento_ubigeo" class="input-clinical">
+                <option value="">Seleccione</option>
+                <option v-for="d in ubigeoDeps" :key="d.id" :value="d.id">{{ d.nombre }}</option>
+              </select>
             </div>
           </div>
           <div class="form-group">
             <label class="form-label">Provincia</label>
-            <div class="input-wrapper"><UIcon name="i-heroicons-map-pin" class="input-icon" /><input v-model="form.provincia_ubigeo" class="input-clinical" /></div>
+            <div class="input-wrapper"><UIcon name="i-heroicons-map-pin" class="input-icon" />
+              <select v-model="form.provincia_ubigeo" class="input-clinical" :disabled="!form.departamento_ubigeo">
+                <option value="">{{ form.departamento_ubigeo ? 'Seleccione' : 'Elige un departamento' }}</option>
+                <option v-for="p in ubigeoProvs" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+              </select>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Distrito</label>
-            <div class="input-wrapper"><UIcon name="i-heroicons-map-pin" class="input-icon" /><input v-model="form.distrito_ubigeo" class="input-clinical" /></div>
+            <div class="input-wrapper"><UIcon name="i-heroicons-map-pin" class="input-icon" />
+              <select v-model="form.distrito_ubigeo" class="input-clinical" :disabled="!form.provincia_ubigeo">
+                <option value="">{{ form.provincia_ubigeo ? 'Seleccione' : 'Elige una provincia' }}</option>
+                <option v-for="d in ubigeoDists" :key="d.id" :value="d.id">{{ d.nombre }}</option>
+              </select>
+            </div>
           </div>
           <div class="form-group full-width">
             <label class="form-label">Dirección</label>

@@ -1,1102 +1,153 @@
-<template>
-  <div class="justificacion-create-container">
-    <div class="justificacion-create-grid">
-      <!-- Main Content -->
-      <div class="justificacion-create-main">
-        <!-- Breadcrumb + Title -->
-        <div class="mb-8">
-          <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
-            <NuxtLink :to="`/sigarh/movimientos/vacaciones?tenant=${tenant}`" class="hover:underline flex items-center gap-1" style="color: var(--ink-soft)">
-              <UIcon name="i-heroicons-calendar-days" class="w-3.5 h-3.5" />
-              Justificaciones y Vacaciones
-            </NuxtLink>
-            <UIcon name="i-heroicons-chevron-right" class="w-3 h-3" />
-            <span style="color: var(--ink)">Nueva Solicitud</span>
-          </div>
-          <div class="flex items-center gap-4">
-            <div class="header-icon" style="background: var(--teal-soft)">
-              <UIcon name="i-heroicons-plus-circle" class="w-6 h-6" style="color: var(--teal)" />
-            </div>
-            <div>
-              <h1 class="page-title">Nueva Solicitud de Vacaciones</h1>
-              <p class="page-subtitle">Registra una solicitud de vacaciones, justificación o permiso del personal</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Form Card -->
-        <section class="form-card">
-          <div class="card-header">
-            <div class="card-header-icon" style="background: var(--teal-soft)">
-              <UIcon name="i-heroicons-document-text" class="w-4 h-4" style="color: var(--teal)" />
-            </div>
-            <div>
-              <h3 class="card-title">Registro de Solicitud</h3>
-              <p class="card-subtitle">Ingresa los datos de la solicitud</p>
-            </div>
-          </div>
-
-          <div class="form-grid">
-            <div class="form-group full-width">
-              <label class="form-label">Empleado <span class="required">*</span></label>
-              <div class="input-wrapper">
-                <UIcon name="i-heroicons-user" class="input-icon" />
-                <select 
-                  v-model="form.empleado_id" 
-                  class="input-clinical" 
-                  :class="{ 'input-error': errors.empleado_id }" 
-                  @change="errors.empleado_id = ''"
-                >
-                  <option value="">Seleccione un empleado</option>
-                  <option v-for="e in empleados" :key="e.id" :value="e.id">{{ e.nombre_completo }}</option>
-                </select>
-              </div>
-              <span v-if="errors.empleado_id" class="error-message">{{ errors.empleado_id }}</span>
-              <p class="field-hint">Selecciona el empleado que solicita la justificación</p>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Tipo de Solicitud <span class="required">*</span></label>
-              <div class="input-wrapper">
-                <UIcon name="i-heroicons-list-bullet" class="input-icon" />
-                <select v-model="form.tipo" class="input-clinical">
-                  <option value="VACACIONES">Vacaciones</option>
-                  <option value="JUSTIFICACION">Justificación</option>
-                  <option value="PERMISO">Permiso</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Motivo</label>
-              <div class="input-wrapper">
-                <UIcon name="i-heroicons-flag" class="input-icon" />
-                <select v-model="form.motivo_id" class="input-clinical">
-                  <option value="">Sin motivo específico</option>
-                  <option v-for="m in motivos" :key="m.id" :value="m.id">{{ m.nombre }}</option>
-                </select>
-              </div>
-              <p class="field-hint">Motivo de la solicitud (opcional)</p>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Estado</label>
-              <div class="input-wrapper">
-                <UIcon name="i-heroicons-flag" class="input-icon" />
-                <select v-model="form.estado" class="input-clinical">
-                  <option value="pendiente">Pendiente</option>
-                  <option value="aprobado">Aprobado</option>
-                  <option value="rechazado">Rechazado</option>
-                </select>
-              </div>
-              <p class="field-hint">Estado inicial de la solicitud</p>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Fecha de Inicio <span class="required">*</span></label>
-              <div class="input-wrapper">
-                <UIcon name="i-heroicons-calendar-days" class="input-icon" />
-                <input 
-                  v-model="form.fecha_inicio" 
-                  type="date" 
-                  class="input-clinical"
-                  :class="{ 'input-error': errors.fecha_inicio }"
-                  @change="errors.fecha_inicio = ''"
-                />
-              </div>
-              <span v-if="errors.fecha_inicio" class="error-message">{{ errors.fecha_inicio }}</span>
-              <p class="field-hint">Fecha de inicio de la solicitud</p>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Fecha de Fin <span class="required">*</span></label>
-              <div class="input-wrapper">
-                <UIcon name="i-heroicons-calendar-days" class="input-icon" />
-                <input 
-                  v-model="form.fecha_fin" 
-                  type="date" 
-                  class="input-clinical"
-                  :class="{ 'input-error': errors.fecha_fin }"
-                  @change="errors.fecha_fin = ''"
-                />
-              </div>
-              <span v-if="errors.fecha_fin" class="error-message">{{ errors.fecha_fin }}</span>
-              <p class="field-hint">Fecha de fin de la solicitud</p>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Días Solicitados</label>
-              <div class="input-wrapper">
-                <UIcon name="i-heroicons-clock" class="input-icon" />
-                <input 
-                  v-model="form.dias_solicitados" 
-                  type="number"
-                  readonly
-                  class="input-clinical input-readonly" 
-                />
-              </div>
-              <p class="field-hint">Se calcula automáticamente al seleccionar las fechas</p>
-            </div>
-
-            <div class="form-group full-width">
-              <label class="form-label">Descripción</label>
-              <div class="input-wrapper">
-                <UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" />
-                <textarea 
-                  v-model="form.descripcion" 
-                  class="input-clinical" 
-                  rows="3" 
-                  placeholder="Descripción detallada de la solicitud..."
-                />
-              </div>
-            </div>
-
-            <!-- Preview Section -->
-            <div v-if="form.empleado_id || form.fecha_inicio" class="form-group full-width preview-section">
-              <h4 class="preview-title">Vista Previa</h4>
-              <div class="preview-card">
-                <div class="preview-icon" :style="{ background: getEstadoColor(form.estado) + '22' }">
-                  <UIcon :name="getEstadoIcon(form.estado)" class="w-5 h-5" :style="{ color: getEstadoColor(form.estado) }" />
-                </div>
-                <div class="preview-info">
-                  <span class="preview-name">{{ empleadoSeleccionado?.nombre_completo || 'Empleado no seleccionado' }}</span>
-                  <span class="preview-dates">
-                    {{ form.fecha_inicio ? formatDate(form.fecha_inicio) : '—' }}
-                    {{ form.fecha_fin ? `→ ${formatDate(form.fecha_fin)}` : '' }}
-                    <span v-if="form.fecha_inicio && form.fecha_fin" class="preview-days">
-                      ({{ calcularDias(form.fecha_inicio, form.fecha_fin) }})
-                    </span>
-                  </span>
-                </div>
-                <span class="preview-status" :class="getStatusClass(form.estado)">
-                  <UIcon :name="getEstadoIcon(form.estado)" class="w-3.5 h-3.5" />
-                  {{ formatEstado(form.estado) }}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Error Message -->
-          <div v-if="error" class="error-banner">
-            <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
-            {{ error }}
-          </div>
-
-          <!-- Actions -->
-          <div class="form-actions">
-            <div class="action-group">
-              <button 
-                class="btn-primary" 
-                :disabled="saving" 
-                @click="handleCreate"
-              >
-                <UIcon v-if="saving" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
-                <UIcon v-else name="i-heroicons-check" class="w-4 h-4" />
-                {{ saving ? 'Creando...' : 'Guardar Solicitud' }}
-              </button>
-              <NuxtLink 
-                :to="`/sigarh/movimientos/vacaciones?tenant=${tenant}`"
-                class="btn-cancel"
-              >
-                Cancelar
-              </NuxtLink>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <!-- Sidebar Widgets -->
-      <div class="justificacion-create-sidebar">
-        <!-- Info Widget -->
-        <div class="widget widget-info">
-          <div class="widget-header">
-            <UIcon name="i-heroicons-information-circle" class="widget-icon" style="color: var(--teal)" />
-            <h4 class="widget-title">Información</h4>
-          </div>
-          <div class="widget-content">
-            <ul class="info-list">
-              <li class="info-item">
-                <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
-                <span>Las solicitudes registran ausencias justificadas</span>
-              </li>
-              <li class="info-item">
-                <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
-                <span>Pueden ser aprobadas o rechazadas posteriormente</span>
-              </li>
-              <li class="info-item">
-                <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
-                <span>Los motivos ayudan a clasificar las solicitudes</span>
-              </li>
-              <li class="info-item">
-                <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
-                <span>La descripción debe ser clara y detallada</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- Summary Widget -->
-        <div class="widget widget-summary">
-          <div class="widget-header">
-            <UIcon name="i-heroicons-document-text" class="widget-icon" style="color: var(--teal)" />
-            <h4 class="widget-title">Resumen</h4>
-          </div>
-          <div class="widget-content">
-            <div class="summary-item">
-              <span class="summary-label">Empleado</span>
-              <span class="summary-value">{{ empleadoSeleccionado?.nombre_completo || '—' }}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Tipo</span>
-              <span class="summary-value">{{ form.tipo || '—' }}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Motivo</span>
-              <span class="summary-value">{{ motivoSeleccionado?.nombre || 'Sin motivo' }}</span>
-            </div>
-            <div class="summary-divider"></div>
-            <div class="summary-item">
-              <span class="summary-label">Inicio</span>
-              <span class="summary-value font-mono-data">{{ form.fecha_inicio ? formatDate(form.fecha_inicio) : '—' }}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Fin</span>
-              <span class="summary-value font-mono-data">{{ form.fecha_fin ? formatDate(form.fecha_fin) : '—' }}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Días</span>
-              <span class="summary-value">{{ calcularDias(form.fecha_inicio, form.fecha_fin) }}</span>
-            </div>
-            <div class="summary-divider"></div>
-            <div class="summary-item">
-              <span class="summary-label">Estado</span>
-              <span class="summary-value">
-                <span class="status-badge-mini" :class="getStatusClass(form.estado)">
-                  <UIcon :name="getEstadoIcon(form.estado)" class="w-3 h-3" />
-                  {{ formatEstado(form.estado) }}
-                </span>
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tip Widget -->
-        <div class="widget widget-tip">
-          <div class="widget-content">
-            <div class="tip-content">
-              <UIcon name="i-heroicons-light-bulb" class="tip-icon" style="color: var(--amber)" />
-              <div>
-                <p class="tip-title">Consejo</p>
-                <p class="tip-text">
-                  Registra todas las solicitudes de manera oportuna para 
-                  mantener un control preciso de las ausencias del personal.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Quick Stats Widget -->
-        <div class="widget widget-stats">
-          <div class="widget-header">
-            <UIcon name="i-heroicons-chart-bar" class="widget-icon" style="color: var(--purple)" />
-            <h4 class="widget-title">Estado del Formulario</h4>
-          </div>
-          <div class="widget-content">
-            <div class="stat-item">
-              <span class="stat-label">Campos completos</span>
-              <span class="stat-number">{{ filledFields }}/6</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Estado</span>
-              <span class="stat-number" :style="{ color: getEstadoColor(form.estado) }">
-                {{ formatEstado(form.estado) }}
-              </span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Días</span>
-              <span class="stat-number">{{ calcularDias(form.fecha_inicio, form.fecha_fin) }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
-definePageMeta({ layout: 'sigarh', title: 'Nueva Solicitud de Vacaciones' })
-
-const { $api } = useNuxtApp()
+definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
+const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
-
-const tenant = route.query.tenant as string
+const tenantId = computed(() => route.query.tenant as string || '')
 const saving = ref(false)
 const error = ref('')
-const empleados = ref<any[]>([])
 const motivos = ref<any[]>([])
 
-const errors = reactive({
-  empleado_id: '',
-  fecha_inicio: '',
-  fecha_fin: ''
-})
+const dniBusqueda = ref('')
+const buscando = ref(false)
+const empleado = ref<any>(null)
+const empError = ref('')
 
 const form = reactive({
-  empleado_id: '',
-  tipo: 'VACACIONES',
-  motivo_id: '',
-  fecha_inicio: '',
-  fecha_fin: '',
-  dias_solicitados: 0,
-  descripcion: '',
-  estado: 'pendiente',
+  empleado_id: '', tipo: 'justificacion', motivo_id: '', numero_documento: '',
+  fecha_tramite: new Date().toISOString().split('T')[0],
+  fecha_inicio: '', fecha_fin: '', documento_url: '', descripcion: '',
 })
 
-const empleadoSeleccionado = computed(() => 
-  empleados.value.find(e => e.id === form.empleado_id)
-)
-
-const motivoSeleccionado = computed(() => 
-  motivos.value.find(m => m.id === form.motivo_id)
-)
-
-const filledFields = computed(() => {
-  let count = 0
-  if (form.empleado_id) count++
-  if (form.fecha_inicio) count++
-  if (form.fecha_fin) count++
-  if (form.motivo_id) count++
-  if (form.descripcion) count++
-  if (form.tipo) count++
-  return count
+const dias = computed(() => {
+  if (!form.fecha_inicio || !form.fecha_fin) return 0
+  const d = Math.ceil((new Date(form.fecha_fin).getTime() - new Date(form.fecha_inicio).getTime()) / 86400000) + 1
+  return d > 0 ? d : 0
 })
 
-// Calcular días automáticamente
-watch([() => form.fecha_inicio, () => form.fecha_fin], () => {
-  if (form.fecha_inicio && form.fecha_fin) {
-    const start = new Date(form.fecha_inicio)
-    const end = new Date(form.fecha_fin)
-    const diff = end.getTime() - start.getTime()
-    form.dias_solicitados = Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)) + 1)
-  } else {
-    form.dias_solicitados = 0
-  }
-})
-
-const formatDate = (date: string) => {
-  if (!date) return '—'
-  const d = new Date(date)
-  return d.toLocaleDateString('es-PE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  })
-}
-
-const formatEstado = (estado: string) => {
-  const map: Record<string, string> = {
-    pendiente: 'Pendiente',
-    aprobado: 'Aprobado',
-    rechazado: 'Rechazado'
-  }
-  return map[estado] || estado
-}
-
-const getEstadoIcon = (estado: string) => {
-  const map: Record<string, string> = {
-    pendiente: 'i-heroicons-clock',
-    aprobado: 'i-heroicons-check-circle',
-    rechazado: 'i-heroicons-x-circle'
-  }
-  return map[estado] || 'i-heroicons-circle'
-}
-
-const getEstadoColor = (estado: string) => {
-  const map: Record<string, string> = {
-    pendiente: 'var(--amber)',
-    aprobado: 'var(--green)',
-    rechazado: 'var(--alert)'
-  }
-  return map[estado] || 'var(--ink-soft)'
-}
-
-const getStatusClass = (estado: string) => {
-  const map: Record<string, string> = {
-    pendiente: 'status-pendiente',
-    aprobado: 'status-aprobado',
-    rechazado: 'status-rechazado'
-  }
-  return map[estado] || 'status-default'
-}
-
-const calcularDias = (fechaInicio: string, fechaFin: string) => {
-  if (!fechaInicio || !fechaFin) return '—'
-  const inicio = new Date(fechaInicio)
-  const fin = new Date(fechaFin)
-  const diff = Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)) + 1
-  return `${diff} día${diff > 1 ? 's' : ''}`
-}
-
-const validateForm = (): boolean => {
-  let valid = true
-  if (!form.empleado_id) {
-    errors.empleado_id = 'El empleado es requerido'
-    valid = false
-  }
-  if (!form.fecha_inicio) {
-    errors.fecha_inicio = 'La fecha de inicio es requerida'
-    valid = false
-  }
-  if (!form.fecha_fin) {
-    errors.fecha_fin = 'La fecha de fin es requerida'
-    valid = false
-  }
-  if (form.fecha_inicio && form.fecha_fin && new Date(form.fecha_inicio) > new Date(form.fecha_fin)) {
-    errors.fecha_fin = 'La fecha de fin debe ser posterior a la fecha de inicio'
-    valid = false
-  }
-  return valid
+const buscarEmpleado = async () => {
+  empError.value = ''; empleado.value = null; form.empleado_id = ''
+  if (dniBusqueda.value.length !== 8) return
+  buscando.value = true
+  try {
+    const e = await api<any>(`/sigarh/movimientos/empleados/buscar-dni/${dniBusqueda.value}`)
+    if (!e.is_active) { empError.value = 'El empleado está inactivo'; return }
+    empleado.value = e; form.empleado_id = e.id
+  } catch (e: any) { empError.value = apiErr(e, 'No se encontró el empleado') }
+  finally { buscando.value = false }
 }
 
 const handleCreate = async () => {
-  if (!validateForm()) return
-
-  saving.value = true
-  error.value = ''
+  if (!form.empleado_id) { error.value = 'Busca y selecciona un empleado por DNI'; return }
+  if (!form.fecha_inicio || !form.fecha_fin) { error.value = 'Las fechas son requeridas'; return }
+  if (new Date(form.fecha_fin) < new Date(form.fecha_inicio)) { error.value = 'La fecha de fin no puede ser anterior a la de inicio'; return }
+  saving.value = true; error.value = ''
   try {
-    await $api('/sigarh/movimientos/vacaciones', {
-      method: 'POST',
-      tenant,
-      body: {
-        empleado_id: form.empleado_id,
-        tipo: form.tipo,
-        motivo_id: form.motivo_id || null,
-        fecha_inicio: form.fecha_inicio,
-        fecha_fin: form.fecha_fin,
-        dias_solicitados: form.dias_solicitados,
-        descripcion: form.descripcion || null,
-        estado: form.estado,
-      }
-    })
-    router.push(`/sigarh/movimientos/vacaciones?tenant=${tenant}`)
-  } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo crear la solicitud'
-  } finally {
-    saving.value = false
-  }
+    await api('/sigarh/movimientos/vacaciones', { method: 'POST', body: {
+      empleado_id: form.empleado_id, tipo: form.tipo, motivo_id: form.motivo_id || null,
+      numero_documento: form.numero_documento || null, fecha_tramite: form.fecha_tramite || null,
+      fecha_inicio: form.fecha_inicio, fecha_fin: form.fecha_fin,
+      documento_url: form.documento_url || null, descripcion: form.descripcion || null,
+    } })
+    router.push(`/sigarh/movimientos/vacaciones?tenant=${tenantId.value}`)
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo registrar la solicitud') }
+  finally { saving.value = false }
 }
-
 onMounted(async () => {
-  try {
-    const [emp, mot] = await Promise.all([
-      $api<any[]>('/sigarh/rrhh/empleados', { tenant }),
-      $api<any[]>('/sigarh/mantenimiento/motivos-justificacion', { tenant }),
-    ])
-    empleados.value = emp
-    motivos.value = mot
-  } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al cargar datos'
-  }
+  try { motivos.value = await api<any[]>('/sigarh/movimientos/motivos') } catch {}
 })
 </script>
 
-<style scoped>
-.justificacion-create-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 1.5rem 2rem;
-}
-
-/* Grid */
-.justificacion-create-grid {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 2rem;
-}
-
-.justificacion-create-main {
-  min-width: 0;
-}
-
-.justificacion-create-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-/* Header */
-.header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.2;
-}
-
-.page-subtitle {
-  font-size: 0.875rem;
-  color: var(--ink-soft);
-  margin: 0.125rem 0 0 0;
-}
-
-/* Form Card */
-.form-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 1.5rem;
-  animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.card-header-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.card-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0;
-}
-
-.card-subtitle {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-  margin: 0;
-}
-
-/* Form */
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
-}
-
-.form-group.full-width {
-  grid-column: 1 / -1;
-}
-
-.form-label {
-  display: block;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink);
-  margin-bottom: 0.5rem;
-}
-
-.required {
-  color: var(--alert);
-}
-
-.input-wrapper {
-  position: relative;
-}
-
-.input-icon {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 1rem;
-  height: 1rem;
-  color: var(--ink-soft);
-}
-
-.input-wrapper textarea + .input-icon {
-  top: 0.75rem;
-  transform: none;
-}
-
-.input-clinical {
-  width: 100%;
-  padding: 0.625rem 0.875rem;
-  padding-left: 2.5rem;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 0.875rem;
-  transition: all 0.2s ease;
-}
-
-.input-clinical:focus {
-  outline: none;
-  border-color: var(--teal);
-  box-shadow: 0 0 0 3px var(--teal-soft);
-}
-
-.input-clinical.input-error {
-  border-color: var(--alert);
-}
-
-.input-clinical.input-error:focus {
-  box-shadow: 0 0 0 3px var(--alert-soft);
-}
-
-.input-clinical.input-readonly {
-  background: var(--mist);
-  color: var(--ink-soft);
-  cursor: not-allowed;
-}
-
-.input-clinical.input-readonly:focus {
-  box-shadow: none;
-  border-color: var(--line);
-}
-
-.input-clinical::placeholder {
-  color: var(--ink-soft);
-  opacity: 0.6;
-}
-
-.input-clinical[type="date"] {
-  color-scheme: light;
-}
-
-.error-message {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--alert);
-  margin-top: 0.25rem;
-}
-
-.field-hint {
-  font-size: 0.6875rem;
-  color: var(--ink-soft);
-  margin-top: 0.25rem;
-}
-
-/* Preview Section */
-.preview-section {
-  margin-top: 0.5rem;
-}
-
-.preview-title {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ink-soft);
-  margin: 0 0 0.75rem 0;
-}
-
-.preview-card {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--line);
-  background: var(--paper);
-  flex-wrap: wrap;
-}
-
-.preview-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.preview-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 120px;
-}
-
-.preview-name {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--ink);
-}
-
-.preview-dates {
-  font-size: 0.75rem;
-  font-family: monospace;
-  color: var(--ink-soft);
-}
-
-.preview-days {
-  color: var(--teal);
-  font-weight: 500;
-}
-
-.preview-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.1875rem 0.625rem;
-  border-radius: 12px;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.status-pendiente {
-  background: var(--amber-soft);
-  color: var(--amber);
-}
-
-.status-aprobado {
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.status-rechazado {
-  background: var(--alert-soft);
-  color: var(--alert);
-}
-
-.status-default {
-  background: var(--mist);
-  color: var(--ink-soft);
-}
-
-/* Error Banner */
-.error-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  background: var(--alert-soft);
-  color: var(--alert);
-  font-size: 0.875rem;
-  margin-top: 1.5rem;
-}
-
-/* Form Actions */
-.form-actions {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--line);
-}
-
-.action-group {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.5rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border: none;
-  background: var(--teal);
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--teal-dark);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-cancel {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--ink-soft);
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.btn-cancel:hover {
-  background: var(--mist);
-}
-
-/* Widgets */
-.widget {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
-  border: 1px solid var(--line);
-}
-
-.widget-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.widget-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-.widget-title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0;
-}
-
-.widget-content {
-  padding: 1rem 1.25rem;
-}
-
-/* Info Widget */
-.info-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.info-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.625rem;
-  padding: 0.375rem 0;
-  font-size: 0.8125rem;
-  color: var(--ink);
-}
-
-.info-item-icon {
-  width: 1rem;
-  height: 1rem;
-  margin-top: 0.125rem;
-  flex-shrink: 0;
-}
-
-/* Summary Widget */
-.summary-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.375rem 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.summary-item:last-of-type {
-  border-bottom: none;
-}
-
-.summary-label {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-.summary-value {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink);
-  max-width: 60%;
-  text-align: right;
-  word-break: break-word;
-}
-
-.summary-divider {
-  height: 1px;
-  background: var(--line);
-  margin: 0.5rem 0;
-}
-
-/* Status Badge Mini */
-.status-badge-mini {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.125rem 0.5rem;
-  border-radius: 10px;
-  font-size: 0.6875rem;
-  font-weight: 500;
-}
-
-/* Tip Widget */
-.widget-tip {
-  background: var(--amber-soft);
-  border-color: var(--amber-soft);
-}
-
-.tip-content {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.tip-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  flex-shrink: 0;
-  margin-top: 0.125rem;
-}
-
-.tip-title {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0 0 0.25rem 0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.tip-text {
-  font-size: 0.8125rem;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.5;
-}
-
-/* Stats Widget */
-.stat-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.375rem 0;
-}
-
-.stat-item + .stat-item {
-  border-top: 1px solid var(--line);
-}
-
-.stat-label {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-.stat-number {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-/* Animations */
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-/* Responsive */
-@media (max-width: 1024px) {
-  .justificacion-create-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .justificacion-create-sidebar {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.25rem;
-  }
-}
-
-@media (max-width: 768px) {
-  .justificacion-create-container {
-    padding: 1rem;
-  }
-
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .justificacion-create-sidebar {
-    grid-template-columns: 1fr;
-  }
-
-  .action-group {
-    flex-direction: column;
-    width: 100%;
-  }
-
-  .action-group > * {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .preview-card {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .preview-info {
-    min-width: auto;
-    width: 100%;
-  }
-
-  .preview-status {
-    align-self: flex-start;
-  }
-}
-
-@media (max-width: 480px) {
-  .preview-card {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .summary-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
-  }
-
-  .summary-value {
-    max-width: 100%;
-    text-align: left;
-  }
-}
-</style>
+<template>
+  <SFormLayout>
+    <template #main>
+      <div class="mb-8">
+        <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
+          <NuxtLink :to="`/sigarh/movimientos/vacaciones?tenant=${tenantId}`" class="hover:underline" style="color: var(--ink-soft)">Justificación y Vacaciones</NuxtLink>
+          <UIcon name="i-heroicons-chevron-right" class="w-3 h-3" /><span style="color: var(--ink)">Nueva</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <div class="page-header-icon" style="background: var(--amber-soft)"><UIcon name="i-heroicons-sun" class="w-6 h-6" style="color: var(--amber)" /></div>
+          <div><h1 class="page-title">Nueva solicitud</h1><p class="page-subtitle">Justificación / inasistencia o solicitud de vacaciones</p></div>
+        </div>
+      </div>
+
+      <SFormCard title="Trabajador y Tipo" subtitle="Búscalo por DNI"
+        icon="i-heroicons-user" icon-bg="var(--amber-soft)" icon-color="var(--amber)" :error="error">
+        <div class="form-group">
+          <label class="form-label">Tipo de movimiento <span class="required">*</span></label>
+          <div class="input-wrapper"><UIcon name="i-heroicons-adjustments-horizontal" class="input-icon" />
+            <select v-model="form.tipo" class="input-clinical">
+              <option value="justificacion">Justificación / Inasistencia</option>
+              <option value="vacacion">Solicitud de Vacaciones</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">DNI del empleado <span class="required">*</span></label>
+          <div class="input-wrapper"><UIcon name="i-heroicons-identification" class="input-icon" />
+            <input v-model="dniBusqueda" class="input-clinical font-mono-data" maxlength="8" inputmode="numeric"
+              @input="dniBusqueda = dniBusqueda.replace(/\D/g, '').slice(0, 8)" @blur="buscarEmpleado" />
+            <UIcon v-if="buscando" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--ink-soft)" />
+          </div>
+          <span v-if="empError" class="error-message">{{ empError }}</span>
+        </div>
+        <div class="form-group full-width">
+          <label class="form-label">Empleado</label>
+          <div class="input-wrapper"><UIcon name="i-heroicons-user" class="input-icon" /><input :value="empleado?.nombre_completo || ''" disabled class="input-clinical" style="background: var(--mist)" /></div>
+        </div>
+      </SFormCard>
+
+      <SFormCard title="Datos de la Solicitud" subtitle="Motivo, período y sustento"
+        icon="i-heroicons-cog-6-tooth" icon-bg="var(--teal-soft)" icon-color="var(--teal)">
+        <div class="form-group">
+          <label class="form-label">Motivo</label>
+          <div class="input-wrapper"><UIcon name="i-heroicons-flag" class="input-icon" />
+            <select v-model="form.motivo_id" class="input-clinical"><option value="">Sin motivo específico</option><option v-for="m in motivos" :key="m.id" :value="m.id">{{ m.nombre }}</option></select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">N° de documento</label>
+          <div class="input-wrapper"><UIcon name="i-heroicons-hashtag" class="input-icon" /><input v-model="form.numero_documento" class="input-clinical font-mono-data" maxlength="50" /></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha de trámite</label>
+          <div class="input-wrapper"><UIcon name="i-heroicons-calendar" class="input-icon" /><input v-model="form.fecha_tramite" type="date" class="input-clinical" /></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Días</label>
+          <div class="input-wrapper"><UIcon name="i-heroicons-calculator" class="input-icon" /><input :value="dias" disabled class="input-clinical font-mono-data" style="background: var(--mist)" /></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha inicio <span class="required">*</span></label>
+          <div class="input-wrapper"><UIcon name="i-heroicons-calendar-days" class="input-icon" /><input v-model="form.fecha_inicio" type="date" class="input-clinical" @change="error = ''" /></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha fin <span class="required">*</span></label>
+          <div class="input-wrapper"><UIcon name="i-heroicons-calendar-days" class="input-icon" /><input v-model="form.fecha_fin" type="date" class="input-clinical" @change="error = ''" /></div>
+        </div>
+        <div class="form-group full-width">
+          <label class="form-label">Documento sustentatorio (URL)</label>
+          <div class="input-wrapper"><UIcon name="i-heroicons-link" class="input-icon" /><input v-model="form.documento_url" class="input-clinical" /></div>
+        </div>
+        <div class="form-group full-width">
+          <label class="form-label">Detalle</label>
+          <div class="input-wrapper"><UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" /><textarea v-model="form.descripcion" class="input-clinical" rows="3" maxlength="500" /></div>
+        </div>
+        <template #actions>
+          <SFormActions :saving="saving" save-text="Registrar" saving-text="Enviando..."
+            :cancel-to="`/sigarh/movimientos/vacaciones?tenant=${tenantId}`" @save="handleCreate" />
+        </template>
+      </SFormCard>
+    </template>
+    <template #sidebar>
+      <SWidgetSummary :items="[
+        { label: 'Empleado', value: empleado?.nombre_completo || '—' },
+        { label: 'Tipo', value: form.tipo },
+        { divider: true },
+        { label: 'Días', value: String(dias) },
+      ]" />
+      <SWidgetInfo :items="['Queda en estado Pendiente hasta que se revise en esta misma bandeja', 'Una solicitud aprobada marca la asistencia del período como Justificado', 'El módulo de saldo vacacional aún no está implementado']" />
+    </template>
+  </SFormLayout>
+</template>

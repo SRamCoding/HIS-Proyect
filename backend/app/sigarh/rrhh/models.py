@@ -220,13 +220,18 @@ class RegistroAsistencia(Base):
 
 
 class Justificacion(Base):
-    """Justificaciones e inasistencias del personal."""
+    """Justificaciones, inasistencias, licencias y vacaciones del personal.
+
+    Tabla única compartida por RRHH → Justificaciones y por Movimientos →
+    Tramitar Licencia / Justificación y Vacaciones. El campo `tipo` discrimina.
+    """
     __tablename__ = "sigarh_justificaciones"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     empleado_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="CASCADE"))
     motivo_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_motivos_justificacion.id", ondelete="SET NULL"), nullable=True)
+    tipo: Mapped[str] = mapped_column(String(20), default="justificacion")  # justificacion, licencia, vacacion
     numero_documento: Mapped[str | None] = mapped_column(String(50), nullable=True)
     fecha_tramite: Mapped[date | None] = mapped_column(Date, nullable=True)
     fecha_inicio: Mapped[date] = mapped_column(Date)
@@ -234,6 +239,10 @@ class Justificacion(Base):
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     documento_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     estado: Mapped[str] = mapped_column(String(20), default="pendiente")   # pendiente, aprobado, rechazado
+    registrado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    revisado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    revisado_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    motivo_rechazo: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     empleado: Mapped["Empleado"] = relationship()

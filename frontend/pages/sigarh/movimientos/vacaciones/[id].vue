@@ -1,166 +1,3 @@
-<template>
-  <SFormLayout>
-    <template #main>
-      <div class="mb-8">
-        <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
-          <NuxtLink :to="`/sigarh/movimientos/vacaciones?tenant=${tenantId}`" class="hover:underline" style="color: var(--ink-soft)">Justificaciones y Vacaciones</NuxtLink>
-          <UIcon name="i-heroicons-chevron-right" class="w-3 h-3" />
-          <span style="color: var(--ink)">Editar Solicitud</span>
-        </div>
-        <div class="flex items-center gap-4">
-          <div class="page-header-icon" style="background: var(--teal-soft)">
-            <UIcon name="i-heroicons-calendar-days" class="w-6 h-6" style="color: var(--teal)" />
-          </div>
-          <div>
-            <h1 class="page-title">{{ empleadoNombre || 'Editar Solicitud' }}</h1>
-            <p class="page-subtitle">Actualiza los datos de la solicitud de vacaciones o justificacion</p>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="loading" class="form-card flex items-center justify-center py-16">
-        <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--teal)" />
-      </div>
-
-      <div v-else-if="notFound" class="form-card flex flex-col items-center justify-center gap-3 py-16">
-        <UIcon name="i-heroicons-exclamation-triangle" class="w-10 h-10" style="color: var(--alert)" />
-        <p style="color: var(--alert)">No se encontro la solicitud</p>
-        <NuxtLink :to="`/sigarh/movimientos/vacaciones?tenant=${tenantId}`" class="btn-outline">Volver</NuxtLink>
-      </div>
-
-      <template v-else>
-        <SFormCard title="Datos de la Solicitud" subtitle="Actualiza la informacion de la solicitud"
-          icon="i-heroicons-cog-6-tooth" icon-bg="var(--teal-soft)" icon-color="var(--teal)" :error="error">
-
-          <div class="form-group full-width">
-            <label class="form-label">Empleado <span class="required">*</span></label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-user" class="input-icon" />
-              <select v-model="form.empleado_id" class="input-clinical">
-                <option value="">Seleccione un empleado</option>
-                <option v-for="e in empleados" :key="e.id" :value="e.id">{{ e.nombre_completo || e.nombre }}</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Tipo de Solicitud</label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-list-bullet" class="input-icon" />
-              <select v-model="form.tipo" class="input-clinical">
-                <option value="vacacion">Vacaciones</option>
-                <option value="justificacion">Justificacion</option>
-                <option value="permiso">Permiso</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Motivo</label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-flag" class="input-icon" />
-              <select v-model="form.motivo_id" class="input-clinical">
-                <option value="">Sin motivo especifico</option>
-                <option v-for="m in motivos" :key="m.id" :value="m.id">{{ m.nombre }}</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Estado</label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-flag" class="input-icon" />
-              <select v-model="form.estado" class="input-clinical">
-                <option value="pendiente">Pendiente</option>
-                <option value="aprobado">Aprobado</option>
-                <option value="rechazado">Rechazado</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Fecha de Inicio <span class="required">*</span></label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-calendar-days" class="input-icon" />
-              <input v-model="form.fecha_inicio" type="date" class="input-clinical" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Fecha de Fin <span class="required">*</span></label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-calendar-days" class="input-icon" />
-              <input v-model="form.fecha_fin" type="date" class="input-clinical" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Dias</label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-clock" class="input-icon" />
-              <input v-model.number="form.dias" type="number" min="0" class="input-clinical font-mono-data" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Mes Actual</label>
-            <div class="status-toggle">
-              <span class="toggle-label">Corresponde al mes actual</span>
-              <button type="button" @click="form.mes_actual = !form.mes_actual" class="toggle-switch" :class="{ 'toggle-active': form.mes_actual }">
-                <span class="toggle-slider" />
-              </button>
-            </div>
-          </div>
-
-          <div class="form-group full-width">
-            <label class="form-label">Documento (URL)</label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-paper-clip" class="input-icon" />
-              <input v-model="form.documento_url" class="input-clinical" placeholder="https://..." />
-            </div>
-          </div>
-
-          <div class="form-group full-width">
-            <label class="form-label">Detalle</label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" />
-              <textarea v-model="form.detalle" class="input-clinical" rows="3" placeholder="Descripcion detallada de la solicitud..." />
-            </div>
-          </div>
-
-          <template #actions>
-            <SFormActions :saving="saving" save-text="Guardar Cambios" saving-text="Guardando..."
-              :cancel-to="`/sigarh/movimientos/vacaciones?tenant=${tenantId}`"
-              @save="handleSave" />
-          </template>
-        </SFormCard>
-      </template>
-    </template>
-
-    <template #sidebar>
-      <SWidgetInfo :items="['Las solicitudes registran ausencias justificadas del personal', 'Pueden ser aprobadas o rechazadas desde el estado', 'Los dias se calculan segun fecha de inicio y fin', 'El motivo ayuda a clasificar la solicitud']" />
-      <SWidgetSummary :items="[
-        { label: 'Empleado', value: empleadoNombre },
-        { label: 'Tipo', value: tipoLabel },
-        { label: 'Motivo', value: motivoNombre || 'Sin motivo' },
-        { divider: true },
-        { label: 'Inicio', value: form.fecha_inicio, mono: true },
-        { label: 'Fin', value: form.fecha_fin, mono: true },
-        { label: 'Dias', value: form.dias != null ? String(form.dias) : '' },
-        { label: 'Estado', slot: 'estado' },
-      ]">
-        <template #estado>
-          <span class="status-badge-mini" :class="estadoClase">
-            <span class="status-dot-mini" :class="estadoDot" />
-            {{ estadoLabel }}
-          </span>
-        </template>
-      </SWidgetSummary>
-      <SWidgetTip text="Registra y actualiza las solicitudes de forma oportuna para mantener un control preciso de las ausencias." />
-    </template>
-  </SFormLayout>
-</template>
-
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
 const { api } = useApi()
@@ -168,93 +5,173 @@ const route = useRoute()
 const router = useRouter()
 const tenantId = computed(() => route.query.tenant as string || '')
 const id = computed(() => route.params.id as string)
-
 const loading = ref(true)
 const saving = ref(false)
-const notFound = ref(false)
 const error = ref('')
-const empleados = ref<any[]>([])
 const motivos = ref<any[]>([])
+const info = reactive({ empleado_nombre: '', empleado_dni: '', empleado_cargo: '', registrado_por: '' })
+const revisadoPor = ref('')
+const motivoRechazo = ref('')
 
 const form = reactive({
-  empleado_id: '',
-  motivo_id: '',
-  tipo: 'vacacion',
-  fecha_inicio: '',
-  fecha_fin: '',
-  dias: null as number | null,
-  documento_url: '',
-  detalle: '',
-  estado: 'pendiente',
-  mes_actual: true,
+  tipo: 'justificacion', motivo_id: '', numero_documento: '', fecha_tramite: '',
+  fecha_inicio: '', fecha_fin: '', descripcion: '', documento_url: '', estado: 'pendiente',
 })
 
-const empleadoNombre = computed(() => empleados.value.find(e => e.id === form.empleado_id)?.nombre_completo || '')
-const motivoNombre = computed(() => motivos.value.find(m => m.id === form.motivo_id)?.nombre || '')
-const tipoLabel = computed(() => ({ vacacion: 'Vacaciones', justificacion: 'Justificacion', permiso: 'Permiso' }[form.tipo] || form.tipo))
-const estadoLabel = computed(() => ({ pendiente: 'Pendiente', aprobado: 'Aprobado', rechazado: 'Rechazado' }[form.estado] || form.estado))
-const estadoClase = computed(() => form.estado === 'aprobado' ? 'status-active-mini' : 'status-inactive-mini')
-const estadoDot = computed(() => form.estado === 'aprobado' ? 'dot-active-mini' : 'dot-inactive-mini')
-
-watch([() => form.fecha_inicio, () => form.fecha_fin], ([ini, fin]) => {
-  if (ini && fin) {
-    const diff = new Date(fin).getTime() - new Date(ini).getTime()
-    form.dias = Math.max(0, Math.round(diff / 86400000) + 1)
-  }
+const dias = computed(() => {
+  if (!form.fecha_inicio || !form.fecha_fin) return 0
+  const d = Math.ceil((new Date(form.fecha_fin).getTime() - new Date(form.fecha_inicio).getTime()) / 86400000) + 1
+  return d > 0 ? d : 0
 })
 
 const handleSave = async () => {
-  if (!form.empleado_id) { error.value = 'El empleado es requerido'; return }
-  if (!form.fecha_inicio || !form.fecha_fin) { error.value = 'Las fechas de inicio y fin son requeridas'; return }
-  saving.value = true
-  error.value = ''
+  if (!form.fecha_inicio || !form.fecha_fin) { error.value = 'Las fechas son requeridas'; return }
+  if (new Date(form.fecha_fin) < new Date(form.fecha_inicio)) { error.value = 'La fecha de fin no puede ser anterior a la de inicio'; return }
+  saving.value = true; error.value = ''
   try {
-    await api(`/sigarh/movimientos/vacaciones/${id.value}`, {
-      method: 'PATCH',
-      body: {
-        empleado_id: form.empleado_id,
-        motivo_id: form.motivo_id || null,
-        tipo: form.tipo,
-        fecha_inicio: form.fecha_inicio,
-        fecha_fin: form.fecha_fin,
-        dias: form.dias ?? null,
-        documento_url: form.documento_url || null,
-        detalle: form.detalle || null,
-        estado: form.estado,
-        mes_actual: form.mes_actual,
-      },
-    })
+    await api(`/sigarh/movimientos/vacaciones/${id.value}`, { method: 'PATCH', body: {
+      tipo: form.tipo, motivo_id: form.motivo_id || null, numero_documento: form.numero_documento || null,
+      fecha_tramite: form.fecha_tramite || null, fecha_inicio: form.fecha_inicio, fecha_fin: form.fecha_fin,
+      descripcion: form.descripcion || null, documento_url: form.documento_url || null,
+    } })
     router.push(`/sigarh/movimientos/vacaciones?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar la solicitud' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar') }
+  finally { saving.value = false }
+}
+
+const decidir = async (aprobar: boolean) => {
+  if (!aprobar && !motivoRechazo.value.trim()) { error.value = 'Indica el motivo del rechazo'; return }
+  saving.value = true; error.value = ''
+  try {
+    const ruta = aprobar ? 'aprobar' : 'rechazar'
+    const d = await api<any>(`/sigarh/movimientos/vacaciones/${id.value}/${ruta}`, {
+      method: 'POST', body: aprobar ? {} : { motivo_rechazo: motivoRechazo.value },
+    })
+    form.estado = d.estado
+    revisadoPor.value = d.revisado_por || ''
+    if (aprobar) router.push(`/sigarh/movimientos/vacaciones?tenant=${tenantId.value}`)
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo procesar la decisión') }
   finally { saving.value = false }
 }
 
 onMounted(async () => {
   try {
-    // El backend no expone GET /vacaciones/{id}: se obtiene del listado.
-    const [lista, emp, mot] = await Promise.all([
-      api<any[]>('/sigarh/movimientos/vacaciones'),
-      api<any[]>('/sigarh/rrhh/empleados').catch(() => []),
-      api<any[]>('/sigarh/mantenimiento/motivos-justificacion').catch(() => []),
-    ])
-    empleados.value = emp
-    motivos.value = mot
-    const data = (lista || []).find(v => v.id === id.value)
-    if (!data) { notFound.value = true; return }
-    form.empleado_id = data.empleado_id || ''
-    form.motivo_id = data.motivo_id || ''
-    form.tipo = data.tipo || 'vacacion'
-    form.fecha_inicio = data.fecha_inicio || ''
-    form.fecha_fin = data.fecha_fin || ''
-    form.dias = data.dias ?? null
-    form.documento_url = data.documento_url || ''
-    form.detalle = data.detalle || ''
-    form.estado = data.estado || 'pendiente'
-    form.mes_actual = data.mes_actual ?? true
-  } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo cargar la solicitud'
-  } finally {
-    loading.value = false
-  }
+    const [m, d] = await Promise.all([api<any[]>('/sigarh/movimientos/motivos'), api<any>(`/sigarh/movimientos/licencias/${id.value}`)])
+    motivos.value = m
+    form.tipo = d.tipo || 'justificacion'
+    form.motivo_id = d.motivo_id || ''
+    form.numero_documento = d.numero_documento || ''
+    form.fecha_tramite = d.fecha_tramite || ''
+    form.fecha_inicio = d.fecha_inicio
+    form.fecha_fin = d.fecha_fin
+    form.descripcion = d.descripcion || ''
+    form.documento_url = d.documento_url || ''
+    form.estado = d.estado || 'pendiente'
+    revisadoPor.value = d.revisado_por || ''
+    motivoRechazo.value = d.motivo_rechazo || ''
+    info.empleado_nombre = d.empleado_nombre || ''
+    info.empleado_dni = d.empleado_dni || ''
+    info.empleado_cargo = d.empleado_cargo || ''
+    info.registrado_por = d.registrado_por || ''
+  } catch { error.value = 'No se pudo cargar' }
+  finally { loading.value = false }
 })
 </script>
+
+<template>
+  <SFormLayout>
+    <template #main>
+      <div class="mb-8">
+        <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
+          <NuxtLink :to="`/sigarh/movimientos/vacaciones?tenant=${tenantId}`" class="hover:underline" style="color: var(--ink-soft)">Justificación y Vacaciones</NuxtLink>
+          <UIcon name="i-heroicons-chevron-right" class="w-3 h-3" /><span style="color: var(--ink)">Detalle</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <div class="page-header-icon" style="background: var(--amber-soft)"><UIcon name="i-heroicons-sun" class="w-6 h-6" style="color: var(--amber)" /></div>
+          <div><h1 class="page-title">{{ info.empleado_nombre || 'Solicitud' }}</h1><p class="page-subtitle">Revisa y decide la solicitud</p></div>
+        </div>
+      </div>
+
+      <div v-if="loading" class="form-card flex items-center justify-center py-16"><UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--amber)" /></div>
+      <template v-else>
+        <SFormCard title="Resolución" subtitle="Aprobar o rechazar la solicitud"
+          icon="i-heroicons-check-badge" icon-bg="var(--teal-soft)" icon-color="var(--teal)" :error="error">
+          <div class="form-group full-width">
+            <label class="form-label">Estado actual</label>
+            <div class="flex items-center gap-2">
+              <span class="badge" :class="form.estado === 'aprobado' ? 'badge--ok' : form.estado === 'rechazado' ? 'badge--danger' : 'badge--warning'" style="text-transform: capitalize">{{ form.estado }}</span>
+              <span v-if="revisadoPor" class="field-hint" style="margin: 0">· revisado por {{ revisadoPor }}</span>
+            </div>
+          </div>
+          <template v-if="form.estado === 'pendiente'">
+            <div class="form-group full-width">
+              <label class="form-label">Motivo del rechazo <span class="field-hint" style="margin:0">(requerido para rechazar)</span></label>
+              <div class="input-wrapper"><UIcon name="i-heroicons-chat-bubble-bottom-center-text" class="input-icon" style="top: 0.75rem; transform: none;" /><textarea v-model="motivoRechazo" class="input-clinical" rows="2" maxlength="500" /></div>
+            </div>
+            <div class="form-group full-width flex gap-2">
+              <button type="button" class="btn-primary" :disabled="saving" @click="decidir(true)"><UIcon name="i-heroicons-check" class="w-4 h-4" /> Aprobar</button>
+              <button type="button" class="btn-outline" :disabled="saving" style="border-color: var(--alert); color: var(--alert)" @click="decidir(false)"><UIcon name="i-heroicons-x-mark" class="w-4 h-4" /> Rechazar</button>
+            </div>
+            <p class="field-hint full-width">Al aprobar, la asistencia del período se marca como <strong>Justificado</strong>.</p>
+          </template>
+          <p v-else-if="form.estado === 'rechazado' && motivoRechazo" class="field-hint full-width">Motivo del rechazo: {{ motivoRechazo }}</p>
+        </SFormCard>
+
+        <SFormCard title="Datos de la Solicitud" subtitle="Tipo, motivo y período"
+          icon="i-heroicons-cog-6-tooth" icon-bg="var(--navy-soft)" icon-color="var(--navy)">
+          <div class="form-group">
+            <label class="form-label">Tipo</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-adjustments-horizontal" class="input-icon" />
+              <select v-model="form.tipo" class="input-clinical"><option value="justificacion">Justificación / Inasistencia</option><option value="vacacion">Vacaciones</option></select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Motivo</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-flag" class="input-icon" />
+              <select v-model="form.motivo_id" class="input-clinical"><option value="">Sin motivo</option><option v-for="m in motivos" :key="m.id" :value="m.id">{{ m.nombre }}</option></select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">N° de documento</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-hashtag" class="input-icon" /><input v-model="form.numero_documento" class="input-clinical font-mono-data" maxlength="50" /></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha de trámite</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-calendar" class="input-icon" /><input v-model="form.fecha_tramite" type="date" class="input-clinical" /></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha inicio</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-calendar-days" class="input-icon" /><input v-model="form.fecha_inicio" type="date" class="input-clinical" @change="error = ''" /></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha fin</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-calendar-days" class="input-icon" /><input v-model="form.fecha_fin" type="date" class="input-clinical" @change="error = ''" /></div>
+          </div>
+          <div class="form-group full-width">
+            <label class="form-label">Documento sustentatorio (URL)</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-link" class="input-icon" /><input v-model="form.documento_url" class="input-clinical" /></div>
+          </div>
+          <div class="form-group full-width">
+            <label class="form-label">Detalle</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" /><textarea v-model="form.descripcion" class="input-clinical" rows="3" maxlength="500" /></div>
+          </div>
+          <template #actions>
+            <SFormActions :saving="saving" save-text="Guardar Cambios" saving-text="Guardando..."
+              :cancel-to="`/sigarh/movimientos/vacaciones?tenant=${tenantId}`" @save="handleSave" />
+          </template>
+        </SFormCard>
+      </template>
+    </template>
+    <template #sidebar>
+      <SWidgetSummary :items="[
+        { label: 'Empleado', value: info.empleado_nombre },
+        { label: 'DNI', value: info.empleado_dni, mono: true },
+        { label: 'Cargo', value: info.empleado_cargo },
+        { divider: true },
+        { label: 'Días', value: String(dias) },
+        { label: 'Estado', value: form.estado },
+        { label: 'Tramitado por', value: info.registrado_por },
+      ]" />
+    </template>
+  </SFormLayout>
+</template>

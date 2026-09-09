@@ -646,9 +646,13 @@ class RegistroAsistenciaResponse(BaseModel):
 
 # ─── Justificación ────────────────────────────────────────────────────────────
 
+_TIPOS_JUSTIFICACION = {"justificacion", "licencia", "vacacion"}
+
+
 class JustificacionCreate(BaseModel):
     empleado_id: uuid.UUID
     motivo_id: uuid.UUID | None = None
+    tipo: str = "justificacion"
     numero_documento: str | None = None
     fecha_tramite: date | None = None
     fecha_inicio: date
@@ -656,6 +660,14 @@ class JustificacionCreate(BaseModel):
     descripcion: str | None = None
     documento_url: str | None = None
     estado: str = "pendiente"
+
+    @field_validator("tipo")
+    @classmethod
+    def _v_tipo(cls, v):
+        v = (_limpiar(v) or "justificacion").lower()
+        if v not in _TIPOS_JUSTIFICACION:
+            raise ValueError("Tipo inválido. Opciones: justificacion, licencia, vacacion")
+        return v
 
     @field_validator("numero_documento")
     @classmethod
@@ -682,6 +694,7 @@ class JustificacionCreate(BaseModel):
 
 class JustificacionUpdate(BaseModel):
     motivo_id: uuid.UUID | None = None
+    tipo: str | None = None
     numero_documento: str | None = None
     fecha_tramite: date | None = None
     fecha_inicio: date | None = None
@@ -689,6 +702,16 @@ class JustificacionUpdate(BaseModel):
     descripcion: str | None = None
     documento_url: str | None = None
     estado: str | None = None
+
+    @field_validator("tipo")
+    @classmethod
+    def _v_tipo(cls, v):
+        if v is None:
+            return None
+        v = str(v).strip().lower()
+        if v not in _TIPOS_JUSTIFICACION:
+            raise ValueError("Tipo inválido")
+        return v
 
     @field_validator("estado")
     @classmethod
@@ -698,6 +721,19 @@ class JustificacionUpdate(BaseModel):
         v = str(v).strip().lower()
         if v not in {"pendiente", "aprobado", "rechazado"}:
             raise ValueError("Estado inválido")
+        return v
+
+
+class JustificacionDecision(BaseModel):
+    """Cuerpo de POST /justificaciones/{id}/rechazar (opcional en /aprobar)."""
+    motivo_rechazo: str | None = None
+
+    @field_validator("motivo_rechazo")
+    @classmethod
+    def _v_mot(cls, v):
+        v = _limpiar(v)
+        if v is not None and len(v) > 500:
+            raise ValueError("El motivo de rechazo no debe superar 500 caracteres")
         return v
 
 
@@ -711,6 +747,7 @@ class JustificacionResponse(BaseModel):
     empleado_cargo: str | None = None
     motivo_id: uuid.UUID | None
     motivo_nombre: str | None = None
+    tipo: str = "justificacion"
     numero_documento: str | None
     fecha_tramite: date | None
     fecha_inicio: date
@@ -719,6 +756,10 @@ class JustificacionResponse(BaseModel):
     descripcion: str | None
     documento_url: str | None
     estado: str
+    registrado_por: str | None = None
+    revisado_por: str | None = None
+    revisado_at: datetime | None = None
+    motivo_rechazo: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

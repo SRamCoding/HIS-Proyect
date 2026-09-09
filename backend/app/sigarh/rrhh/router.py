@@ -14,7 +14,7 @@ from app.sigarh.rrhh.schemas import (
     MotivoJustificacionCreate, MotivoJustificacionUpdate, MotivoJustificacionResponse,
     ToleranciaCreate, ToleranciaUpdate, ToleranciaResponse,
     RegistroAsistenciaCreate, RegistroAsistenciaUpdate, RegistroAsistenciaResponse,
-    JustificacionCreate, JustificacionUpdate, JustificacionResponse,
+    JustificacionCreate, JustificacionUpdate, JustificacionResponse, JustificacionDecision,
 )
 from app.sigarh.rrhh import service as svc
 
@@ -58,6 +58,39 @@ async def crear(request: Request, data: EmpleadoCreate, db: AsyncSession = Depen
 @router.get("/empleados/buscar-dni/{dni}", response_model=EmpleadoResponse | None)
 async def buscar_por_dni(request: Request, dni: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
     return await svc.obtener_empleado_por_dni(db, dni, _tid(current_user, request))
+
+
+@router.get("/dni-lookup/{dni}", summary="Consultar DNI en el servicio externo (autocompletado)")
+async def dni_lookup(dni: str, tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+    from app.shared.dni import lookup_dni_externo
+    if not dni.isdigit() or len(dni) != 8:
+        raise HTTPException(400, detail="El DNI debe tener 8 dígitos numéricos")
+    datos = await lookup_dni_externo(dni)
+    nombres = (datos or {}).get("nombres", "").strip()
+    ap_pat = (datos or {}).get("apellidoPaterno", "").strip()
+    ap_mat = (datos or {}).get("apellidoMaterno", "").strip()
+    # El proveedor responde 200 con todos los campos vacíos cuando el DNI no existe.
+    if not nombres and not ap_pat and not ap_mat:
+        raise HTTPException(404, detail="No se encontraron datos para ese DNI en el servicio externo")
+    return {"nombres": nombres, "apellido_paterno": ap_pat, "apellido_materno": ap_mat}
+
+
+@router.get("/ubigeo/departamentos", summary="Catálogo ubigeo: departamentos")
+async def ubigeo_departamentos(db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+    from app.shared.ubigeo.service import get_departamentos
+    return [{"id": d.id, "nombre": d.nombre} for d in await get_departamentos(db)]
+
+
+@router.get("/ubigeo/provincias/{departamento_id}", summary="Catálogo ubigeo: provincias de un departamento")
+async def ubigeo_provincias(departamento_id: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+    from app.shared.ubigeo.service import get_provincias
+    return [{"id": p.id, "nombre": p.nombre} for p in await get_provincias(db, departamento_id)]
+
+
+@router.get("/ubigeo/distritos/{provincia_id}", summary="Catálogo ubigeo: distritos de una provincia")
+async def ubigeo_distritos(provincia_id: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+    from app.shared.ubigeo.service import get_distritos
+    return [{"id": d.id, "nombre": d.nombre} for d in await get_distritos(db, provincia_id)]
 
 
 @router.get("/empleados/{id}", response_model=EmpleadoResponse)
@@ -309,16 +342,39 @@ async def listar_just(
     empleado_id: uuid.UUID | None = None,
     estado: str | None = None,
     motivo_id: uuid.UUID | None = None,
+    tipo: str | None = None,
     desde: date | None = None,
     hasta: date | None = None,
     db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user),
 ):
-    return await svc.listar_justificaciones(db, _tid(current_user, request), empleado_id, estado, motivo_id, desde, hasta)
+    return await svc.listar_justificaciones(db, _tid(current_user, request), empleado_id, estado, motivo_id, tipo, desde, hasta)
 
 
 @router.post("/justificaciones", response_model=JustificacionResponse, status_code=201)
 async def crear_just(request: Request, data: JustificacionCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
-    return await svc.crear_justificacion(db, _tid(current_user, request), data)
+    return await svc.crear_justificacion(db, _tid(current_user, request), data, _nombre(current_user))
+
+
+@router.post("/justificaciones/{id}/aprobar", response_model=JustificacionResponse)
+async def aprobar_just(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+    try:
+        j = await svc.decidir_justificacion(db, id, _tid(current_user, request), True, _nombre(current_user))
+    except svc.ReglaNegocioError as e:
+        raise _rn(e)
+    if not j:
+        raise HTTPException(404, detail="Justificación no encontrada")
+    return j
+
+
+@router.post("/justificaciones/{id}/rechazar", response_model=JustificacionResponse)
+async def rechazar_just(request: Request, id: uuid.UUID, data: JustificacionDecision, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+    try:
+        j = await svc.decidir_justificacion(db, id, _tid(current_user, request), False, _nombre(current_user), data.motivo_rechazo)
+    except svc.ReglaNegocioError as e:
+        raise _rn(e)
+    if not j:
+        raise HTTPException(404, detail="Justificación no encontrada")
+    return j
 
 
 @router.get("/justificaciones/{id}", response_model=JustificacionResponse)

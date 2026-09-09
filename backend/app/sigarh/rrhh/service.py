@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -497,6 +497,7 @@ async def listar_justificaciones(
     empleado_id: uuid.UUID | None = None,
     estado: str | None = None,
     motivo_id: uuid.UUID | None = None,
+    tipo: str | list[str] | None = None,
     desde: date | None = None,
     hasta: date | None = None,
 ) -> list[dict]:
@@ -507,6 +508,8 @@ async def listar_justificaciones(
         q = q.where(Justificacion.estado == estado)
     if motivo_id:
         q = q.where(Justificacion.motivo_id == motivo_id)
+    if tipo:
+        q = q.where(Justificacion.tipo.in_([tipo] if isinstance(tipo, str) else tipo))
     if desde:
         q = q.where(Justificacion.fecha_fin >= desde)
     if hasta:
@@ -519,14 +522,66 @@ async def _just_orm(db, id, tenant_id):
     return await db.scalar(select(Justificacion).where(Justificacion.id == id, Justificacion.tenant_id == tenant_id))
 
 
-async def crear_justificacion(db: AsyncSession, tenant_id: uuid.UUID, data) -> dict:
+async def crear_justificacion(db: AsyncSession, tenant_id: uuid.UUID, data, usuario: str | None = None) -> dict:
     payload = data.model_dump()
     if not payload.get("fecha_tramite"):
         payload["fecha_tramite"] = date.today()
-    j = Justificacion(tenant_id=tenant_id, **payload)
+    j = Justificacion(tenant_id=tenant_id, registrado_por=usuario, **payload)
     db.add(j)
     await db.commit()
     return (await _serializar_justificaciones(db, tenant_id, [await _just_orm(db, j.id, tenant_id)]))[0]
+
+
+async def decidir_justificacion(
+    db: AsyncSession,
+    id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    aprobar: bool,
+    revisor: str | None = None,
+    motivo_rechazo: str | None = None,
+) -> dict | None:
+    j = await _just_orm(db, id, tenant_id)
+    if not j:
+        return None
+    if j.estado != "pendiente":
+        raise ReglaNegocioError(f"La solicitud ya fue {j.estado}, no puede volver a decidirse")
+    j.estado = "aprobado" if aprobar else "rechazado"
+    j.revisado_por = revisor
+    j.revisado_at = datetime.utcnow()
+    j.motivo_rechazo = None if aprobar else motivo_rechazo
+    await db.commit()
+    if aprobar:
+        await _aplicar_justificacion_a_asistencia(db, tenant_id, j)
+    return (await _serializar_justificaciones(db, tenant_id, [await _just_orm(db, id, tenant_id)]))[0]
+
+
+async def _aplicar_justificacion_a_asistencia(db: AsyncSession, tenant_id: uuid.UUID, j: Justificacion) -> None:
+    """Al aprobar una justificación/licencia, marca como 'justificado' la asistencia
+    del empleado en cada día del rango; crea el registro si no existe."""
+    if not j.fecha_inicio or not j.fecha_fin:
+        return
+    existentes = {
+        a.fecha: a for a in (await db.execute(
+            select(RegistroAsistencia).where(
+                RegistroAsistencia.tenant_id == tenant_id,
+                RegistroAsistencia.empleado_id == j.empleado_id,
+                RegistroAsistencia.fecha >= j.fecha_inicio,
+                RegistroAsistencia.fecha <= j.fecha_fin,
+            )
+        )).scalars().all()
+    }
+    d = j.fecha_inicio
+    while d <= j.fecha_fin:
+        a = existentes.get(d)
+        if a:
+            a.estado = "justificado"
+        else:
+            db.add(RegistroAsistencia(
+                tenant_id=tenant_id, empleado_id=j.empleado_id, fecha=d,
+                estado="justificado", observacion=f"Justificación #{str(j.id)[:8]}",
+            ))
+        d += timedelta(days=1)
+    await db.commit()
 
 
 async def actualizar_justificacion(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, data) -> dict | None:

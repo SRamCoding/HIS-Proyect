@@ -22,7 +22,8 @@ const dias = computed(() => {
   return d > 0 ? d : 0
 })
 
-const setEstado = (v: string) => { form.estado = v }
+const revisadoPor = ref('')
+const motivoRechazo = ref('')
 
 const handleSave = async () => {
   if (!form.fecha_inicio || !form.fecha_fin) { error.value = 'Las fechas son requeridas'; return }
@@ -36,10 +37,24 @@ const handleSave = async () => {
       fecha_inicio: form.fecha_inicio,
       fecha_fin: form.fecha_fin,
       descripcion: form.descripcion || null,
-      estado: form.estado,
     } })
     router.push(`/sigarh/rrhh/justificaciones?tenant=${tenantId.value}`)
   } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar') }
+  finally { saving.value = false }
+}
+
+const decidir = async (aprobar: boolean) => {
+  if (!aprobar && !motivoRechazo.value.trim()) { error.value = 'Indica el motivo del rechazo'; return }
+  saving.value = true; error.value = ''
+  try {
+    const ruta = aprobar ? 'aprobar' : 'rechazar'
+    const d = await api<any>(`/sigarh/rrhh/justificaciones/${id.value}/${ruta}`, {
+      method: 'POST', body: aprobar ? {} : { motivo_rechazo: motivoRechazo.value },
+    })
+    form.estado = d.estado
+    revisadoPor.value = d.revisado_por || ''
+    if (aprobar) router.push(`/sigarh/rrhh/justificaciones?tenant=${tenantId.value}`)
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo procesar la decisión') }
   finally { saving.value = false }
 }
 onMounted(async () => {
@@ -53,6 +68,8 @@ onMounted(async () => {
     form.fecha_fin = d.fecha_fin
     form.descripcion = d.descripcion || ''
     form.estado = d.estado || 'pendiente'
+    revisadoPor.value = d.revisado_por || ''
+    motivoRechazo.value = d.motivo_rechazo || ''
     info.empleado_nombre = d.empleado_nombre || ''
     info.empleado_dni = d.empleado_dni || ''
     info.empleado_regimen = d.empleado_regimen || ''
@@ -81,14 +98,28 @@ onMounted(async () => {
         <SFormCard title="Resolución" subtitle="Aprobar o rechazar la solicitud"
           icon="i-heroicons-check-badge" icon-bg="var(--teal-soft)" icon-color="var(--teal)" :error="error">
           <div class="form-group full-width">
-            <label class="form-label">Estado</label>
-            <div class="flex gap-2">
-              <button type="button" @click="setEstado('pendiente')" class="sigarh-filter-btn" :class="{ active: form.estado === 'pendiente' }">Pendiente</button>
-              <button type="button" @click="setEstado('aprobado')" class="sigarh-filter-btn" :class="{ active: form.estado === 'aprobado' }">Aprobado</button>
-              <button type="button" @click="setEstado('rechazado')" class="sigarh-filter-btn" :class="{ active: form.estado === 'rechazado' }">Rechazado</button>
+            <label class="form-label">Estado actual</label>
+            <div class="flex items-center gap-2">
+              <span class="badge" :class="form.estado === 'aprobado' ? 'badge--ok' : form.estado === 'rechazado' ? 'badge--danger' : 'badge--warning'" style="text-transform: capitalize">{{ form.estado }}</span>
+              <span v-if="revisadoPor" class="field-hint" style="margin: 0">· revisado por {{ revisadoPor }}</span>
             </div>
-            <p class="field-hint">Al aprobar, la asistencia del período puede marcarse como Justificado.</p>
           </div>
+          <template v-if="form.estado === 'pendiente'">
+            <div class="form-group full-width">
+              <label class="form-label">Motivo del rechazo <span class="field-hint" style="margin:0">(requerido para rechazar)</span></label>
+              <div class="input-wrapper"><UIcon name="i-heroicons-chat-bubble-bottom-center-text" class="input-icon" style="top: 0.75rem; transform: none;" /><textarea v-model="motivoRechazo" class="input-clinical" rows="2" maxlength="500" placeholder="Explica por qué se rechaza..." /></div>
+            </div>
+            <div class="form-group full-width flex gap-2">
+              <button type="button" class="btn-primary" :disabled="saving" @click="decidir(true)">
+                <UIcon name="i-heroicons-check" class="w-4 h-4" /> Aprobar
+              </button>
+              <button type="button" class="btn-outline" :disabled="saving" style="border-color: var(--alert); color: var(--alert)" @click="decidir(false)">
+                <UIcon name="i-heroicons-x-mark" class="w-4 h-4" /> Rechazar
+              </button>
+            </div>
+            <p class="field-hint full-width">Al aprobar, la asistencia del período se marca automáticamente como <strong>Justificado</strong>.</p>
+          </template>
+          <p v-else-if="form.estado === 'rechazado' && motivoRechazo" class="field-hint full-width">Motivo del rechazo: {{ motivoRechazo }}</p>
         </SFormCard>
 
         <SFormCard title="Datos de la Justificación" subtitle="Motivo, documento y período"

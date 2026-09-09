@@ -1,146 +1,3 @@
-<template>
-  <SFormLayout>
-    <template #main>
-      <div class="mb-8">
-        <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
-          <NuxtLink :to="`/sigarh/movimientos/licencias?tenant=${tenantId}`" class="hover:underline" style="color: var(--ink-soft)">Licencias</NuxtLink>
-          <UIcon name="i-heroicons-chevron-right" class="w-3 h-3" />
-          <span style="color: var(--ink)">Editar Licencia</span>
-        </div>
-        <div class="flex items-center gap-4">
-          <div class="page-header-icon" style="background: var(--teal-soft)">
-            <UIcon name="i-heroicons-document-text" class="w-6 h-6" style="color: var(--teal)" />
-          </div>
-          <div>
-            <h1 class="page-title">{{ empleadoNombre || 'Editar Licencia' }}</h1>
-            <p class="page-subtitle">Actualiza los datos del tramite de licencia</p>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="loading" class="form-card flex items-center justify-center py-16">
-        <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--teal)" />
-      </div>
-
-      <template v-else>
-        <SFormCard title="Datos de la Licencia" subtitle="Actualiza la informacion del tramite"
-          icon="i-heroicons-cog-6-tooth" icon-bg="var(--teal-soft)" icon-color="var(--teal)" :error="error">
-
-          <div class="form-group full-width">
-            <label class="form-label">Empleado <span class="required">*</span></label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-user" class="input-icon" />
-              <select v-model="form.empleado_id" class="input-clinical">
-                <option value="">Seleccione un empleado</option>
-                <option v-for="e in empleados" :key="e.id" :value="e.id">{{ e.nombre_completo || e.nombre }}</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Motivo</label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-flag" class="input-icon" />
-              <select v-model="form.motivo_id" class="input-clinical">
-                <option value="">Sin motivo especifico</option>
-                <option v-for="m in motivos" :key="m.id" :value="m.id">{{ m.nombre }}</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Estado</label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-flag" class="input-icon" />
-              <select v-model="form.estado" class="input-clinical">
-                <option value="pendiente">Pendiente</option>
-                <option value="aprobado">Aprobado</option>
-                <option value="rechazado">Rechazado</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Fecha de Tramite</label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-calendar" class="input-icon" />
-              <input v-model="form.fecha_tramite" type="date" class="input-clinical" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Dias</label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-calendar-days" class="input-icon" />
-              <input v-model.number="form.dias" type="number" min="0" class="input-clinical font-mono-data" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Fecha de Inicio <span class="required">*</span></label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-calendar" class="input-icon" />
-              <input v-model="form.fecha_inicio" type="date" class="input-clinical" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Fecha de Fin <span class="required">*</span></label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-calendar" class="input-icon" />
-              <input v-model="form.fecha_fin" type="date" class="input-clinical" />
-            </div>
-          </div>
-
-          <div class="form-group full-width">
-            <label class="form-label">Documento (URL)</label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-paper-clip" class="input-icon" />
-              <input v-model="form.documento_url" class="input-clinical" placeholder="https://..." />
-            </div>
-          </div>
-
-          <div class="form-group full-width">
-            <label class="form-label">Detalle</label>
-            <div class="input-wrapper">
-              <UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" />
-              <textarea v-model="form.detalle" class="input-clinical" rows="3" placeholder="Detalle del motivo de la licencia..." />
-            </div>
-          </div>
-
-          <template #actions>
-            <SFormActions :saving="saving" save-text="Guardar Cambios" saving-text="Guardando..."
-              :cancel-to="`/sigarh/movimientos/licencias?tenant=${tenantId}`"
-              @save="handleSave" />
-          </template>
-        </SFormCard>
-      </template>
-    </template>
-
-    <template #sidebar>
-      <SWidgetInfo :items="['Las licencias registran ausencias tramitadas del personal', 'Los dias se calculan segun fecha de inicio y fin', 'El estado controla la aprobacion del tramite', 'Adjunta el documento de respaldo si esta disponible']" />
-      <SWidgetSummary :items="[
-        { label: 'Empleado', value: empleadoNombre },
-        { label: 'Motivo', value: motivoNombre || 'Sin motivo' },
-        { label: 'Tramite', value: form.fecha_tramite, mono: true },
-        { divider: true },
-        { label: 'Inicio', value: form.fecha_inicio, mono: true },
-        { label: 'Fin', value: form.fecha_fin, mono: true },
-        { label: 'Dias', value: form.dias != null ? String(form.dias) : '' },
-        { label: 'Estado', slot: 'estado' },
-      ]">
-        <template #estado>
-          <span class="status-badge-mini" :class="estadoClase">
-            <span class="status-dot-mini" :class="estadoDot" />
-            {{ estadoLabel }}
-          </span>
-        </template>
-      </SWidgetSummary>
-      <SWidgetTip text="Verifica las fechas y el estado antes de guardar: una licencia aprobada afecta la asistencia del empleado." />
-    </template>
-  </SFormLayout>
-</template>
-
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
 const { api } = useApi()
@@ -148,85 +5,172 @@ const route = useRoute()
 const router = useRouter()
 const tenantId = computed(() => route.query.tenant as string || '')
 const id = computed(() => route.params.id as string)
-
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
-const empleados = ref<any[]>([])
 const motivos = ref<any[]>([])
+const info = reactive({ empleado_nombre: '', empleado_dni: '', empleado_cargo: '', empleado_regimen: '', registrado_por: '' })
+const revisadoPor = ref('')
+const motivoRechazo = ref('')
 
 const form = reactive({
-  empleado_id: '',
-  motivo_id: '',
-  fecha_tramite: '',
-  fecha_inicio: '',
-  fecha_fin: '',
-  dias: null as number | null,
-  documento_url: '',
-  detalle: '',
-  estado: 'pendiente',
+  motivo_id: '', numero_documento: '', fecha_tramite: '',
+  fecha_inicio: '', fecha_fin: '', descripcion: '', documento_url: '', estado: 'pendiente',
 })
 
-const empleadoNombre = computed(() => empleados.value.find(e => e.id === form.empleado_id)?.nombre_completo || '')
-const motivoNombre = computed(() => motivos.value.find(m => m.id === form.motivo_id)?.nombre || '')
-const estadoLabel = computed(() => ({ pendiente: 'Pendiente', aprobado: 'Aprobado', rechazado: 'Rechazado' }[form.estado] || form.estado))
-const estadoClase = computed(() => form.estado === 'aprobado' ? 'status-active-mini' : 'status-inactive-mini')
-const estadoDot = computed(() => form.estado === 'aprobado' ? 'dot-active-mini' : 'dot-inactive-mini')
-
-watch([() => form.fecha_inicio, () => form.fecha_fin], ([ini, fin]) => {
-  if (ini && fin) {
-    const diff = new Date(fin).getTime() - new Date(ini).getTime()
-    form.dias = Math.max(0, Math.round(diff / 86400000) + 1)
-  }
+const dias = computed(() => {
+  if (!form.fecha_inicio || !form.fecha_fin) return 0
+  const d = Math.ceil((new Date(form.fecha_fin).getTime() - new Date(form.fecha_inicio).getTime()) / 86400000) + 1
+  return d > 0 ? d : 0
 })
 
 const handleSave = async () => {
-  if (!form.empleado_id) { error.value = 'El empleado es requerido'; return }
-  if (!form.fecha_inicio || !form.fecha_fin) { error.value = 'Las fechas de inicio y fin son requeridas'; return }
-  saving.value = true
-  error.value = ''
+  if (!form.fecha_inicio || !form.fecha_fin) { error.value = 'Las fechas son requeridas'; return }
+  if (new Date(form.fecha_fin) < new Date(form.fecha_inicio)) { error.value = 'La fecha de fin no puede ser anterior a la de inicio'; return }
+  saving.value = true; error.value = ''
   try {
-    await api(`/sigarh/movimientos/licencias/${id.value}`, {
-      method: 'PATCH',
-      body: {
-        empleado_id: form.empleado_id,
-        motivo_id: form.motivo_id || null,
-        fecha_tramite: form.fecha_tramite || null,
-        fecha_inicio: form.fecha_inicio,
-        fecha_fin: form.fecha_fin,
-        dias: form.dias ?? null,
-        documento_url: form.documento_url || null,
-        detalle: form.detalle || null,
-        estado: form.estado,
-      },
-    })
+    await api(`/sigarh/movimientos/licencias/${id.value}`, { method: 'PATCH', body: {
+      motivo_id: form.motivo_id || null, numero_documento: form.numero_documento || null,
+      fecha_tramite: form.fecha_tramite || null, fecha_inicio: form.fecha_inicio, fecha_fin: form.fecha_fin,
+      descripcion: form.descripcion || null, documento_url: form.documento_url || null,
+    } })
     router.push(`/sigarh/movimientos/licencias?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar la licencia' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar') }
+  finally { saving.value = false }
+}
+
+const decidir = async (aprobar: boolean) => {
+  if (!aprobar && !motivoRechazo.value.trim()) { error.value = 'Indica el motivo del rechazo'; return }
+  saving.value = true; error.value = ''
+  try {
+    const ruta = aprobar ? 'aprobar' : 'rechazar'
+    const d = await api<any>(`/sigarh/movimientos/licencias/${id.value}/${ruta}`, {
+      method: 'POST', body: aprobar ? {} : { motivo_rechazo: motivoRechazo.value },
+    })
+    form.estado = d.estado
+    revisadoPor.value = d.revisado_por || ''
+    if (aprobar) router.push(`/sigarh/movimientos/licencias?tenant=${tenantId.value}`)
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo procesar la decisión') }
   finally { saving.value = false }
 }
 
 onMounted(async () => {
   try {
-    const [data, emp, mot] = await Promise.all([
-      api<any>(`/sigarh/movimientos/licencias/${id.value}`),
-      api<any[]>('/sigarh/rrhh/empleados').catch(() => []),
-      api<any[]>('/sigarh/mantenimiento/motivos-justificacion').catch(() => []),
-    ])
-    form.empleado_id = data.empleado_id || ''
-    form.motivo_id = data.motivo_id || ''
-    form.fecha_tramite = data.fecha_tramite || ''
-    form.fecha_inicio = data.fecha_inicio || ''
-    form.fecha_fin = data.fecha_fin || ''
-    form.dias = data.dias ?? null
-    form.documento_url = data.documento_url || ''
-    form.detalle = data.detalle || ''
-    form.estado = data.estado || 'pendiente'
-    empleados.value = emp
-    motivos.value = mot
-  } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo cargar la licencia'
-  } finally {
-    loading.value = false
-  }
+    const [m, d] = await Promise.all([api<any[]>('/sigarh/movimientos/motivos'), api<any>(`/sigarh/movimientos/licencias/${id.value}`)])
+    motivos.value = m
+    form.motivo_id = d.motivo_id || ''
+    form.numero_documento = d.numero_documento || ''
+    form.fecha_tramite = d.fecha_tramite || ''
+    form.fecha_inicio = d.fecha_inicio
+    form.fecha_fin = d.fecha_fin
+    form.descripcion = d.descripcion || ''
+    form.documento_url = d.documento_url || ''
+    form.estado = d.estado || 'pendiente'
+    revisadoPor.value = d.revisado_por || ''
+    motivoRechazo.value = d.motivo_rechazo || ''
+    info.empleado_nombre = d.empleado_nombre || ''
+    info.empleado_dni = d.empleado_dni || ''
+    info.empleado_cargo = d.empleado_cargo || ''
+    info.empleado_regimen = d.empleado_regimen || ''
+    info.registrado_por = d.registrado_por || ''
+  } catch { error.value = 'No se pudo cargar' }
+  finally { loading.value = false }
 })
 </script>
+
+<template>
+  <SFormLayout>
+    <template #main>
+      <div class="mb-8">
+        <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
+          <NuxtLink :to="`/sigarh/movimientos/licencias?tenant=${tenantId}`" class="hover:underline" style="color: var(--ink-soft)">Licencias</NuxtLink>
+          <UIcon name="i-heroicons-chevron-right" class="w-3 h-3" /><span style="color: var(--ink)">Detalle</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <div class="page-header-icon" style="background: var(--navy-soft)"><UIcon name="i-heroicons-clipboard-document-list" class="w-6 h-6" style="color: var(--navy)" /></div>
+          <div><h1 class="page-title">{{ info.empleado_nombre || 'Licencia' }}</h1><p class="page-subtitle">Revisa el sustento y decide la solicitud</p></div>
+        </div>
+      </div>
+
+      <div v-if="loading" class="form-card flex items-center justify-center py-16"><UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--navy)" /></div>
+      <template v-else>
+        <SFormCard title="Resolución" subtitle="Aprobar o rechazar la licencia"
+          icon="i-heroicons-check-badge" icon-bg="var(--teal-soft)" icon-color="var(--teal)" :error="error">
+          <div class="form-group full-width">
+            <label class="form-label">Estado actual</label>
+            <div class="flex items-center gap-2">
+              <span class="badge" :class="form.estado === 'aprobado' ? 'badge--ok' : form.estado === 'rechazado' ? 'badge--danger' : 'badge--warning'" style="text-transform: capitalize">{{ form.estado }}</span>
+              <span v-if="revisadoPor" class="field-hint" style="margin: 0">· revisado por {{ revisadoPor }}</span>
+            </div>
+          </div>
+          <template v-if="form.estado === 'pendiente'">
+            <div class="form-group full-width">
+              <label class="form-label">Motivo del rechazo <span class="field-hint" style="margin:0">(requerido para rechazar)</span></label>
+              <div class="input-wrapper"><UIcon name="i-heroicons-chat-bubble-bottom-center-text" class="input-icon" style="top: 0.75rem; transform: none;" /><textarea v-model="motivoRechazo" class="input-clinical" rows="2" maxlength="500" placeholder="Explica por qué se rechaza..." /></div>
+            </div>
+            <div class="form-group full-width flex gap-2">
+              <button type="button" class="btn-primary" :disabled="saving" @click="decidir(true)"><UIcon name="i-heroicons-check" class="w-4 h-4" /> Aprobar</button>
+              <button type="button" class="btn-outline" :disabled="saving" style="border-color: var(--alert); color: var(--alert)" @click="decidir(false)"><UIcon name="i-heroicons-x-mark" class="w-4 h-4" /> Rechazar</button>
+            </div>
+            <p class="field-hint full-width">Al aprobar, la asistencia del período se marca automáticamente como <strong>Justificado</strong>.</p>
+          </template>
+          <p v-else-if="form.estado === 'rechazado' && motivoRechazo" class="field-hint full-width">Motivo del rechazo: {{ motivoRechazo }}</p>
+        </SFormCard>
+
+        <SFormCard title="Datos de la Licencia" subtitle="Motivo, documento y período"
+          icon="i-heroicons-cog-6-tooth" icon-bg="var(--navy-soft)" icon-color="var(--navy)">
+          <div class="form-group">
+            <label class="form-label">Motivo</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-flag" class="input-icon" />
+              <select v-model="form.motivo_id" class="input-clinical"><option value="">Sin motivo</option><option v-for="m in motivos" :key="m.id" :value="m.id">{{ m.nombre }}</option></select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">N° de documento</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-hashtag" class="input-icon" /><input v-model="form.numero_documento" class="input-clinical font-mono-data" maxlength="50" /></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha de trámite</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-calendar" class="input-icon" /><input v-model="form.fecha_tramite" type="date" class="input-clinical" /></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Días</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-calculator" class="input-icon" /><input :value="dias" disabled class="input-clinical font-mono-data" style="background: var(--mist)" /></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha inicio</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-calendar-days" class="input-icon" /><input v-model="form.fecha_inicio" type="date" class="input-clinical" @change="error = ''" /></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha fin</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-calendar-days" class="input-icon" /><input v-model="form.fecha_fin" type="date" class="input-clinical" @change="error = ''" /></div>
+          </div>
+          <div class="form-group full-width">
+            <label class="form-label">Documento sustentatorio (URL)</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-link" class="input-icon" /><input v-model="form.documento_url" class="input-clinical" /></div>
+          </div>
+          <div class="form-group full-width">
+            <label class="form-label">Detalle</label>
+            <div class="input-wrapper"><UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" /><textarea v-model="form.descripcion" class="input-clinical" rows="3" maxlength="500" /></div>
+          </div>
+          <template #actions>
+            <SFormActions :saving="saving" save-text="Guardar Cambios" saving-text="Guardando..."
+              :cancel-to="`/sigarh/movimientos/licencias?tenant=${tenantId}`" @save="handleSave" />
+          </template>
+        </SFormCard>
+      </template>
+    </template>
+    <template #sidebar>
+      <SWidgetSummary :items="[
+        { label: 'Empleado', value: info.empleado_nombre },
+        { label: 'DNI', value: info.empleado_dni, mono: true },
+        { label: 'Cargo', value: info.empleado_cargo },
+        { divider: true },
+        { label: 'Días', value: String(dias) },
+        { label: 'Estado', value: form.estado },
+        { label: 'Tramitado por', value: info.registrado_por },
+      ]" />
+      <SWidgetInfo :items="['Solo las licencias aprobadas afectan la asistencia', 'Rechazar conserva el registro para historial', 'Editar los datos no cambia el estado']" />
+    </template>
+  </SFormLayout>
+</template>
