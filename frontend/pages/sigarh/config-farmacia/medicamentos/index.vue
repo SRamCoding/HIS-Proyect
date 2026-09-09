@@ -1,7 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Medicamentos e Insumos' })
 
-const { $api } = useNuxtApp()
+const { api } = useApi()
 const route = useRoute()
 const tenant = route.query.tenant as string
 
@@ -19,8 +19,8 @@ const filters = computed(() => [
   { label: 'Inactivos', value: 'inactive', count: inactiveItems.value },
 ])
 
-const medicamentosCount = computed(() => lista.value.filter(m => m.tipo === 'MEDICAMENTO').length)
-const insumosCount = computed(() => lista.value.filter(m => m.tipo === 'INSUMO').length)
+const medicamentosCount = computed(() => lista.value.length)
+const insumosCount = computed(() => 0)
 const activeItems = computed(() => lista.value.filter(m => m.is_active).length)
 const inactiveItems = computed(() => lista.value.filter(m => !m.is_active).length)
 
@@ -42,8 +42,8 @@ const listaFiltrada = computed(() => {
   if (busqueda.value.trim()) {
     const q = busqueda.value.toLowerCase().trim()
     result = result.filter(m =>
-      m.nombre?.toLowerCase().includes(q) ||
-      m.codigo_digemid?.toLowerCase().includes(q) ||
+      m.nombre_comercial?.toLowerCase().includes(q) ||
+      m.codigo_interno?.toLowerCase().includes(q) ||
       m.concentracion?.toLowerCase().includes(q) ||
       m.forma_farmaceutica?.toLowerCase().includes(q)
     )
@@ -67,7 +67,8 @@ const clearFilters = () => {
 
 onMounted(async () => {
   try {
-    lista.value = await $api('/sigarh/config-farmacia/medicamentos', { tenant })
+    const data = await api<any[]>('/sigarh/config-farmacia/medicamentos', { tenant })
+    lista.value = data.map(item => ({ ...item, tipo: 'MEDICAMENTO' }))
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al cargar datos'
   } finally {
@@ -248,11 +249,11 @@ onMounted(async () => {
                   <div class="medicamento-icon" :style="{ background: m.is_active ? getTipoBadgeClass(m.tipo) === 'tipo-medicamento' ? 'var(--teal-soft)' : 'var(--purple-soft)' : 'var(--mist)' }">
                     <UIcon :name="getTipoIcon(m.tipo)" class="w-4 h-4" :style="{ color: m.is_active ? (m.tipo === 'MEDICAMENTO' ? 'var(--teal)' : 'var(--purple)') : 'var(--ink-soft)' }" />
                   </div>
-                  <span class="name-text">{{ m.nombre }}</span>
+                  <span class="name-text">{{ m.nombre_comercial }}</span>
                 </div>
               </td>
               <td class="col-code">
-                <span class="code-text font-mono-data">{{ m.codigo_digemid || '—' }}</span>
+                <span class="code-text font-mono-data">{{ m.codigo_interno || '—' }}</span>
               </td>
               <td class="col-concentration">
                 <span class="concentration-text">{{ m.concentracion || '—' }}</span>

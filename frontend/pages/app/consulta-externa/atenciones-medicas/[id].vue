@@ -1,4 +1,4 @@
-<template>
+?<template>
   <div class="atencion-create-container">
     <div class="atencion-create-grid">
       <!-- Main Content -->
@@ -726,7 +726,7 @@ async function guardarAntecedentes() {
   error.value = ''
   exito.value = ''
   try {
-    await api(`/app/gestion-pacientes/${patientId.value}`, { method: 'PATCH', body: antecedentes })
+    await api(`/app/admision/${patientId.value}`, { method: 'PATCH', body: antecedentes })
     exito.value = 'Antecedentes actualizados correctamente'
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al guardar antecedentes'
@@ -836,7 +836,7 @@ onMounted(async () => {
           especialidad_nombre: cita.especialidad_nombre,
           triaje: null
         }
-        const paciente = await api(`/app/gestion-pacientes/${cita.patient_id}`)
+        const paciente = await api(`/app/admision/${cita.patient_id}`)
         atencion.value.paciente_edad = paciente.age
         antecedentes.antecedente_quirurgico = paciente.antecedente_quirurgico || ''
         antecedentes.antecedente_patologico = paciente.antecedente_patologico || ''

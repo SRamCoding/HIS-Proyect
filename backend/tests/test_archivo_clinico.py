@@ -17,7 +17,7 @@ from main import app
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token, create_refresh_token
-from app.hospital.gestion_pacientes.models import Patient, ClinicalRecord
+from app.hospital.admision.models import Patient, ClinicalRecord
 from app.tenants.hospitales.models import Tenant, TenantModule
 
 
@@ -104,7 +104,7 @@ class ArchivoClinicoTests(unittest.IsolatedAsyncioTestCase):
             response = await self.client.patch(f"/app/archivo-clinico/historias/{rid}/digitalizar",
                                                json={"is_digitized": True})
             self.assertEqual(response.status_code, 404, response.text)
-            response = await self.client.post("/app/gestion-pacientes/historia-clinica/mover",
+            response = await self.client.post("/app/admision/historia-clinica/mover",
                 json={"clinical_record_id": str(rid), "to_location": "archivo"})
             self.assertEqual(response.status_code, 404, response.text)
 
@@ -122,7 +122,7 @@ class ArchivoClinicoTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.status_code, 422, response.text)
 
     async def test_archive_only_user_moves_and_actor_cannot_be_spoofed(self):
-        url = "/app/gestion-pacientes/historia-clinica/mover"
+        url = "/app/admision/historia-clinica/mover"
         for destination in (" archivo ", "consultorio"):
             response = await self.client.post(url, json={"clinical_record_id": str(self.record_id),
                 "to_location": destination, "moved_by": "Impostor", "notes": "  "})
@@ -139,7 +139,7 @@ class ArchivoClinicoTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result["items"][0]["notes"])
 
     async def test_empty_and_same_location_do_not_create_movements(self):
-        url = "/app/gestion-pacientes/historia-clinica/mover"
+        url = "/app/admision/historia-clinica/mover"
         for destination, expected in (("   ", 422), ("x" * 51, 422), ("ADMISION", 409)):
             response = await self.client.post(url, json={"clinical_record_id": str(self.record_id),
                                                        "to_location": destination})
@@ -150,9 +150,9 @@ class ArchivoClinicoTests(unittest.IsolatedAsyncioTestCase):
     async def test_management_module_can_still_move(self):
         async with self.session() as db:
             await db.execute(update(TenantModule).where(TenantModule.tenant_id == self.tenant_id)
-                             .values(module_code="gestion_pacientes"))
+                             .values(module_code="admision"))
             await db.commit()
-        response = await self.client.post("/app/gestion-pacientes/historia-clinica/mover",
+        response = await self.client.post("/app/admision/historia-clinica/mover",
             json={"clinical_record_id": str(self.record_id), "to_location": "archivo"})
         self.assertEqual(response.status_code, 200, response.text)
         response = await self.client.get("/app/archivo-clinico/historias")

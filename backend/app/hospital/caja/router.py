@@ -48,3 +48,35 @@ async def estado_cuentas(
         "tenant_id": str(get_tenant_id(current_user, request)),
         "status": "pendiente de implementar",
     }
+
+
+@router.get("/cobro-por-paciente", summary="Estado de Cobro por Paciente (placeholder)")
+async def estado_cobro_por_paciente(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
+    current_user: dict = Depends(get_current_user),
+):
+    return {
+        "modulo": MODULO_CODIGO,
+        "submodulo": "cobro-por-paciente",
+        "nombre": "Cobro por Paciente",
+        "tenant_id": str(get_tenant_id(current_user, request)),
+        "status": "pendiente de implementar",
+    }
+
+
+@router.get("/mi-caja", summary="Estado de Mi Caja (placeholder)")
+async def estado_mi_caja(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
+    current_user: dict = Depends(get_current_user),
+):
+    return {
+        "modulo": MODULO_CODIGO,
+        "submodulo": "mi-caja",
+        "nombre": "Mi Caja",
+        "tenant_id": str(get_tenant_id(current_user, request)),
+        "status": "pendiente de implementar",
+    }

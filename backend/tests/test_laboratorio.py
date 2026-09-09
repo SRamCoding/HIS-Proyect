@@ -6,7 +6,7 @@ from pathlib import Path
 from sqlalchemy import select, update
 import test_archivo_clinico as archive
 from app.tenants.hospitales.models import TenantModule
-from app.hospital.gestion_pacientes.models import Patient, ClinicalRecord
+from app.hospital.admision.models import Patient, ClinicalRecord
 from app.sigarh.laboratorio.models import ExamenLaboratorio
 from app.sigarh.mantenimiento.models import Servicio
 from app.sigarh.rrhh.models import Empleado
@@ -73,7 +73,7 @@ class LaboratorioTests(archive.ArchivoClinicoTests):
             r = await self.client.get(self.prefix+f"/movimientos/{m['id']}/{kind}.pdf")
             self.assertEqual(r.status_code,200,r.text[:100])
             self.assertTrue(r.content.startswith(b"%PDF"))
-            path=Path("tmp/pdfs");path.mkdir(parents=True,exist_ok=True)
+            path=Path("/tmp/laboratorio-pdf-qa");path.mkdir(parents=True,exist_ok=True)
             (path/f"laboratorio-{kind}-qa.pdf").write_bytes(r.content)
         r=await self.client.get(self.prefix+f"/movimientos/{m['id']}/auditoria")
         self.assertEqual(len(r.json()),4)
@@ -150,8 +150,8 @@ class LaboratorioTests(archive.ArchivoClinicoTests):
         self.assertEqual(r.json()["total"],1)
         r=await self.client.get(self.prefix+f"/ficha-covid/{c['id']}/reporte.pdf")
         self.assertEqual(r.status_code,200)
-        Path("tmp/pdfs").mkdir(parents=True,exist_ok=True)
-        Path("tmp/pdfs/laboratorio-covid-qa.pdf").write_bytes(r.content)
+        Path("/tmp/laboratorio-pdf-qa").mkdir(parents=True,exist_ok=True)
+        Path("/tmp/laboratorio-pdf-qa/laboratorio-covid-qa.pdf").write_bytes(r.content)
 
     async def test_lab_input_validation_and_no_partial_writes(self):
         body=self.order_body();body["examen_ids"]*=2

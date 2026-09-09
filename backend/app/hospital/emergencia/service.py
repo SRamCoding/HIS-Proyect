@@ -3,9 +3,9 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from app.hospital.emergencia.models import AdmisionEmergencia, TriajeEmergencia, AtencionEmergencia, EmergenciaDiagnostico
+from app.hospital.emergencia.models import AdmisionEmergencia, TriajeEmergencia, AtencionEmergencia, EmergenciaDiagnostico, DestinoEmergencia
 from app.hospital.emergencia.schemas import AdmisionEmergenciaCreate, TriajeEmergenciaCreate, AtencionEmergenciaCreate, AtencionEmergenciaUpdate
-from app.hospital.gestion_pacientes.models import Patient, ClinicalRecord
+from app.hospital.admision.models import Patient, ClinicalRecord
 from app.sigarh.general.models import DiagnosticoCIE10
 
 
@@ -107,7 +107,7 @@ async def create_atencion_emergencia(db: AsyncSession, tenant_id: uuid.UUID, adm
     await db.flush()
     for dx in data.diagnosticos:
         db.add(EmergenciaDiagnostico(atencion_emergencia_id=atencion.id, diagnostico_cie10_id=dx.diagnostico_cie10_id, tipo=dx.tipo))
-    admision.estado = "atendido"
+    admision.estado = "en_atencion"
     await db.commit()
     return await get_atencion_emergencia(db, tenant_id, admision_id)
 
@@ -165,13 +165,105 @@ async def update_atencion_emergencia(db: AsyncSession, tenant_id: uuid.UUID, adm
 
 
 async def firmar_atencion_emergencia(db: AsyncSession, tenant_id: uuid.UUID, admision_id: uuid.UUID) -> dict | None:
-    result = await db.execute(select(AtencionEmergencia).where(AtencionEmergencia.tenant_id == tenant_id, AtencionEmergencia.admision_id == admision_id))
-    atencion = result.scalar_one_or_none()
+    result = await db.execute(
+        select(AtencionEmergencia, AdmisionEmergencia)
+        .join(AdmisionEmergencia, AdmisionEmergencia.id == AtencionEmergencia.admision_id)
+        .where(AtencionEmergencia.tenant_id == tenant_id, AtencionEmergencia.admision_id == admision_id)
+    )
+    row = result.first()
+    atencion, admision = row if row else (None, None)
     if not atencion:
         return None
     if atencion.estado == "firmado":
         raise ValueError("Esta atención ya está firmada")
     atencion.estado = "firmado"
     atencion.firmado_at = datetime.utcnow()
+    finales = {"AMBULATORIA", "ALTA", "FALLECIDO"}
+    db.add(DestinoEmergencia(
+        tenant_id=tenant_id,
+        atencion_id=atencion.id,
+        destino=atencion.destino_atencion,
+        estado="completado" if atencion.destino_atencion in finales else "pendiente",
+        resolved_at=datetime.utcnow() if atencion.destino_atencion in finales else None,
+    ))
+    admision.estado = {
+        "ALTA": "alta",
+        "FALLECIDO": "fallecido",
+        "AMBULATORIA": "atendido",
+    }.get(atencion.destino_atencion, "derivado")
     await db.commit()
     return await get_atencion_emergencia(db, tenant_id, admision_id)
+
+
+async def list_atenciones_emergencia(db: AsyncSession, tenant_id: uuid.UUID, destino: str | None = None) -> list[dict]:
+    query = (
+        select(AtencionEmergencia, AdmisionEmergencia, Patient, TriajeEmergencia, DestinoEmergencia)
+        .join(AdmisionEmergencia, AdmisionEmergencia.id == AtencionEmergencia.admision_id)
+        .join(Patient, Patient.id == AdmisionEmergencia.patient_id)
+        .outerjoin(TriajeEmergencia, TriajeEmergencia.admision_id == AdmisionEmergencia.id)
+        .outerjoin(DestinoEmergencia, DestinoEmergencia.atencion_id == AtencionEmergencia.id)
+        .where(AtencionEmergencia.tenant_id == tenant_id)
+        .order_by(AtencionEmergencia.created_at.desc())
+    )
+    if destino:
+        query = query.where(AtencionEmergencia.destino_atencion == destino.upper())
+    rows = (await db.execute(query)).all()
+    return [{
+        "id": a.id, "admision_id": adm.id, "numero_cuenta": adm.numero_cuenta,
+        "paciente_nombre": patient.full_name, "paciente_dni": patient.dni,
+        "prioridad": triage.prioridad if triage else None, "motivo_consulta": a.motivo_consulta,
+        "destino_atencion": a.destino_atencion, "estado": a.estado,
+        "destino_estado": derivacion.estado if derivacion else None,
+        "created_at": a.created_at, "firmado_at": a.firmado_at,
+    } for a, adm, patient, triage, derivacion in rows]
+
+
+async def list_destinos_emergencia(db: AsyncSession, tenant_id: uuid.UUID, destino: str | None = None, estado: str | None = None) -> list[dict]:
+    query = (
+        select(DestinoEmergencia, AtencionEmergencia, AdmisionEmergencia, Patient)
+        .join(AtencionEmergencia, AtencionEmergencia.id == DestinoEmergencia.atencion_id)
+        .join(AdmisionEmergencia, AdmisionEmergencia.id == AtencionEmergencia.admision_id)
+        .join(Patient, Patient.id == AdmisionEmergencia.patient_id)
+        .where(DestinoEmergencia.tenant_id == tenant_id)
+        .order_by(DestinoEmergencia.created_at.desc())
+    )
+    if destino:
+        query = query.where(DestinoEmergencia.destino == destino.upper())
+    if estado:
+        query = query.where(DestinoEmergencia.estado == estado.lower())
+    rows = (await db.execute(query)).all()
+    return [{
+        "id": d.id, "atencion_id": a.id, "admision_id": adm.id,
+        "numero_cuenta": adm.numero_cuenta, "paciente_nombre": patient.full_name,
+        "paciente_dni": patient.dni, "destino": d.destino, "estado": d.estado,
+        "observacion": d.observacion, "created_at": d.created_at, "resolved_at": d.resolved_at,
+    } for d, a, adm, patient in rows]
+
+
+async def resolver_destino_emergencia(db: AsyncSession, tenant_id: uuid.UUID, destino_id: uuid.UUID, observacion: str | None) -> dict | None:
+    destino = await db.scalar(select(DestinoEmergencia).where(DestinoEmergencia.id == destino_id, DestinoEmergencia.tenant_id == tenant_id))
+    if not destino:
+        return None
+    if destino.estado == "completado":
+        raise ValueError("El destino ya fue completado")
+    destino.estado = "completado"
+    destino.observacion = observacion
+    destino.resolved_at = datetime.utcnow()
+    atencion = await db.scalar(select(AtencionEmergencia).where(AtencionEmergencia.id == destino.atencion_id))
+    admision = await db.scalar(select(AdmisionEmergencia).where(AdmisionEmergencia.id == atencion.admision_id))
+    admision.estado = "atendido"
+    await db.commit()
+    row = (await db.execute(
+        select(DestinoEmergencia, AtencionEmergencia, AdmisionEmergencia, Patient)
+        .join(AtencionEmergencia, AtencionEmergencia.id == DestinoEmergencia.atencion_id)
+        .join(AdmisionEmergencia, AdmisionEmergencia.id == AtencionEmergencia.admision_id)
+        .join(Patient, Patient.id == AdmisionEmergencia.patient_id)
+        .where(DestinoEmergencia.id == destino_id, DestinoEmergencia.tenant_id == tenant_id)
+    )).one()
+    d, a, adm, patient = row
+    return {
+        "id": d.id, "atencion_id": a.id, "admision_id": adm.id,
+        "numero_cuenta": adm.numero_cuenta, "paciente_nombre": patient.full_name,
+        "paciente_dni": patient.dni, "destino": d.destino, "estado": d.estado,
+        "observacion": d.observacion, "created_at": d.created_at, "resolved_at": d.resolved_at,
+    }

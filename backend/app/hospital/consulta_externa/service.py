@@ -6,7 +6,7 @@ from sqlalchemy import select, or_, func
 from app.sigarh.laboratorio.models import ExamenLaboratorio
 from app.sigarh.imagenologia.models import ExamenImagenologia
 from app.tenants.hospitales.models import Tenant
-from app.hospital.gestion_pacientes.models import Patient, ClinicalRecord
+from app.hospital.admision.models import Patient, ClinicalRecord
 from app.hospital.consulta_externa.models import ProgramacionMedica, Cita, Triaje, AtencionMedica, AtencionDiagnostico, Receta, RecetaItem, Hospitalizacion, OrdenLaboratorio, OrdenLaboratorioItem, OrdenImagen, OrdenImagenItem, Interconsulta, Referencia
 from app.sigarh.general.models import DiagnosticoCIE10
 

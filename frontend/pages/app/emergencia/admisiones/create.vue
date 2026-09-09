@@ -1,4 +1,4 @@
-<template>
+?<template>
   <div class="emergencia-create-container">
     <div class="emergencia-create-grid">
       <!-- Main Content -->
@@ -424,7 +424,7 @@ async function buscarPaciente() {
   error.value = ''
   mostrarCreacionRapida.value = false
   try {
-    pacienteSeleccionado.value = await api(`/app/gestion-pacientes/dni/${dniBusqueda.value}`)
+    pacienteSeleccionado.value = await api(`/app/admision/dni/${dniBusqueda.value}`)
   } catch (e: any) {
     if (e?.status === 404) {
       mostrarCreacionRapida.value = true
@@ -444,7 +444,7 @@ async function crearPacienteRapido() {
   creandoPaciente.value = true
   error.value = ''
   try {
-    pacienteSeleccionado.value = await api('/app/gestion-pacientes/', {
+    pacienteSeleccionado.value = await api('/app/admision/', {
       method: 'POST',
       body: {
         ...nuevoPaciente,

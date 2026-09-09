@@ -399,3 +399,18 @@ async def crear_referencia(cita_id: uuid.UUID, data: ReferenciaCreate, request: 
         return await create_referencia(db, get_tenant_id(current_user, request), cita_id, data)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
+
+
+@router.get("/ficha-covid", summary="Estado de Ficha Covid (placeholder)")
+async def estado_ficha_covid(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt("consulta_externa")),
+):
+    return {
+        "modulo": "consulta_externa",
+        "submodulo": "ficha-covid",
+        "nombre": "Ficha Covid",
+        "tenant_id": str(get_tenant_id(current_user, request)),
+        "status": "pendiente de implementar",
+    }

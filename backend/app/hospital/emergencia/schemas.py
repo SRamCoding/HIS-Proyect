@@ -93,6 +93,14 @@ class AtencionEmergenciaCreate(BaseModel):
     destino_atencion: str = "AMBULATORIA"
     diagnosticos: list[EmergenciaDiagnosticoCreate] = []
 
+    @model_validator(mode="after")
+    def validar_destino(self):
+        permitidos = {"AMBULATORIA", "HOSPITALIZACION", "REFERENCIA", "INTERCONSULTA", "ALTA", "FALLECIDO"}
+        self.destino_atencion = self.destino_atencion.upper()
+        if self.destino_atencion not in permitidos:
+            raise ValueError("Destino de atención no válido")
+        return self
+
     @model_validator(mode="before")
     @classmethod
     def vacios_a_none(cls, data):
@@ -107,6 +115,32 @@ class AtencionEmergenciaUpdate(BaseModel):
     plan_tratamiento: str | None = None
     observaciones: str | None = None
     destino_atencion: str | None = None
+
+    @model_validator(mode="after")
+    def validar_destino(self):
+        if self.destino_atencion is not None:
+            self.destino_atencion = self.destino_atencion.upper()
+            if self.destino_atencion not in {"AMBULATORIA", "HOSPITALIZACION", "REFERENCIA", "INTERCONSULTA", "ALTA", "FALLECIDO"}:
+                raise ValueError("Destino de atención no válido")
+        return self
+
+
+class DestinoEmergenciaResponse(BaseModel):
+    id: uuid.UUID
+    atencion_id: uuid.UUID
+    admision_id: uuid.UUID
+    numero_cuenta: str
+    paciente_nombre: str
+    paciente_dni: str | None
+    destino: str
+    estado: str
+    observacion: str | None
+    created_at: datetime
+    resolved_at: datetime | None
+
+
+class ResolverDestinoRequest(BaseModel):
+    observacion: str | None = None
 
 
 class AtencionEmergenciaResponse(BaseModel):

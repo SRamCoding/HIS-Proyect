@@ -233,7 +233,8 @@ const handleLogin = async () => {
     authStore.refreshToken = response.refresh_token
     authStore.user = response.user
 
-    router.push(`/sigarh?tenant=${tenantId.value}`)
+    const resolvedTenant = tenantId.value || response.user?.tenant_id || ''
+    router.push(resolvedTenant ? `/sigarh?tenant=${resolvedTenant}` : '/sigarh')
   } catch (e: any) {
     error.value = e?.data?.detail || 'Credenciales incorrectas'
   } finally {

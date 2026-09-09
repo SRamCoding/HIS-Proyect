@@ -34,6 +34,10 @@ class OrdenCreate(Entrada):
     def unicos(self):
         if len(set(self.examen_ids)) != len(self.examen_ids):
             raise ValueError("No repita exámenes en la orden")
+        if self.tipo_servicio == "EMERGENCIA" and not self.emergencia_id:
+            raise ValueError("Seleccione la admisión de emergencia asociada")
+        if self.tipo_servicio != "EMERGENCIA" and self.emergencia_id:
+            raise ValueError("La admisión de emergencia solo corresponde al tipo EMERGENCIA")
         return self
 
 

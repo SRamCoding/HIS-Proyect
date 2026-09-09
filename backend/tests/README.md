@@ -10,4 +10,12 @@ Las pruebas usan la API mediante ASGI y PostgreSQL real. Cada caso crea hospital
 
 Se comprueban búsqueda, filtros, paginación, digitalización, historial, traslados, atribución del responsable, aislamiento entre hospitales, módulos desactivados y rechazo de tokens de refresco como credenciales de acceso.
 
+Para ejecutar el circuito de Laboratorio por separado:
+
+```powershell
+docker compose exec -T -e RUN_ARCHIVO_DB_TESTS=1 backend python -m unittest discover -s tests -p test_laboratorio.py -v
+```
+
+Estas pruebas cubren órdenes nuevas y antiguas provenientes de Consulta Externa, cupos y liberación por anulación, movimientos, toma de muestra, resultados, validación, auditoría, reportes PDF/CSV, Ficha Covid, concurrencia optimista y aislamiento entre hospitales.
+
 No son pruebas de navegador ni de carga concurrente.

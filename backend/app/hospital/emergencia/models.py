@@ -99,3 +99,19 @@ class EmergenciaDiagnostico(Base):
     diagnostico_cie10_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_diagnosticos_cie10.id", ondelete="CASCADE"))
     tipo: Mapped[str] = mapped_column(String(20), default="definitivo")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DestinoEmergencia(Base):
+    """Derivación generada al firmar la atención y consumida por el módulo destino."""
+    __tablename__ = "emergencia_destinos"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    atencion_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("atenciones_emergencia.id", ondelete="CASCADE"), unique=True
+    )
+    destino: Mapped[str] = mapped_column(String(30), index=True)
+    estado: Mapped[str] = mapped_column(String(20), default="pendiente", index=True)
+    observacion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

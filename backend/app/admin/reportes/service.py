@@ -1,4 +1,4 @@
-# backend/app/admin/reportes/service.py
+﻿# backend/app/admin/reportes/service.py
 import uuid
 from collections import Counter
 from datetime import datetime
@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.tenants.hospitales.models import Tenant
 from app.tenants.modulos.service import get_all_modules
 from app.auth.models import User
-from app.hospital.gestion_pacientes.models import Patient
+from app.hospital.admision.models import Patient
 
 
 async def get_hospitals_modules_report(db: AsyncSession) -> list[dict]:
@@ -47,7 +47,7 @@ async def get_monthly_report(
         1,
     )
 
-    # Hospitales activos (con sus módulos precargados)
+    # Hospitales activos (con sus modulos precargados)
     tenants_query = (
         select(Tenant)
         .options(selectinload(Tenant.modules))
@@ -58,7 +58,7 @@ async def get_monthly_report(
         tenants_query = tenants_query.where(Tenant.id == tenant_id)
     tenants = (await db.execute(tenants_query)).scalars().all()
 
-    # Pacientes nuevos del período, agrupados por hospital
+    # Pacientes nuevos del periodo, agrupados por hospital
     patients_rows = await db.execute(
         select(Patient.tenant_id, func.count(Patient.id))
         .where(Patient.created_at >= start, Patient.created_at < end)
@@ -93,7 +93,7 @@ async def get_monthly_report(
 
     pacientes_nuevos_total = sum(h["pacientes_nuevos"] for h in hospitales_summary)
 
-    # Cobertura de módulos (top 10 más adoptados)
+    # Cobertura de modulos (top 10 mas adoptados)
     modules_catalog = await get_all_modules(db)
     name_by_code = {m.code: m.name for m in modules_catalog}
     total_para_pct = len(hospitales_summary) or 1
@@ -110,7 +110,7 @@ async def get_monthly_report(
     coverage.sort(key=lambda x: x["hospitals_with_module"], reverse=True)
     coverage = coverage[:10]
 
-    # Hospitales registrados en el período (independiente de is_active)
+    # Hospitales registrados en el periodo (independiente de is_active)
     registrados_rows = await db.execute(
         select(Tenant)
         .where(Tenant.created_at >= start, Tenant.created_at < end)
@@ -122,7 +122,7 @@ async def get_monthly_report(
         for t in registrados
     ]
 
-    # Usuarios centrales (sin tenant, ej. super-admins) registrados en el período
+    # Usuarios centrales (sin tenant, ej. super-admins) registrados en el periodo
     usuarios_centrales = await db.scalar(
         select(func.count(User.id)).where(
             User.tenant_id.is_(None),

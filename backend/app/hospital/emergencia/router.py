@@ -8,10 +8,12 @@ from app.tenants.entitlements import require_module_jwt
 from app.hospital.emergencia.schemas import (
     AdmisionEmergenciaCreate, AdmisionEmergenciaResponse, TriajeEmergenciaCreate, TriajeEmergenciaResponse,
     AtencionEmergenciaCreate, AtencionEmergenciaUpdate, AtencionEmergenciaResponse,
+    DestinoEmergenciaResponse, ResolverDestinoRequest,
 )
 from app.hospital.emergencia.service import (
     create_admision, get_admision, list_admisiones, create_triaje_emergencia, get_triaje_emergencia,
     create_atencion_emergencia, get_atencion_emergencia, update_atencion_emergencia, firmar_atencion_emergencia,
+    list_atenciones_emergencia, list_destinos_emergencia, resolver_destino_emergencia,
 )
 
 router = APIRouter()
@@ -89,6 +91,16 @@ async def registrar_triaje(
 
 
 # --- Atenciones ---
+@router.get("/atenciones", summary="Listar atenciones de emergencia")
+async def listar_atenciones(
+    request: Request,
+    destino: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    return await list_atenciones_emergencia(db, get_tenant_id(current_user, request), destino)
+
+
 @router.get("/atenciones/{admision_id}", response_model=AtencionEmergenciaResponse, summary="Obtener atencion de emergencia")
 async def obtener_atencion(
     admision_id: uuid.UUID,
@@ -149,7 +161,36 @@ async def firmar_atencion(
     return atencion
 
 
-# --- Placeholders pendientes ---
+# --- Colas de destino ---
+@router.get("/destinos", response_model=list[DestinoEmergenciaResponse])
+async def listar_destinos(
+    request: Request,
+    destino: str | None = None,
+    estado: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    return await list_destinos_emergencia(db, get_tenant_id(current_user, request), destino, estado)
+
+
+@router.post("/destinos/{destino_id}/resolver", response_model=DestinoEmergenciaResponse)
+async def resolver_destino(
+    destino_id: uuid.UUID,
+    data: ResolverDestinoRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    try:
+        item = await resolver_destino_emergencia(db, get_tenant_id(current_user, request), destino_id, data.observacion)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    if not item:
+        raise HTTPException(404, detail="Destino no encontrado")
+    return item
+
+
+# --- Compatibilidad de submódulos ---
 @router.get("/observacion", summary="Estado de Observacion (placeholder)")
 async def estado_observacion(
     request: Request,
@@ -157,13 +198,7 @@ async def estado_observacion(
     tenant=Depends(require_module_jwt(MODULO_CODIGO)),
     current_user: dict = Depends(get_current_user),
 ):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "observacion",
-        "nombre": "Observacion",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+    return await list_destinos_emergencia(db, get_tenant_id(current_user, request), "HOSPITALIZACION")
 
 
 @router.get("/referencias", summary="Estado de Referencias (placeholder)")
@@ -173,10 +208,4 @@ async def estado_referencias(
     tenant=Depends(require_module_jwt(MODULO_CODIGO)),
     current_user: dict = Depends(get_current_user),
 ):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "referencias",
-        "nombre": "Referencias",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+    return await list_destinos_emergencia(db, get_tenant_id(current_user, request), "REFERENCIA")

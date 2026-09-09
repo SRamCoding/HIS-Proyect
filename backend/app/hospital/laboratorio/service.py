@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.hospital.laboratorio.models import LabCorrelativo, LabCupo, LabMovimiento, LabMovimientoItem, LabFichaCovid
 from app.hospital.laboratorio import schemas
 from app.hospital.consulta_externa.models import OrdenLaboratorio, OrdenLaboratorioItem, AtencionMedica, Cita, ProgramacionMedica
-from app.hospital.gestion_pacientes.models import Patient, ClinicalRecord
+from app.hospital.admision.models import Patient, ClinicalRecord
 from app.hospital.emergencia.models import AdmisionEmergencia
 from app.sigarh.laboratorio.models import ExamenLaboratorio
 from app.sigarh.rrhh.models import Empleado, Especialidad

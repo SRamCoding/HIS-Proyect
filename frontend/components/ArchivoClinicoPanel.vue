@@ -480,7 +480,7 @@ async function move() {
   error.value = ''
   notice.value = ''
   try {
-    await api('/app/gestion-pacientes/historia-clinica/mover', {
+    await api('/app/admision/historia-clinica/mover', {
       method: 'POST',
       body: {
         clinical_record_id: selected.value.id,

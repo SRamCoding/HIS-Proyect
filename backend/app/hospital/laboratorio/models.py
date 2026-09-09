@@ -17,7 +17,10 @@ class LabCorrelativo(Base):
 
 class LabCupo(Base):
     __tablename__ = "lab_cupos"
-    __table_args__ = (UniqueConstraint("tenant_id", "fecha"), CheckConstraint("cupos >= 0"))
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "fecha"),
+        CheckConstraint("cupos >= 0", name="lab_cupos_cupos_check"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     fecha: Mapped[date] = mapped_column(Date)
@@ -52,8 +55,11 @@ class LabMovimiento(Base):
 
 class LabMovimientoItem(Base):
     __tablename__ = "lab_movimiento_items"
-    __table_args__ = (UniqueConstraint("movimiento_id", "examen_id"),
-                     CheckConstraint("cantidad > 0"), CheckConstraint("precio >= 0"))
+    __table_args__ = (
+        UniqueConstraint("movimiento_id", "examen_id"),
+        CheckConstraint("cantidad > 0", name="lab_movimiento_items_cantidad_check"),
+        CheckConstraint("precio >= 0", name="lab_movimiento_items_precio_check"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     movimiento_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("lab_movimientos.id", ondelete="RESTRICT"))

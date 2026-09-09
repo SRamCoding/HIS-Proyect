@@ -542,11 +542,34 @@ async function firmar() {
   error.value = ''
   exito.value = ''
   try {
+    if (existe.value) {
+      atencion.value = await api(`/app/emergencia/atenciones/${admisionId}`, {
+        method: 'PATCH',
+        body: form,
+      })
+    } else {
+      atencion.value = await api(`/app/emergencia/atenciones/${admisionId}`, {
+        method: 'POST',
+        body: {
+          ...form,
+          diagnosticos: diagnosticos.value.map((d) => ({
+            diagnostico_cie10_id: d.diagnostico_cie10_id,
+            tipo: d.tipo,
+          })),
+        },
+      })
+      existe.value = true
+    }
     atencion.value = await api(`/app/emergencia/atenciones/${admisionId}/firmar`, {
       method: 'POST',
     })
     exito.value = 'Atención firmada correctamente'
-    setTimeout(() => { exito.value = '' }, 5000)
+    const rutas: Record<string, string> = {
+      HOSPITALIZACION: '/app/emergencia/observacion',
+      INTERCONSULTA: '/app/emergencia/interconsultas',
+      REFERENCIA: '/app/emergencia/referencias',
+    }
+    await navigateTo({ path: rutas[form.destino_atencion] || '/app/emergencia/atenciones', query: { tenant: route.query.tenant } })
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al firmar'
   } finally {

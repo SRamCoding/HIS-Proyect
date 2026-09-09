@@ -2,7 +2,7 @@ export const useSigarhNav = () => {
   const authStore = useAuthStore()
   const route = useRoute()
 
-  const tenantId = computed(() => route.query.tenant as string || '')
+  const tenantId = computed(() => (route.query.tenant as string) || authStore.user?.tenant_id || '')
   const link = (path: string) => `${path}?tenant=${tenantId.value}`
   const activo = (path: string) => ({ 'nav-active': route.path === path })
   const tiene = (code: string) => authStore.user?.active_modules?.includes(code) ?? false

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Nuevo Almacén' })
 
-const { $api } = useNuxtApp()
+const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
 const tenant = route.query.tenant as string
@@ -101,7 +101,7 @@ async function guardar() {
   saving.value = true
   error.value = ''
   try {
-    await $api('/sigarh/config-farmacia/almacenes', {
+    await api('/sigarh/config-farmacia/almacenes', {
       method: 'POST',
       tenant,
       body: {

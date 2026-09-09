@@ -2,7 +2,7 @@
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.hospital.archivo_clinico.models import ClinicalRecord, ClinicalRecordMovement
-from app.hospital.gestion_pacientes.models import Patient
+from app.hospital.admision.models import Patient
 
 
 def _historias(tenant_id: uuid.UUID):

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Almacenes / Farmacias' })
 
-const { $api } = useNuxtApp()
+const { api } = useApi()
 const route = useRoute()
 const tenant = route.query.tenant as string
 
@@ -74,7 +74,7 @@ const clearFilters = () => {
 
 onMounted(async () => {
   try {
-    lista.value = await $api('/sigarh/config-farmacia/almacenes', { tenant })
+    lista.value = await api('/sigarh/config-farmacia/almacenes', { tenant })
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al cargar datos'
   } finally {
