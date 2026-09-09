@@ -80,4 +80,7 @@ CATEGORIAS_CATALOGO = [
     "estados_comprobante",
     "destino_atencion",
     "tipos_comprobante",
+    "tipos_cama",
+    "tipos_cupo_cita",
+    "puntos_llamado",
 ]

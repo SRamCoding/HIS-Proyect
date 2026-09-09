@@ -1,7 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Nuevo Medicamento' })
 
-const { $api } = useNuxtApp()
+const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
 const tenant = route.query.tenant as string
@@ -129,18 +129,17 @@ async function guardar() {
   saving.value = true
   error.value = ''
   try {
-    await $api('/sigarh/config-farmacia/medicamentos', {
+    await api('/sigarh/config-farmacia/medicamentos', {
       method: 'POST',
       tenant,
       body: {
-        nombre: form.nombre,
-        codigo_digemid: form.codigo_digemid,
+        nombre_comercial: form.nombre,
+        codigo_interno: form.codigo_digemid,
         concentracion: form.concentracion,
         forma_farmaceutica: form.forma_farmaceutica || null,
         via_administracion: form.via_administracion || null,
-        unidad_medida: form.unidad_medida || null,
-        tipo: form.tipo,
-        precio_unitario: form.precio_unitario || 0,
+        unidad: form.unidad_medida || null,
+        precio_referencia: form.precio_unitario || 0,
         requiere_receta: form.requiere_receta,
         controlado: form.controlado,
         is_active: form.is_active,

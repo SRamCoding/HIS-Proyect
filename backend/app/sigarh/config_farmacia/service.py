@@ -2,7 +2,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.sigarh.config_farmacia.models import Almacen, Medicamento
+from app.sigarh.config_farmacia.models import Almacen, Medicamento, ProveedorFarmacia, CatalogoFarmacia
 
 
 # ─── Helper ───────────────────────────────────────────────────────────────────
@@ -110,6 +110,15 @@ async def eliminar_medicamento(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.
     item = await obtener_medicamento(db, id, tenant_id)
     if not item:
         return False
-    await db.delete(item)
+    item.is_active = False
     await db.commit()
     return True
+
+async def listar_proveedores(db, tenant_id):
+    return (await db.execute(select(ProveedorFarmacia).where(ProveedorFarmacia.tenant_id==tenant_id).order_by(ProveedorFarmacia.razon_social))).scalars().all()
+async def crear_proveedor(db, tenant_id, data):
+    row=ProveedorFarmacia(tenant_id=tenant_id,**data.model_dump()); db.add(row); await db.commit(); await db.refresh(row); return row
+async def listar_catalogo(db, tenant_id, categoria):
+    return (await db.execute(select(CatalogoFarmacia).where(CatalogoFarmacia.tenant_id==tenant_id,CatalogoFarmacia.categoria==categoria,CatalogoFarmacia.is_active==True).order_by(CatalogoFarmacia.nombre))).scalars().all()
+async def crear_catalogo(db, tenant_id, data):
+    row=CatalogoFarmacia(tenant_id=tenant_id,**data.model_dump()); db.add(row); await db.commit(); await db.refresh(row); return row

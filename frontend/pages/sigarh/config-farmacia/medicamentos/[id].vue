@@ -1,7 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Editar Medicamento' })
 
-const { $api } = useNuxtApp()
+const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
 const tenant = route.query.tenant as string
@@ -131,18 +131,17 @@ async function guardar() {
   saving.value = true
   error.value = ''
   try {
-    await $api(`/sigarh/config-farmacia/medicamentos/${id}`, {
+    await api(`/sigarh/config-farmacia/medicamentos/${id}`, {
       method: 'PATCH',
       tenant,
       body: {
-        nombre: form.nombre,
-        codigo_digemid: form.codigo_digemid,
+        nombre_comercial: form.nombre,
+        codigo_interno: form.codigo_digemid,
         concentracion: form.concentracion,
         forma_farmaceutica: form.forma_farmaceutica || null,
         via_administracion: form.via_administracion || null,
-        unidad_medida: form.unidad_medida || null,
-        tipo: form.tipo,
-        precio_unitario: form.precio_unitario || 0,
+        unidad: form.unidad_medida || null,
+        precio_referencia: form.precio_unitario || 0,
         requiere_receta: form.requiere_receta,
         controlado: form.controlado,
         is_active: form.is_active,
@@ -158,8 +157,20 @@ async function guardar() {
 
 onMounted(async () => {
   try {
-    const data = await $api(`/sigarh/config-farmacia/medicamentos/${id}`, { tenant })
-    Object.assign(form, data)
+    const data = await api(`/sigarh/config-farmacia/medicamentos/${id}`, { tenant })
+    Object.assign(form, {
+      nombre: data.nombre_comercial || '',
+      codigo_digemid: data.codigo_interno || '',
+      concentracion: data.concentracion || '',
+      forma_farmaceutica: data.forma_farmaceutica || '',
+      via_administracion: data.via_administracion || '',
+      unidad_medida: data.unidad || '',
+      tipo: 'MEDICAMENTO',
+      precio_unitario: data.precio_referencia || 0,
+      requiere_receta: data.requiere_receta,
+      controlado: data.controlado,
+      is_active: data.is_active,
+    })
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al cargar datos'
   } finally {

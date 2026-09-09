@@ -86,6 +86,37 @@ def require_module_jwt(module_code: str):
     return dependency
 
 
+def require_any_module_jwt(*module_codes: str):
+    """Autoriza una operación compartida entre módulos del panel hospitalario.
+
+    El hospital debe proceder del JWT, nunca de un header elegido por el cliente.
+    Reutiliza la comprobación de hospital y módulo activos de require_module_jwt.
+    """
+    checks = [require_module_jwt(code) for code in module_codes]
+
+    async def dependency(
+        request: Request,
+        current_user: dict = Depends(get_current_user),
+    ) -> dict:
+        import uuid
+
+        if current_user.get("panel") != "app":
+            raise HTTPException(403, detail="Acceso restringido al panel hospitalario")
+        try:
+            uuid.UUID(str(current_user.get("tenant_id")))
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(403, detail="Sin hospital válido asignado")
+        for check in checks:
+            try:
+                return await check(request=request, current_user=current_user)
+            except HTTPException as exc:
+                if exc.status_code != 403:
+                    raise
+        raise HTTPException(403, detail="Ninguno de los módulos requeridos está activo")
+
+    return dependency
+
+
 def require_any_module(*module_codes: str):
     """
     Verifica que el tenant tenga AL MENOS UNO de los módulos indicados.

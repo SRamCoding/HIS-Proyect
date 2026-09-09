@@ -61,8 +61,6 @@ async def crear(
     tenant=Depends(require_module_jwt("sigarh_infraestructura")),
     current_user: dict = Depends(get_current_user),
 ):
-    if data.categoria not in CATEGORIAS_CATALOGO:
-        raise HTTPException(400, detail=f"Categoria invalida. Opciones: {', '.join(CATEGORIAS_CATALOGO)}")
     return await crear_catalogo(db, get_tenant_id(current_user, request), data)
 
 

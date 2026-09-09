@@ -331,3 +331,62 @@
 @media (max-width: 480px) {
   .sigarh-stats-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* Item cell con icono */
+.sigarh-item-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.sigarh-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sigarh-item-name {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* Code badge */
+.sigarh-code-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 6px;
+  background: var(--mist);
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-family: monospace;
+  font-weight: 500;
+}
+
+/* Filter count badge */
+.sigarh-filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  background: var(--line);
+  color: var(--ink-soft);
+}
+
+.sigarh-filter-btn.active .sigarh-filter-count {
+  background: var(--teal);
+  color: white;
+}
+
+/* Table responsive */
+.sigarh-table-responsive {
+  overflow-x: auto;
+}

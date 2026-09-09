@@ -3,571 +3,390 @@ definePageMeta({ layout: 'sigarh', title: 'Escritorio', middleware: ['auth'] })
 
 const { api } = useApi()
 const route = useRoute()
-const tenant = route.query.tenant as string
+const tenant = computed(() => route.query.tenant as string || '')
 
-const data = ref<any>(null)
+interface Serie { label: string; anio?: number; valor?: number }
+interface Tendencia { label: string; vacaciones: number; licencias: number; papeletas: number; cambios_turno: number; total: number }
+interface AsistSemana { label: string; presentes: number; ausentes: number; total: number }
+interface UltimaVac { id: string; empleado_nombre: string; tipo: string; fecha_inicio: string; fecha_fin: string; estado: string }
+interface UltimaLic { id: string; empleado_nombre: string; fecha_tramite: string; fecha_inicio: string; fecha_fin: string; estado: string }
+interface Dashboard {
+  fecha: string
+  kpis: {
+    total_empleados: number; empleados_activos: number; empleados_inactivos: number
+    asistencia_hoy: number; ausentes_hoy: number; porcentaje_asistencia: number
+    solicitudes_pendientes: number; justificaciones_pendientes: number
+  }
+  movimientos_mes: { vacaciones: number; licencias: number; papeletas: number; cambios_turno: number }
+  pendientes: { vacaciones: number; licencias: number; papeletas: number; cambios_turno: number }
+  camas: { total: number; disponibles: number; ocupadas: number; mantenimiento: number; reservadas: number; porcentaje_ocupacion: number }
+  distribucion_genero: { masculino: number; femenino: number; sin_registrar: number }
+  distribucion_estado: { activos: number; inactivos: number; en_vacaciones: number; en_licencia: number }
+  empleados_por_mes: Serie[]
+  asistencia_semanal: AsistSemana[]
+  tendencias_solicitudes: Tendencia[]
+  ultimas_vacaciones: UltimaVac[]
+  ultimas_licencias: UltimaLic[]
+}
+
+const data = ref<Dashboard | null>(null)
 const loading = ref(true)
 const error = ref('')
 
-const cargarDashboard = async () => {
+const cargar = async () => {
   loading.value = true
   error.value = ''
   try {
-    data.value = await api('/sigarh/dashboard')
+    data.value = await api<Dashboard>('/sigarh/dashboard')
   } catch (e: any) {
     error.value = e?.data?.detail || 'No se pudo cargar el dashboard'
   } finally {
     loading.value = false
   }
 }
+onMounted(cargar)
 
-onMounted(cargarDashboard)
-
-const porcentajeAsistencia = computed(() => {
-  if (!data.value?.total_empleados) return 0
-  return Math.round((data.value.asistencia_hoy / data.value.total_empleados) * 100)
+const hoyLabel = computed(() => {
+  const d = data.value?.fecha ? new Date(data.value.fecha + 'T00:00:00') : new Date()
+  return d.toLocaleDateString('es-PE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 })
 
-const porcentajeCamas = computed(() => {
-  if (!data.value?.camas?.total) return 0
-  return Math.round((data.value.camas.ocupadas / data.value.camas.total) * 100)
-})
+// ── Helpers ─────────────────────────────────────────────────────────────────
+const estadoColor: Record<string, string> = { pendiente: 'var(--amber)', aprobado: 'var(--green)', rechazado: 'var(--alert)' }
+const estadoSoft: Record<string, string> = { pendiente: 'var(--amber-soft)', aprobado: 'var(--green-soft)', rechazado: 'var(--alert-soft)' }
+const fmtEstado = (e: string) => ({ pendiente: 'Pendiente', aprobado: 'Aprobado', rechazado: 'Rechazado' }[e] || e)
+const fmtTipo = (t: string) => ({ vacacion: 'Vacaciones', justificacion: 'Justificacion', permiso: 'Permiso' }[t] || t)
 
-const totalPendientes = computed(() => {
-  if (!data.value?.pendientes) return 0
-  return (data.value.pendientes.vacaciones + data.value.pendientes.licencias + data.value.pendientes.papeletas)
-})
-
-const estadoColor: Record<string, string> = {
-  pendiente: '#f59e0b',
-  aprobado: '#10b981',
-  rechazado: '#ef4444',
+const avatarColors = ['var(--teal-soft)', 'var(--purple-soft)', 'var(--navy-soft)', 'var(--amber-soft)', 'var(--green-soft)', 'var(--orange-soft)']
+const avatarColor = (name: string) => {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h)
+  return avatarColors[Math.abs(h) % avatarColors.length]
 }
+const initials = (name: string) => (!name ? '?' : name.replace(',', '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase())
 
-const hoy = new Date().toLocaleDateString('es-PE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-
-const getEmployeeColor = (name: string) => {
-  const colors = [
-    'var(--teal-soft)',
-    'var(--purple-soft)',
-    'var(--navy-soft)',
-    'var(--amber-soft)',
-    'var(--green-soft)',
-    'var(--pink-soft)',
-    'var(--blue-soft)',
-    'var(--orange-soft)'
-  ]
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return colors[Math.abs(hash) % colors.length]
-}
-
-const getInitials = (name: string) => {
-  if (!name || name === '—') return '?'
-  return name
-    .split(' ')
-    .map(word => word[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
-}
-
-// ── Datos para gráficos ──
-const empleadosPorMes = computed(() => data.value?.empleados_por_mes || [])
-const areaChartSeries = computed(() => [
-  { name: 'Empleados', data: empleadosPorMes.value.map((m: any) => m.valor) },
+// ── Series de gráficos ─────────────────────────────────────────────────────
+const tendencias = computed(() => data.value?.tendencias_solicitudes || [])
+const tendenciaCategorias = computed(() => tendencias.value.map(t => t.label))
+const tendenciaSeries = computed(() => [
+  { name: 'Vacaciones', data: tendencias.value.map(t => t.vacaciones) },
+  { name: 'Licencias', data: tendencias.value.map(t => t.licencias) },
+  { name: 'Papeletas', data: tendencias.value.map(t => t.papeletas) },
+  { name: 'Cambios turno', data: tendencias.value.map(t => t.cambios_turno) },
 ])
-const areaChartCategories = computed(() => empleadosPorMes.value.map((m: any) => m.label))
 
-const distribucionGenero = computed(() => ({
-  masculino: data.value?.distribucion_genero?.masculino || 0,
-  femenino: data.value?.distribucion_genero?.femenino || 0,
-}))
+const empleadosPorMes = computed(() => data.value?.empleados_por_mes || [])
+const altasSeries = computed(() => [{ name: 'Altas', data: empleadosPorMes.value.map(m => m.valor || 0) }])
+const altasCategorias = computed(() => empleadosPorMes.value.map(m => m.label))
 
-const distribucionEstado = computed(() => ({
-  activos: data.value?.empleados_activos || 0,
-  inactivos: (data.value?.total_empleados || 0) - (data.value?.empleados_activos || 0),
-  vacaciones: data.value?.estado_empleados?.vacaciones || 0,
-  licencias: data.value?.estado_empleados?.licencias || 0,
-}))
+const estado = computed(() => data.value?.distribucion_estado || { activos: 0, inactivos: 0, en_vacaciones: 0, en_licencia: 0 })
+const trabajando = computed(() => Math.max(estado.value.activos - estado.value.en_vacaciones - estado.value.en_licencia, 0))
+const estadoSeries = computed(() => [trabajando.value, estado.value.en_vacaciones, estado.value.en_licencia, estado.value.inactivos])
+
+const genero = computed(() => data.value?.distribucion_genero || { masculino: 0, femenino: 0, sin_registrar: 0 })
+const generoSeries = computed(() => [genero.value.masculino, genero.value.femenino, genero.value.sin_registrar])
 
 const asistenciaSemanal = computed(() => data.value?.asistencia_semanal || [])
-const maxAsistencia = computed(() => {
-  const values = asistenciaSemanal.value.map((d: any) => d.asistencia)
-  return Math.max(...values, 1)
+const maxSemana = computed(() => Math.max(...asistenciaSemanal.value.map(s => s.total), 1))
+
+const camas = computed(() => data.value?.camas)
+const camaSegmentos = computed(() => {
+  const c = camas.value
+  if (!c || !c.total) return []
+  return [
+    { label: 'Ocupadas', valor: c.ocupadas, color: 'var(--navy)' },
+    { label: 'Disponibles', valor: c.disponibles, color: 'var(--green)' },
+    { label: 'Reservadas', valor: c.reservadas, color: 'var(--amber)' },
+    { label: 'Mantenimiento', valor: c.mantenimiento, color: 'var(--ink-soft)' },
+  ]
 })
 
-const tendenciasSolicitudes = computed(() => data.value?.tendencias_solicitudes || [])
-
-// ── ApexCharts ──
+// ── Opciones ApexCharts (modo claro) ───────────────────────────────────────
+const ejeComun = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  foreColor: '#4a5c66',
+}
 const areaOptions = computed(() => ({
-  chart: {
-    toolbar: { show: false },
-    fontFamily: 'IBM Plex Sans, sans-serif',
-    zoom: { enabled: false },
-  },
-  colors: ['#0891b2'],
-  stroke: { curve: 'smooth', width: 3 },
-  fill: {
-    type: 'gradient',
-    gradient: {
-      shadeIntensity: 1,
-      opacityFrom: 0.35,
-      opacityTo: 0.03,
-      stops: [0, 90, 100],
-    },
-  },
-  markers: {
-    size: 4,
-    colors: ['#fff'],
-    strokeColors: '#0891b2',
-    strokeWidth: 2,
-    hover: { size: 6 },
-  },
+  chart: { ...ejeComun, toolbar: { show: false }, stacked: true, zoom: { enabled: false } },
+  colors: ['#c2571e', '#0c7c74', '#6b4fa3', '#123a52'],
+  stroke: { curve: 'smooth', width: 2 },
+  fill: { type: 'gradient', gradient: { opacityFrom: 0.35, opacityTo: 0.05 } },
   dataLabels: { enabled: false },
-  xaxis: {
-    categories: areaChartCategories.value,
-    labels: { style: { colors: '#4a5c66', fontSize: '12px' } },
-    axisBorder: { show: false },
-    axisTicks: { show: false },
-  },
-  yaxis: { labels: { style: { colors: '#4a5c66', fontSize: '11px' } } },
+  legend: { position: 'top', horizontalAlign: 'left', fontSize: '12px', markers: { radius: 4 } },
+  xaxis: { categories: tendenciaCategorias.value, axisBorder: { show: false }, axisTicks: { show: false } },
   grid: { borderColor: '#dce5e7', strokeDashArray: 3 },
   tooltip: { theme: 'light' },
 }))
-
-const donutOptions = computed(() => ({
-  chart: { fontFamily: 'IBM Plex Sans, sans-serif' },
-  colors: ['#0891b2', '#6366f1'],
-  labels: ['Masculino', 'Femenino'],
-  legend: { position: 'bottom', fontSize: '12px' },
-  plotOptions: {
-    pie: {
-      donut: {
-        size: '70%',
-        labels: {
-          show: true,
-          total: { show: true, label: 'Total', color: '#1a2e3b', fontSize: '14px' },
-        },
-      },
-    },
-  },
+const altasOptions = computed(() => ({
+  chart: { ...ejeComun, toolbar: { show: false }, sparkline: { enabled: false }, zoom: { enabled: false } },
+  colors: ['#0c7c74'],
+  plotOptions: { bar: { borderRadius: 4, columnWidth: '45%' } },
+  dataLabels: { enabled: false },
+  xaxis: { categories: altasCategorias.value, axisBorder: { show: false }, axisTicks: { show: false } },
+  grid: { borderColor: '#dce5e7', strokeDashArray: 3 },
+  tooltip: { theme: 'light' },
+}))
+const donutBase = {
+  chart: { ...ejeComun },
   stroke: { width: 0 },
   dataLabels: { enabled: false },
-}))
-
-const donutEstadoOptions = computed(() => ({
-  chart: { fontFamily: 'IBM Plex Sans, sans-serif' },
-  colors: ['#10b981', '#6b7280', '#f59e0b', '#0891b2'],
-  labels: ['Activos', 'Inactivos', 'Vacaciones', 'Licencias'],
-  legend: { position: 'bottom', fontSize: '11px' },
-  plotOptions: {
-    pie: {
-      donut: {
-        size: '70%',
-        labels: {
-          show: true,
-          total: { show: true, label: 'Total', color: '#1a2e3b', fontSize: '14px' },
-        },
-      },
-    },
-  },
-  stroke: { width: 0 },
-  dataLabels: { enabled: false },
-}))
+  legend: { position: 'bottom', fontSize: '12px', markers: { radius: 4 } },
+  plotOptions: { pie: { donut: { size: '68%', labels: { show: true, total: { show: true, label: 'Total', fontSize: '13px' } } } } },
+}
+const estadoOptions = computed(() => ({ ...donutBase, colors: ['#0c7c74', '#c2571e', '#6b4fa3', '#9aa7ad'], labels: ['Trabajando', 'En vacaciones', 'En licencia', 'Inactivos'] }))
+const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4fa3', '#c9d4d8'], labels: ['Masculino', 'Femenino', 'Sin registrar'] }))
 </script>
 
 <template>
-  <div class="dashboard-sigarh-container">
-    <!-- Header con saludo personalizado -->
-    <div class="page-header">
-      <div class="header-left">
-        <div class="header-icon" style="background: var(--navy-soft)">
+  <div class="dash">
+    <div class="dash-header">
+      <div class="dash-header-left">
+        <div class="dash-header-icon">
           <UIcon name="i-heroicons-chart-bar" class="w-5 h-5" style="color: var(--navy)" />
         </div>
         <div>
           <h1 class="page-title">Escritorio SIGARH</h1>
-          <p class="page-subtitle capitalize">{{ hoy }}</p>
+          <p class="page-subtitle" style="text-transform: capitalize">{{ hoyLabel }}</p>
         </div>
       </div>
-      <div v-if="totalPendientes > 0" class="alert-badge">
+      <div v-if="data && data.kpis.solicitudes_pendientes > 0" class="dash-alert">
         <UIcon name="i-heroicons-bell-alert" class="w-4 h-4" />
-        <span>{{ totalPendientes }} solicitudes pendientes</span>
+        {{ data.kpis.solicitudes_pendientes }} solicitudes pendientes
       </div>
     </div>
 
-    <!-- Loading -->
-    <div v-if="loading" class="loading-grid">
-      <div v-for="i in 4" :key="i" class="skeleton-card" />
+    <div v-if="loading" class="dash-skeleton-grid">
+      <div v-for="i in 4" :key="i" class="dash-skeleton" />
     </div>
 
-    <!-- Error -->
-    <div v-else-if="error" class="error-banner">
+    <div v-else-if="error" class="dash-error">
       <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
       {{ error }}
+      <button class="btn-outline" @click="cargar">Reintentar</button>
     </div>
 
     <template v-else-if="data">
-      <!-- Fila 1: KPIs principales -->
+      <!-- KPIs -->
       <div class="kpi-grid">
-        <!-- Total Empleados -->
-        <div class="kpi-card" style="border-left: 4px solid var(--navy)">
-          <div class="kpi-content">
-            <div>
-              <span class="kpi-label">Total Empleados</span>
-              <span class="kpi-value">{{ data.total_empleados }}</span>
-              <span class="kpi-sub">
-                <span class="text-green-600 font-medium">{{ data.empleados_activos }}</span> activos
-                <span class="trend-up">↑ 12 este mes</span>
-              </span>
-            </div>
-            <div class="kpi-icon" style="background: var(--navy-soft)">
-              <UIcon name="i-heroicons-users" class="w-5 h-5" style="color: var(--navy)" />
-            </div>
+        <div class="kpi-card" style="border-left-color: var(--navy)">
+          <div>
+            <span class="kpi-label">Total Empleados</span>
+            <span class="kpi-value">{{ data.kpis.total_empleados }}</span>
+            <span class="kpi-sub"><b style="color: var(--green)">{{ data.kpis.empleados_activos }}</b> activos · {{ data.kpis.empleados_inactivos }} inactivos</span>
           </div>
+          <div class="kpi-icon" style="background: var(--navy-soft)"><UIcon name="i-heroicons-users" class="w-5 h-5" style="color: var(--navy)" /></div>
         </div>
 
-        <!-- Asistencia Hoy -->
-        <div class="kpi-card" style="border-left: 4px solid var(--green)">
-          <div class="kpi-content">
-            <div>
-              <span class="kpi-label">Asistencia Hoy</span>
-              <span class="kpi-value">{{ data.asistencia_hoy }}</span>
-              <span class="kpi-sub">
-                <span class="font-medium" :style="{ color: porcentajeAsistencia >= 80 ? 'var(--green)' : 'var(--amber)' }">
-                  {{ porcentajeAsistencia }}%
-                </span> del personal
-              </span>
-            </div>
-            <div class="kpi-icon" style="background: var(--green-soft)">
-              <UIcon name="i-heroicons-clipboard-document-check" class="w-5 h-5" style="color: var(--green)" />
-            </div>
+        <div class="kpi-card" style="border-left-color: var(--green)">
+          <div>
+            <span class="kpi-label">Asistencia Hoy</span>
+            <span class="kpi-value">{{ data.kpis.asistencia_hoy }}</span>
+            <span class="kpi-sub">
+              <b :style="{ color: data.kpis.porcentaje_asistencia >= 80 ? 'var(--green)' : 'var(--amber)' }">{{ data.kpis.porcentaje_asistencia }}%</b>
+              del personal activo · {{ data.kpis.ausentes_hoy }} ausentes
+            </span>
+            <div class="kpi-progress"><div class="kpi-progress-fill" :style="{ width: Math.min(data.kpis.porcentaje_asistencia, 100) + '%', background: data.kpis.porcentaje_asistencia >= 80 ? 'var(--green)' : 'var(--amber)' }" /></div>
           </div>
-          <div class="kpi-progress">
-            <div class="progress-bar" :style="{ width: porcentajeAsistencia + '%', background: porcentajeAsistencia >= 80 ? 'var(--green)' : 'var(--amber)' }" />
-          </div>
+          <div class="kpi-icon" style="background: var(--green-soft)"><UIcon name="i-heroicons-clipboard-document-check" class="w-5 h-5" style="color: var(--green)" /></div>
         </div>
 
-        <!-- Solicitudes Pendientes -->
-        <div class="kpi-card" style="border-left: 4px solid var(--amber)">
-          <div class="kpi-content">
-            <div>
-              <span class="kpi-label">Solicitudes Pendientes</span>
-              <span class="kpi-value">{{ totalPendientes }}</span>
-              <div class="kpi-badges">
-                <span class="badge-mini" style="background: var(--amber-soft); color: var(--amber)">V:{{ data.pendientes.vacaciones }}</span>
-                <span class="badge-mini" style="background: var(--teal-soft); color: var(--teal)">L:{{ data.pendientes.licencias }}</span>
-                <span class="badge-mini" style="background: var(--purple-soft); color: var(--purple)">P:{{ data.pendientes.papeletas }}</span>
+        <div class="kpi-card" style="border-left-color: var(--amber)">
+          <div>
+            <span class="kpi-label">Solicitudes Pendientes</span>
+            <span class="kpi-value">{{ data.kpis.solicitudes_pendientes }}</span>
+            <div class="kpi-badges">
+              <span class="badge-mini" style="background: var(--orange-soft); color: var(--orange)">Vac {{ data.pendientes.vacaciones }}</span>
+              <span class="badge-mini" style="background: var(--teal-soft); color: var(--teal)">Lic {{ data.pendientes.licencias }}</span>
+              <span class="badge-mini" style="background: var(--purple-soft); color: var(--purple)">Pap {{ data.pendientes.papeletas }}</span>
+              <span class="badge-mini" style="background: var(--navy-soft); color: var(--navy)">CT {{ data.pendientes.cambios_turno }}</span>
+            </div>
+          </div>
+          <div class="kpi-icon" style="background: var(--amber-soft)"><UIcon name="i-heroicons-clock" class="w-5 h-5" style="color: var(--amber)" /></div>
+        </div>
+
+        <div class="kpi-card" style="border-left-color: var(--purple)">
+          <div>
+            <span class="kpi-label">Justificaciones Pend.</span>
+            <span class="kpi-value">{{ data.kpis.justificaciones_pendientes }}</span>
+            <span class="kpi-sub">Por revisar en RRHH</span>
+          </div>
+          <div class="kpi-icon" style="background: var(--purple-soft)"><UIcon name="i-heroicons-document-text" class="w-5 h-5" style="color: var(--purple)" /></div>
+        </div>
+      </div>
+
+      <!-- Tendencias + estado -->
+      <div class="grid-2-1">
+        <div class="card">
+          <div class="card-head">
+            <h3 class="card-title">Tendencia de solicitudes</h3>
+            <span class="card-badge">Ultimos 6 meses</span>
+          </div>
+          <ClientOnly>
+            <ApexChart type="area" height="260" :options="areaOptions" :series="tendenciaSeries" />
+          </ClientOnly>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3 class="card-title">Empleados por estado</h3></div>
+          <ClientOnly>
+            <ApexChart type="donut" height="240" :options="estadoOptions" :series="estadoSeries" />
+          </ClientOnly>
+        </div>
+      </div>
+
+      <!-- Asistencia semanal + movimientos del mes -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head">
+            <h3 class="card-title">Asistencia semanal</h3>
+            <span class="card-badge">Ultimas 5 semanas</span>
+          </div>
+          <div v-if="!asistenciaSemanal.length" class="mini-empty">
+            <UIcon name="i-heroicons-clipboard-document-check" class="w-7 h-7" style="color: var(--ink-soft)" />
+            <span>Sin registros de asistencia</span>
+          </div>
+          <div v-else class="asist-bars">
+            <div v-for="s in asistenciaSemanal" :key="s.label" class="asist-bar">
+              <span class="asist-val">{{ s.presentes }}</span>
+              <div class="asist-track">
+                <div class="asist-fill" :style="{ height: (s.presentes / maxSemana) * 100 + '%', background: s.total && s.presentes / s.total >= 0.8 ? 'var(--green)' : 'var(--amber)' }" />
               </div>
-            </div>
-            <div class="kpi-icon" style="background: var(--amber-soft)">
-              <UIcon name="i-heroicons-clock" class="w-5 h-5" style="color: var(--amber)" />
+              <span class="asist-lbl">{{ s.label }}</span>
             </div>
           </div>
         </div>
 
-        <!-- Justificaciones Pendientes -->
-        <div class="kpi-card" style="border-left: 4px solid var(--purple)">
-          <div class="kpi-content">
-            <div>
-              <span class="kpi-label">Justificaciones Pend.</span>
-              <span class="kpi-value">{{ data.justificaciones_pendientes }}</span>
-              <span class="kpi-sub">Por revisar</span>
-            </div>
-            <div class="kpi-icon" style="background: var(--purple-soft)">
-              <UIcon name="i-heroicons-document-text" class="w-5 h-5" style="color: var(--purple)" />
-            </div>
+        <div class="card">
+          <div class="card-head"><h3 class="card-title">Movimientos del mes</h3></div>
+          <div class="mov-grid">
+            <NuxtLink :to="`/sigarh/movimientos/vacaciones?tenant=${tenant}`" class="mov-item">
+              <div class="mov-icon" style="background: var(--orange-soft)"><UIcon name="i-heroicons-sun" class="w-4 h-4" style="color: var(--orange)" /></div>
+              <div><span class="mov-value">{{ data.movimientos_mes.vacaciones }}</span><span class="mov-label">Vacaciones</span></div>
+            </NuxtLink>
+            <NuxtLink :to="`/sigarh/movimientos/licencias?tenant=${tenant}`" class="mov-item">
+              <div class="mov-icon" style="background: var(--teal-soft)"><UIcon name="i-heroicons-paper-airplane" class="w-4 h-4" style="color: var(--teal)" /></div>
+              <div><span class="mov-value">{{ data.movimientos_mes.licencias }}</span><span class="mov-label">Licencias</span></div>
+            </NuxtLink>
+            <NuxtLink :to="`/sigarh/movimientos/papeletas/estado?tenant=${tenant}`" class="mov-item">
+              <div class="mov-icon" style="background: var(--purple-soft)"><UIcon name="i-heroicons-document-duplicate" class="w-4 h-4" style="color: var(--purple)" /></div>
+              <div><span class="mov-value">{{ data.movimientos_mes.papeletas }}</span><span class="mov-label">Papeletas</span></div>
+            </NuxtLink>
+            <NuxtLink :to="`/sigarh/movimientos/cambio-turno/estado?tenant=${tenant}`" class="mov-item">
+              <div class="mov-icon" style="background: var(--navy-soft)"><UIcon name="i-heroicons-arrows-right-left" class="w-4 h-4" style="color: var(--navy)" /></div>
+              <div><span class="mov-value">{{ data.movimientos_mes.cambios_turno }}</span><span class="mov-label">Cambios turno</span></div>
+            </NuxtLink>
           </div>
         </div>
       </div>
 
-      <!-- Fila 2: Gráficos principales -->
-      <div class="row-charts-grid">
-        <!-- Tendencias de solicitudes -->
-        <div class="chart-card">
-          <div class="card-header-simple">
-            <h3 class="card-title-simple">Tendencias de solicitudes</h3>
-            <span class="card-badge">Últimos 6 meses</span>
-          </div>
+      <!-- Altas por mes + genero + camas -->
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-head"><h3 class="card-title">Altas de empleados</h3><span class="card-badge">Por mes</span></div>
           <ClientOnly>
-            <ApexChart
-              type="area"
-              height="220"
-              :options="areaOptions"
-              :series="areaChartSeries"
-            />
+            <ApexChart type="bar" height="200" :options="altasOptions" :series="altasSeries" />
           </ClientOnly>
         </div>
 
-        <!-- Distribución por estado -->
-        <div class="chart-card">
-          <div class="card-header-simple">
-            <h3 class="card-title-simple">Empleados por estado</h3>
-            <span class="card-badge">Distribución</span>
+        <div class="card">
+          <div class="card-head"><h3 class="card-title">Distribucion por genero</h3></div>
+          <ClientOnly>
+            <ApexChart type="donut" height="220" :options="generoOptions" :series="generoSeries" />
+          </ClientOnly>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h3 class="card-title">Estado de camas</h3>
+            <NuxtLink :to="`/sigarh/infraestructura-hosp/camas?tenant=${tenant}`" class="card-link">Ver todas</NuxtLink>
           </div>
-          <div class="chart-container">
-            <ClientOnly>
-              <ApexChart
-                type="donut"
-                height="180"
-                :options="donutEstadoOptions"
-                :series="[distribucionEstado.activos, distribucionEstado.inactivos, distribucionEstado.vacaciones, distribucionEstado.licencias]"
-              />
-            </ClientOnly>
+          <div v-if="!camas || !camas.total" class="mini-empty">
+            <UIcon name="i-heroicons-home-modern" class="w-7 h-7" style="color: var(--ink-soft)" />
+            <span>Sin camas registradas</span>
           </div>
-          <div class="estado-legend">
-            <div class="legend-item">
-              <span class="legend-dot" style="background: var(--green)" />
-              <span class="legend-label">Activos</span>
-              <span class="legend-value">{{ distribucionEstado.activos }}</span>
+          <template v-else>
+            <div class="camas-top">
+              <span class="camas-pct">{{ camas.porcentaje_ocupacion }}%</span>
+              <span class="camas-pct-lbl">ocupacion · {{ camas.total }} camas</span>
             </div>
-            <div class="legend-item">
-              <span class="legend-dot" style="background: var(--ink-soft)" />
-              <span class="legend-label">Inactivos</span>
-              <span class="legend-value">{{ distribucionEstado.inactivos }}</span>
+            <div class="camas-bar">
+              <div v-for="seg in camaSegmentos" :key="seg.label" class="camas-seg" :style="{ width: (seg.valor / camas.total) * 100 + '%', background: seg.color }" />
             </div>
-            <div class="legend-item">
-              <span class="legend-dot" style="background: var(--amber)" />
-              <span class="legend-label">Vacaciones</span>
-              <span class="legend-value">{{ distribucionEstado.vacaciones }}</span>
+            <div class="camas-legend">
+              <div v-for="seg in camaSegmentos" :key="seg.label" class="camas-leg-item">
+                <span class="camas-dot" :style="{ background: seg.color }" />
+                <span class="camas-leg-lbl">{{ seg.label }}</span>
+                <span class="camas-leg-val">{{ seg.valor }}</span>
+              </div>
             </div>
-            <div class="legend-item">
-              <span class="legend-dot" style="background: var(--teal)" />
-              <span class="legend-label">Licencias</span>
-              <span class="legend-value">{{ distribucionEstado.licencias }}</span>
-            </div>
-          </div>
+          </template>
         </div>
       </div>
 
-      <!-- Fila 3: Asistencia mensual + Movimientos -->
-      <div class="row-three-grid">
-        <!-- Asistencia mensual -->
-        <div class="asistencia-card">
-          <div class="card-header-simple">
-            <h3 class="card-title-simple">Asistencia mensual</h3>
-            <span class="card-badge">Últimas 5 semanas</span>
+      <!-- Ultimas solicitudes -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head">
+            <h3 class="card-title">Ultimas vacaciones</h3>
+            <NuxtLink :to="`/sigarh/movimientos/vacaciones?tenant=${tenant}`" class="card-link">Ver todas</NuxtLink>
           </div>
-          <div v-if="!asistenciaSemanal.length" class="empty-state-small">
-            <UIcon name="i-heroicons-clipboard-document-check" class="w-8 h-8" style="color: var(--ink-soft)" />
-            <span>Sin datos de asistencia</span>
+          <div v-if="!data.ultimas_vacaciones.length" class="mini-empty">
+            <UIcon name="i-heroicons-sun" class="w-7 h-7" style="color: var(--ink-soft)" />
+            <span>Sin solicitudes recientes</span>
           </div>
-          <div v-else class="asistencia-bars">
-            <div v-for="dia in asistenciaSemanal" :key="dia.dia" class="asistencia-bar-item">
-              <span class="asistencia-value">{{ dia.asistencia }}</span>
-              <div class="bar-wrapper">
-                <div
-                  class="asistencia-bar-fill"
-                  :style="{
-                    height: (dia.asistencia / maxAsistencia) * 100 + '%',
-                    background: dia.asistencia / maxAsistencia > 0.8 ? 'var(--green)' : 'var(--amber)'
-                  }"
-                />
+          <div v-else class="sol-list">
+            <NuxtLink v-for="v in data.ultimas_vacaciones" :key="v.id" :to="`/sigarh/movimientos/vacaciones/${v.id}?tenant=${tenant}`" class="sol-item">
+              <div class="sol-avatar" :style="{ background: avatarColor(v.empleado_nombre) }">{{ initials(v.empleado_nombre) }}</div>
+              <div class="sol-info">
+                <span class="sol-name">{{ v.empleado_nombre }}</span>
+                <span class="sol-detail">{{ fmtTipo(v.tipo) }} · {{ v.fecha_inicio }} → {{ v.fecha_fin }}</span>
               </div>
-              <span class="asistencia-label">{{ dia.dia.slice(0, 3) }}</span>
-            </div>
+              <span class="sol-estado" :style="{ background: estadoSoft[v.estado] || 'var(--mist)', color: estadoColor[v.estado] || 'var(--ink-soft)' }">{{ fmtEstado(v.estado) }}</span>
+            </NuxtLink>
           </div>
         </div>
 
-        <!-- Movimientos del mes -->
-        <div class="movimientos-card">
-          <div class="card-header-simple">
-            <h3 class="card-title-simple">Movimientos del Mes</h3>
-            <span class="card-badge">Actualizado</span>
+        <div class="card">
+          <div class="card-head">
+            <h3 class="card-title">Ultimas licencias</h3>
+            <NuxtLink :to="`/sigarh/movimientos/licencias?tenant=${tenant}`" class="card-link">Ver todas</NuxtLink>
           </div>
-          <div class="movimientos-grid">
-            <NuxtLink :to="`/sigarh/movimientos/vacaciones?tenant=${tenant}`" class="movimiento-item">
-              <div class="movimiento-icon" style="background: var(--orange-soft)">
-                <UIcon name="i-heroicons-sun" class="w-4 h-4" style="color: var(--orange)" />
+          <div v-if="!data.ultimas_licencias.length" class="mini-empty">
+            <UIcon name="i-heroicons-paper-airplane" class="w-7 h-7" style="color: var(--ink-soft)" />
+            <span>Sin licencias recientes</span>
+          </div>
+          <div v-else class="sol-list">
+            <NuxtLink v-for="l in data.ultimas_licencias" :key="l.id" :to="`/sigarh/movimientos/licencias/${l.id}?tenant=${tenant}`" class="sol-item">
+              <div class="sol-avatar" :style="{ background: avatarColor(l.empleado_nombre) }">{{ initials(l.empleado_nombre) }}</div>
+              <div class="sol-info">
+                <span class="sol-name">{{ l.empleado_nombre }}</span>
+                <span class="sol-detail">Tramite {{ l.fecha_tramite }} · {{ l.fecha_inicio }} → {{ l.fecha_fin }}</span>
               </div>
-              <div>
-                <span class="movimiento-value">{{ data.movimientos_mes.vacaciones }}</span>
-                <span class="movimiento-label">Vacaciones</span>
-                <span class="movimiento-trend trend-up">↑ 18%</span>
-              </div>
-            </NuxtLink>
-
-            <NuxtLink :to="`/sigarh/movimientos/licencias?tenant=${tenant}`" class="movimiento-item">
-              <div class="movimiento-icon" style="background: var(--teal-soft)">
-                <UIcon name="i-heroicons-paper-airplane" class="w-4 h-4" style="color: var(--teal)" />
-              </div>
-              <div>
-                <span class="movimiento-value">{{ data.movimientos_mes.licencias }}</span>
-                <span class="movimiento-label">Licencias</span>
-                <span class="movimiento-trend trend-down">↓ 6%</span>
-              </div>
-            </NuxtLink>
-
-            <NuxtLink :to="`/sigarh/movimientos/papeletas/estado?tenant=${tenant}`" class="movimiento-item">
-              <div class="movimiento-icon" style="background: var(--purple-soft)">
-                <UIcon name="i-heroicons-document-duplicate" class="w-4 h-4" style="color: var(--purple)" />
-              </div>
-              <div>
-                <span class="movimiento-value">{{ data.movimientos_mes.papeletas }}</span>
-                <span class="movimiento-label">Papeletas</span>
-                <span class="movimiento-trend trend-down">↓ 11%</span>
-              </div>
-            </NuxtLink>
-
-            <NuxtLink :to="`/sigarh/movimientos/cambio-turno/estado?tenant=${tenant}`" class="movimiento-item">
-              <div class="movimiento-icon" style="background: var(--navy-soft)">
-                <UIcon name="i-heroicons-arrows-right-left" class="w-4 h-4" style="color: var(--navy)" />
-              </div>
-              <div>
-                <span class="movimiento-value">{{ data.movimientos_mes.cambios_turno }}</span>
-                <span class="movimiento-label">Cambios Turno</span>
-                <span class="movimiento-trend trend-down">↓ 8%</span>
-              </div>
+              <span class="sol-estado" :style="{ background: estadoSoft[l.estado] || 'var(--mist)', color: estadoColor[l.estado] || 'var(--ink-soft)' }">{{ fmtEstado(l.estado) }}</span>
             </NuxtLink>
           </div>
         </div>
       </div>
 
-      <!-- Fila 4: Últimas solicitudes -->
-      <div class="row-four-grid">
-        <!-- Últimas Vacaciones -->
-        <div class="solicitudes-card">
-          <div class="card-header-simple">
-            <h3 class="card-title-simple">Últimas Vacaciones</h3>
-            <NuxtLink :to="`/sigarh/movimientos/vacaciones?tenant=${tenant}`" class="link-ver-todas">
-              Ver todas
-            </NuxtLink>
-          </div>
-          <div v-if="!data.ultimas_vacaciones.length" class="empty-state-small">
-            <UIcon name="i-heroicons-sun" class="w-8 h-8" style="color: var(--ink-soft)" />
-            <span>No hay solicitudes recientes</span>
-          </div>
-          <div v-else class="solicitudes-list">
-            <div v-for="v in data.ultimas_vacaciones" :key="v.id" class="solicitud-item">
-              <div class="solicitud-avatar" :style="{ background: getEmployeeColor(v.empleado_nombre || '') }">
-                <span>{{ getInitials(v.empleado_nombre || '—') }}</span>
-              </div>
-              <div class="solicitud-info">
-                <span class="solicitud-nombre">{{ v.empleado_nombre || 'Empleado' }}</span>
-                <span class="solicitud-detalle">{{ v.tipo }} · {{ v.fecha_inicio }} → {{ v.fecha_fin }}</span>
-              </div>
-              <span class="solicitud-estado" :style="{ background: estadoColor[v.estado] || '#6b7280', color: '#fff' }">
-                {{ v.estado }}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Últimas Licencias -->
-        <div class="solicitudes-card">
-          <div class="card-header-simple">
-            <h3 class="card-title-simple">Últimas Licencias</h3>
-            <NuxtLink :to="`/sigarh/movimientos/licencias?tenant=${tenant}`" class="link-ver-todas">
-              Ver todas
-            </NuxtLink>
-          </div>
-          <div v-if="!data.ultimas_licencias.length" class="empty-state-small">
-            <UIcon name="i-heroicons-paper-airplane" class="w-8 h-8" style="color: var(--ink-soft)" />
-            <span>No hay licencias recientes</span>
-          </div>
-          <div v-else class="solicitudes-list">
-            <div v-for="l in data.ultimas_licencias" :key="l.id" class="solicitud-item">
-              <div class="solicitud-avatar" :style="{ background: getEmployeeColor(l.empleado_nombre || '') }">
-                <span>{{ getInitials(l.empleado_nombre || '—') }}</span>
-              </div>
-              <div class="solicitud-info">
-                <span class="solicitud-nombre">{{ l.empleado_nombre || 'Empleado' }}</span>
-                <span class="solicitud-detalle">Tramitada: {{ l.fecha_tramite }}</span>
-              </div>
-              <span class="solicitud-estado" :style="{ background: estadoColor[l.estado] || '#6b7280', color: '#fff' }">
-                {{ l.estado }}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Fila 5: Accesos rápidos -->
-      <div class="accesos-card">
-        <h3 class="card-title-simple">Accesos Rápidos</h3>
+      <!-- Accesos rapidos -->
+      <div class="card">
+        <div class="card-head"><h3 class="card-title">Accesos rapidos</h3></div>
         <div class="accesos-grid">
           <NuxtLink
-            v-for="acceso in [
+            v-for="a in [
               { label: 'Empleados', icon: 'i-heroicons-users', path: '/sigarh/rrhh/empleados' },
               { label: 'Asistencia', icon: 'i-heroicons-clipboard-document-check', path: '/sigarh/rrhh/asistencia' },
               { label: 'Vacaciones', icon: 'i-heroicons-sun', path: '/sigarh/movimientos/vacaciones' },
               { label: 'Licencias', icon: 'i-heroicons-paper-airplane', path: '/sigarh/movimientos/licencias' },
-              { label: 'Camas', icon: 'i-heroicons-home', path: '/sigarh/infraestructura-hosp/camas' },
-              { label: 'CIE-10', icon: 'i-heroicons-document-magnifying-glass', path: '/sigarh/general/cie10' },
+              { label: 'Papeletas', icon: 'i-heroicons-document-duplicate', path: '/sigarh/movimientos/papeletas/estado' },
+              { label: 'Camas', icon: 'i-heroicons-home-modern', path: '/sigarh/infraestructura-hosp/camas' },
             ]"
-            :key="acceso.path"
-            :to="`${acceso.path}?tenant=${tenant}`"
+            :key="a.path"
+            :to="`${a.path}?tenant=${tenant}`"
             class="acceso-item"
           >
-            <div class="acceso-icon" style="background: var(--navy-soft)">
-              <UIcon :name="acceso.icon" class="w-4 h-4" style="color: var(--navy)" />
-            </div>
-            <span class="acceso-label">{{ acceso.label }}</span>
+            <div class="acceso-icon"><UIcon :name="a.icon" class="w-4 h-4" style="color: var(--navy)" /></div>
+            <span>{{ a.label }}</span>
           </NuxtLink>
-        </div>
-      </div>
-
-      <!-- Fila 6: Estado de Camas (nuevo) -->
-      <div v-if="data.camas" class="camas-row">
-        <div class="camas-card-full">
-          <div class="card-header-simple">
-            <h3 class="card-title-simple">Estado de Camas</h3>
-            <NuxtLink :to="`/sigarh/infraestructura-hosp/camas?tenant=${tenant}`" class="link-ver-todas">
-              Ver todas
-            </NuxtLink>
-          </div>
-
-          <div v-if="data.camas.total === 0" class="empty-state-small">
-            <UIcon name="i-heroicons-home" class="w-8 h-8" style="color: var(--ink-soft)" />
-            <span>No hay camas registradas</span>
-          </div>
-
-          <div v-else class="camas-content">
-            <div class="camas-ring-container">
-              <div class="camas-ring">
-                <svg viewBox="0 0 120 120" class="ring-svg">
-                  <circle cx="60" cy="60" r="52" fill="none" stroke="var(--mist)" stroke-width="8" />
-                  <circle
-                    cx="60" cy="60" r="52" fill="none"
-                    stroke="var(--navy)"
-                    stroke-width="8"
-                    stroke-linecap="round"
-                    :stroke-dasharray="`${(porcentajeCamas / 100) * 326.7} 326.7`"
-                    :style="{ transform: 'rotate(-90deg)', transformOrigin: 'center' }"
-                  />
-                </svg>
-                <div class="ring-center">
-                  <span class="ring-percentage">{{ porcentajeCamas }}%</span>
-                  <span class="ring-label">Ocupación</span>
-                </div>
-              </div>
-
-              <div class="camas-legend">
-                <div class="legend-item">
-                  <span class="legend-dot" style="background: var(--green)" />
-                  <span class="legend-label">Disponibles</span>
-                  <span class="legend-value">{{ data.camas.disponibles }}</span>
-                </div>
-                <div class="legend-item">
-                  <span class="legend-dot" style="background: var(--alert)" />
-                  <span class="legend-label">Ocupadas</span>
-                  <span class="legend-value">{{ data.camas.ocupadas }}</span>
-                </div>
-                <div class="legend-item">
-                  <span class="legend-dot" style="background: var(--amber)" />
-                  <span class="legend-label">Mantenimiento</span>
-                  <span class="legend-value">{{ data.camas.mantenimiento }}</span>
-                </div>
-                <div class="legend-divider" />
-                <div class="legend-item total">
-                  <span class="legend-label">Total</span>
-                  <span class="legend-value total-value">{{ data.camas.total }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </template>
@@ -575,781 +394,98 @@ const donutEstadoOptions = computed(() => ({
 </template>
 
 <style scoped>
-.dashboard-sigarh-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 1.5rem 2rem;
-}
+.dash { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; display: flex; flex-direction: column; gap: 1.25rem; }
 
-/* Page Header */
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 2rem;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
+.dash-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+.dash-header-left { display: flex; align-items: center; gap: 1rem; }
+.dash-header-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--navy-soft); display: flex; align-items: center; justify-content: center; }
+.page-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0; }
+.page-subtitle { font-size: 0.875rem; color: var(--ink-soft); margin: 0.125rem 0 0; }
+.dash-alert { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.875rem; border-radius: 999px; background: var(--amber-soft); color: var(--amber); font-size: 0.8125rem; font-weight: 600; }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
+.dash-skeleton-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+.dash-skeleton { height: 110px; border-radius: var(--radius-lg); background: linear-gradient(90deg, var(--mist) 25%, #f4f8f9 50%, var(--mist) 75%); background-size: 200% 100%; animation: sk 1.4s infinite; }
+@keyframes sk { to { background-position: -200% 0; } }
+.dash-error { display: flex; align-items: center; gap: 0.75rem; padding: 1rem; border-radius: var(--radius-lg); background: var(--alert-soft); color: var(--alert); font-size: 0.875rem; }
 
-.header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
+/* KPIs */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+.kpi-card { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--navy); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 1.1rem 1.25rem; display: flex; justify-content: space-between; gap: 0.75rem; }
+.kpi-label { display: block; font-size: 0.75rem; color: var(--ink-soft); font-weight: 500; }
+.kpi-value { display: block; font-size: 1.75rem; font-weight: 700; color: var(--ink); line-height: 1.15; margin: 0.15rem 0; }
+.kpi-sub { display: block; font-size: 0.75rem; color: var(--ink-soft); }
+.kpi-icon { width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.kpi-badges { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.35rem; }
+.badge-mini { font-size: 0.625rem; font-weight: 600; padding: 0.1rem 0.4rem; border-radius: 6px; }
+.kpi-progress { height: 5px; border-radius: 3px; background: var(--mist); margin-top: 0.5rem; overflow: hidden; }
+.kpi-progress-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
 
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.2;
-}
+/* Layout grids */
+.grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
 
-.page-subtitle {
-  font-size: 0.875rem;
-  color: var(--ink-soft);
-  margin: 0.125rem 0 0 0;
-}
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 1.25rem; }
+.card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+.card-title { font-size: 0.9375rem; font-weight: 600; color: var(--ink); margin: 0; }
+.card-badge { font-size: 0.6875rem; font-weight: 500; color: var(--ink-soft); background: var(--mist); padding: 0.15rem 0.5rem; border-radius: 6px; }
+.card-link { font-size: 0.75rem; font-weight: 500; color: var(--teal); text-decoration: none; }
+.card-link:hover { text-decoration: underline; }
 
-.alert-badge {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 10px;
-  background: var(--amber-soft);
-  border: 1px solid var(--amber-soft);
-  color: var(--amber);
-  font-size: 0.8125rem;
-  font-weight: 500;
-}
+.mini-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem; padding: 2.5rem 1rem; color: var(--ink-soft); font-size: 0.8125rem; }
 
-/* Loading */
-.loading-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-}
-
-.skeleton-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  padding: 1.5rem;
-  height: 120px;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* Error */
-.error-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem 1.25rem;
-  border-radius: var(--radius);
-  background: var(--alert-soft);
-  color: var(--alert);
-  font-size: 0.875rem;
-}
-
-/* KPI Grid */
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.kpi-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  padding: 1.25rem 1.5rem;
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s ease;
-}
-
-.kpi-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-.kpi-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.kpi-label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--ink-soft);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.kpi-value {
-  display: block;
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--ink);
-  line-height: 1.2;
-  margin-top: 0.25rem;
-}
-
-.kpi-sub {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-  margin-top: 0.25rem;
-}
-
-.trend-up {
-  color: var(--green);
-  margin-left: 0.25rem;
-}
-
-.trend-down {
-  color: var(--alert);
-  margin-left: 0.25rem;
-}
-
-.kpi-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.kpi-badges {
-  display: flex;
-  gap: 0.25rem;
-  margin-top: 0.25rem;
-}
-
-.badge-mini {
-  padding: 0.0625rem 0.375rem;
-  border-radius: 8px;
-  font-size: 0.625rem;
-  font-weight: 600;
-}
-
-.kpi-progress {
-  margin-top: 0.75rem;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--mist);
-  overflow: hidden;
-}
-
-.progress-bar {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.6s ease;
-}
-
-/* Charts Row */
-.row-charts-grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.chart-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  padding: 1.25rem 1.5rem;
-  box-shadow: var(--shadow-sm);
-}
-
-.chart-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-/* Estado Legend */
-.estado-legend {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.25rem 0.75rem;
-  margin-top: 0.5rem;
-  width: 100%;
-}
-
-.estado-legend .legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-}
-
-.estado-legend .legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.estado-legend .legend-label {
-  flex: 1;
-  color: var(--ink-soft);
-}
-
-.estado-legend .legend-value {
-  font-weight: 600;
-  color: var(--ink);
-}
-
-/* Asistencia mensual */
-.asistencia-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  padding: 1.25rem 1.5rem;
-  box-shadow: var(--shadow-sm);
-}
-
-.asistencia-bars {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  height: 160px;
-  padding-top: 0.5rem;
-}
-
-.asistencia-bar-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-  gap: 0.25rem;
-}
-
-.bar-wrapper {
-  display: flex;
-  align-items: flex-end;
-  height: 100px;
-  width: 100%;
-  max-width: 40px;
-}
-
-.asistencia-bar-fill {
-  width: 100%;
-  min-height: 4px;
-  border-radius: 4px 4px 0 0;
-  transition: height 0.6s ease;
-}
-
-.asistencia-label {
-  font-size: 0.625rem;
-  color: var(--ink-soft);
-  font-weight: 500;
-}
-
-.asistencia-value {
-  font-size: 0.625rem;
-  color: var(--ink-soft);
-}
+/* Asistencia semanal */
+.asist-bars { display: flex; align-items: flex-end; justify-content: space-around; gap: 0.5rem; height: 200px; padding-top: 0.5rem; }
+.asist-bar { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; flex: 1; height: 100%; }
+.asist-val { font-size: 0.75rem; font-weight: 700; color: var(--ink); }
+.asist-track { flex: 1; width: 60%; max-width: 38px; background: var(--mist); border-radius: 6px; display: flex; align-items: flex-end; overflow: hidden; }
+.asist-fill { width: 100%; border-radius: 6px; transition: height 0.4s ease; min-height: 4px; }
+.asist-lbl { font-size: 0.6875rem; color: var(--ink-soft); }
 
 /* Movimientos */
-.movimientos-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  padding: 1.25rem 1.5rem;
-  box-shadow: var(--shadow-sm);
-}
+.mov-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.mov-item { display: flex; align-items: center; gap: 0.65rem; padding: 0.85rem; border: 1px solid var(--line); border-radius: var(--radius); text-decoration: none; transition: background 0.15s ease; }
+.mov-item:hover { background: var(--mist); }
+.mov-icon { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.mov-value { display: block; font-size: 1.25rem; font-weight: 700; color: var(--ink); line-height: 1.1; }
+.mov-label { display: block; font-size: 0.75rem; color: var(--ink-soft); }
 
-.card-header-simple {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.card-title-simple {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0;
-}
-
-.card-badge {
-  font-size: 0.625rem;
-  font-weight: 500;
-  padding: 0.125rem 0.5rem;
-  border-radius: 10px;
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.link-ver-todas {
-  font-size: 0.75rem;
-  color: var(--teal);
-  text-decoration: none;
-}
-
-.link-ver-todas:hover {
-  text-decoration: underline;
-}
-
-.movimientos-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
-
-.movimiento-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--line);
-  text-decoration: none;
-  transition: all 0.15s ease;
-  position: relative;
-}
-
-.movimiento-item:hover {
-  background: var(--mist);
-  border-color: var(--teal);
-}
-
-.movimiento-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.movimiento-value {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: var(--ink);
-  display: block;
-  line-height: 1.2;
-}
-
-.movimiento-label {
-  font-size: 0.6875rem;
-  color: var(--ink-soft);
-}
-
-.movimiento-trend {
-  font-size: 0.5625rem;
-  font-weight: 600;
-  display: block;
-}
-
-.trend-up {
-  color: var(--green);
-}
-
-.trend-down {
-  color: var(--alert);
-}
-
-.movimiento-badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  padding: 0.125rem 0.375rem;
-  border-radius: 10px;
-  font-size: 0.5625rem;
-  font-weight: 700;
-  background: var(--alert);
-  color: white;
-}
-
-/* Row Three */
-.row-three-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-/* Row Four */
-.row-four-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
+/* Camas */
+.camas-top { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.75rem; }
+.camas-pct { font-size: 1.75rem; font-weight: 700; color: var(--ink); }
+.camas-pct-lbl { font-size: 0.75rem; color: var(--ink-soft); }
+.camas-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--mist); }
+.camas-seg { height: 100%; }
+.camas-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 1rem; margin-top: 0.85rem; }
+.camas-leg-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; }
+.camas-dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
+.camas-leg-lbl { color: var(--ink-soft); flex: 1; }
+.camas-leg-val { font-weight: 700; color: var(--ink); }
 
 /* Solicitudes */
-.solicitudes-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  padding: 1.25rem 1.5rem;
-  box-shadow: var(--shadow-sm);
+.sol-list { display: flex; flex-direction: column; }
+.sol-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--line); text-decoration: none; }
+.sol-item:last-child { border-bottom: none; }
+.sol-avatar { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; color: var(--ink); flex-shrink: 0; }
+.sol-info { flex: 1; min-width: 0; }
+.sol-name { display: block; font-size: 0.8125rem; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sol-detail { display: block; font-size: 0.6875rem; color: var(--ink-soft); }
+.sol-estado { font-size: 0.6875rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 6px; flex-shrink: 0; }
+
+/* Accesos */
+.accesos-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.65rem; }
+.acceso-item { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; padding: 0.9rem 0.5rem; border: 1px solid var(--line); border-radius: var(--radius); text-decoration: none; font-size: 0.75rem; font-weight: 500; color: var(--ink); transition: all 0.15s ease; }
+.acceso-item:hover { background: var(--mist); border-color: var(--navy-soft); }
+.acceso-icon { width: 34px; height: 34px; border-radius: 9px; background: var(--navy-soft); display: flex; align-items: center; justify-content: center; }
+
+@media (max-width: 1100px) {
+  .kpi-grid, .dash-skeleton-grid { grid-template-columns: 1fr 1fr; }
+  .grid-2-1, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .accesos-grid { grid-template-columns: repeat(3, 1fr); }
 }
-
-.solicitudes-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.solicitud-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--line);
-  transition: all 0.15s ease;
-}
-
-.solicitud-item:hover {
-  background: var(--mist);
-}
-
-.solicitud-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.625rem;
-  font-weight: 600;
-  color: var(--ink);
-  flex-shrink: 0;
-}
-
-.solicitud-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.solicitud-nombre {
-  display: block;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.solicitud-detalle {
-  display: block;
-  font-size: 0.6875rem;
-  color: var(--ink-soft);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.solicitud-estado {
-  padding: 0.125rem 0.5rem;
-  border-radius: 10px;
-  font-size: 0.625rem;
-  font-weight: 600;
-  text-transform: capitalize;
-  flex-shrink: 0;
-}
-
-/* Accesos Rápidos */
-.accesos-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  padding: 1.25rem 1.5rem;
-  box-shadow: var(--shadow-sm);
-  margin-bottom: 1.5rem;
-}
-
-.accesos-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-
-.acceso-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--line);
-  text-decoration: none;
-  transition: all 0.15s ease;
-}
-
-.acceso-item:hover {
-  background: var(--mist);
-  border-color: var(--teal);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
-}
-
-.acceso-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.acceso-label {
-  font-size: 0.6875rem;
-  font-weight: 500;
-  color: var(--ink-soft);
-  text-align: center;
-}
-
-/* Camas Row */
-.camas-row {
-  margin-bottom: 1.5rem;
-}
-
-.camas-card-full {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  padding: 1.25rem 1.5rem;
-  box-shadow: var(--shadow-sm);
-}
-
-.camas-content {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-}
-
-.camas-ring-container {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  width: 100%;
-}
-
-.camas-ring {
-  position: relative;
-  width: 120px;
-  height: 120px;
-  flex-shrink: 0;
-}
-
-.ring-svg {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-
-.ring-center {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.ring-percentage {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--ink);
-  line-height: 1.2;
-}
-
-.ring-label {
-  font-size: 0.625rem;
-  color: var(--ink-soft);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.camas-legend {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
-}
-
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.legend-label {
-  flex: 1;
-  color: var(--ink-soft);
-}
-
-.legend-value {
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.legend-divider {
-  height: 1px;
-  background: var(--line);
-  margin: 0.25rem 0;
-}
-
-.legend-item.total {
-  font-weight: 600;
-}
-
-.legend-item.total .legend-label {
-  color: var(--ink);
-}
-
-.total-value {
-  font-size: 0.9375rem;
-}
-
-.empty-state-small {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 1.5rem 0;
-  color: var(--ink-soft);
-  font-size: 0.875rem;
-}
-
-.empty-state-small .w-8 {
-  opacity: 0.5;
-}
-
-/* Responsive */
-@media (max-width: 1200px) {
-  .kpi-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .row-charts-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .row-three-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .row-four-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .accesos-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .camas-content {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .camas-ring-container {
-    flex-direction: row;
-    justify-content: center;
-  }
-}
-
-@media (max-width: 1024px) {
-  .dashboard-sigarh-container {
-    padding: 1rem 1.5rem;
-  }
-}
-
-@media (max-width: 768px) {
-  .dashboard-sigarh-container {
-    padding: 1rem;
-  }
-
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .kpi-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .movimientos-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .accesos-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .camas-ring-container {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .camas-legend {
-    width: 100%;
-  }
-
-  .estado-legend {
-    grid-template-columns: 1fr;
-  }
-
-  .asistencia-bars {
-    height: 120px;
-  }
-
-  .bar-wrapper {
-    height: 80px;
-  }
-}
-
-@media (max-width: 480px) {
-  .accesos-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .solicitud-item {
-    flex-wrap: wrap;
-  }
-
-  .solicitud-estado {
-    margin-left: auto;
-  }
+@media (max-width: 640px) {
+  .dash { padding: 1rem; }
+  .kpi-grid, .dash-skeleton-grid, .mov-grid { grid-template-columns: 1fr; }
+  .accesos-grid { grid-template-columns: repeat(2, 1fr); }
 }
 </style>

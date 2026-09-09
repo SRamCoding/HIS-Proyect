@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from logging.config import fileConfig
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import pool
@@ -9,8 +9,10 @@ from app.admin.modulos.models import ModuleDependency
 from app.admin.auditoria.models import AuditLog
 from app.core.config import settings
 from app.core.database import Base
-from app.hospital.gestion_pacientes.models import Patient, ClinicalRecord, ClinicalRecordMovement
-from app.hospital.consulta_externa.models import ProgramacionMedica, Cita, Triaje, AtencionMedica, AtencionDiagnostico, Receta, RecetaItem, Hospitalizacion
+from app.hospital.laboratorio.models import LabCorrelativo, LabCupo, LabMovimiento, LabMovimientoItem, LabFichaCovid
+from app.hospital.admision.models import Patient, ClinicalRecord, ClinicalRecordMovement
+from app.hospital.consulta_externa.models import ProgramacionMedica, Cita, Triaje, AtencionMedica, AtencionDiagnostico, Receta, RecetaItem, Hospitalizacion, OrdenLaboratorio, OrdenLaboratorioItem, OrdenImagen, OrdenImagenItem, Interconsulta, Referencia
+from app.hospital.emergencia.models import AdmisionEmergencia, TriajeEmergencia, AtencionEmergencia, EmergenciaDiagnostico
 from app.shared.ubigeo.models import UbigeoDepartamento, UbigeoProvincia, UbigeoDistrito
 # Importar todos los modelos para que Alembic los detecte
 from app.tenants.hospitales.models import Tenant, TenantModule
@@ -31,12 +33,18 @@ from app.sigarh.rrhh.models import (
 from app.sigarh.movimientos.models import Vacacion, Licencia, CambioTurno, Papeleta
 from app.sigarh.infraestructura.models import Catalogo, Consultorio
 from app.sigarh.infraestructura_hosp.models import Piso, Sala, Cama
-from app.sigarh.config_farmacia.models import Almacen, Medicamento
+from app.sigarh.config_farmacia.models import Almacen, Medicamento, ProveedorFarmacia, CatalogoFarmacia
+from app.hospital.farmacia.models import (FarmaciaCorrelativo, FarmaciaLote,
+    FarmaciaMovimiento, FarmaciaMovimientoItem, FarmaciaDispensacion,
+    FarmaciaDispensacionItem, FarmacotecniaOrden, FarmaciaVenta)
 from app.sigarh.config_financiera.models import Seguro, PlanSeguro, Caja, Tarifario
 from app.sigarh.imagenologia.models import ExamenImagenologia
 from app.sigarh.laboratorio.models import ExamenLaboratorio
 from app.sigarh.general.models import DiagnosticoCIE10, Paquete, TiempoProcedimiento
 from app.sigarh.nutricion.models import RacionNutricion, CambioTurnoNutricion
+from app.sigarh.creacion_roles.models import (
+    Rol, RolEmpleado, RolActividad, RolTurno, SolicitudModificacionRol,
+)
 
 
 config = context.config

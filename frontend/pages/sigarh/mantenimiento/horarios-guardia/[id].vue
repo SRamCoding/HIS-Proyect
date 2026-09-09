@@ -1,335 +1,137 @@
 <template>
-  <div class="horario-edit-container">
-    <div class="horario-edit-grid">
-      <!-- Main Content -->
-      <div class="horario-edit-main">
-        <!-- Breadcrumb + Title -->
-        <div class="mb-8">
-          <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
-            <NuxtLink :to="`/sigarh/mantenimiento/horarios-guardia?tenant=${tenantId}`" class="hover:underline flex items-center gap-1" style="color: var(--ink-soft)">
-              <UIcon name="i-heroicons-clock" class="w-3.5 h-3.5" />
-              Horarios de Guardia
-            </NuxtLink>
-            <UIcon name="i-heroicons-chevron-right" class="w-3 h-3" />
-            <span style="color: var(--ink)">Editar Horario</span>
+  <SFormLayout>
+    <template #main>
+      <div class="mb-8">
+        <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
+          <NuxtLink :to="`/sigarh/mantenimiento/horarios-guardia?tenant=${tenantId}`" class="hover:underline" style="color: var(--ink-soft)">Horarios de Guardia</NuxtLink>
+          <UIcon name="i-heroicons-chevron-right" class="w-3 h-3" />
+          <span style="color: var(--ink)">Editar Horario</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <div class="page-header-icon" style="background: var(--purple-soft)">
+            <UIcon name="i-heroicons-clock" class="w-6 h-6" style="color: var(--purple)" />
           </div>
-          <div class="flex items-center gap-4">
-            <div class="header-icon" :style="{ background: form.is_active ? 'var(--purple-soft)' : 'var(--mist)' }">
-              <UIcon
-                name="i-heroicons-clock"
-                class="w-6 h-6"
-                :style="{ color: form.is_active ? 'var(--purple)' : 'var(--ink-soft)' }"
-              />
-            </div>
-            <div>
-              <h1 class="page-title">{{ form.nombre || 'Editar Horario' }}</h1>
-              <p class="page-subtitle">
-                <span class="time-display font-mono-data">{{ form.hora_inicio || '--:--' }} → {{ form.hora_fin || '--:--' }}</span>
-                <span class="status-dot-mini" :class="form.is_active ? 'dot-active-mini' : 'dot-inactive-mini'" />
-                <span class="status-text-mini" :class="form.is_active ? 'text-active' : 'text-inactive'">
-                  {{ form.is_active ? 'Activo' : 'Inactivo' }}
-                </span>
-              </p>
-            </div>
+          <div>
+            <h1 class="page-title">{{ form.nombre || 'Editar Horario de Guardia' }}</h1>
+            <p class="page-subtitle">Actualiza los datos del horario de guardia</p>
           </div>
         </div>
+      </div>
 
-        <!-- Loading State -->
-        <div v-if="loading" class="loading-state">
-          <div class="loading-spinner">
-            <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--teal)" />
+      <div v-if="loading" class="form-card flex items-center justify-center py-16">
+        <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--purple)" />
+      </div>
+
+      <template v-else>
+        <SFormCard title="Datos del Horario" subtitle="Actualiza los datos del horario de guardia"
+          icon="i-heroicons-cog-6-tooth" icon-bg="var(--purple-soft)" icon-color="var(--purple)" :error="error">
+
+          <div class="form-group full-width">
+            <label class="form-label">Nombre <span class="required">*</span></label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-clock" class="input-icon" />
+              <input v-model="form.nombre" class="input-clinical" placeholder="Ej: Guardia Diurna 12h, Guardia Nocturna" />
+            </div>
           </div>
-          <p style="color: var(--ink-soft)">Cargando información del horario...</p>
-        </div>
 
-        <template v-else>
-          <!-- Form Card -->
-          <section class="form-card">
-            <div class="card-header">
-              <div class="card-header-icon" style="background: var(--purple-soft)">
-                <UIcon name="i-heroicons-cog-6-tooth" class="w-4 h-4" style="color: var(--purple)" />
-              </div>
-              <div>
-                <h3 class="card-title">Configuración del Horario</h3>
-                <p class="card-subtitle">Actualiza los datos del horario de guardia</p>
-              </div>
+          <div class="form-group">
+            <label class="form-label">Tipo de Guardia</label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-shield-check" class="input-icon" />
+              <select v-model="form.tipo_guardia_id" class="input-clinical">
+                <option value="">Sin tipo</option>
+                <option v-for="t in tiposGuardia" :key="t.id" :value="t.id">{{ t.nombre }}</option>
+              </select>
             </div>
+          </div>
 
-            <!-- Error Message -->
-            <div v-if="error" class="error-banner">
-              <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
-              {{ error }}
+          <div class="form-group">
+            <label class="form-label">Horas Totales</label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-chart-bar" class="input-icon" />
+              <input v-model.number="form.horas_totales" type="number" min="0" step="0.5" class="input-clinical font-mono-data" placeholder="12" />
             </div>
+          </div>
 
-            <div class="form-grid">
-              <div class="form-group full-width">
-                <label class="form-label">Nombre <span class="required">*</span></label>
-                <div class="input-wrapper">
-                  <UIcon name="i-heroicons-clock" class="input-icon" />
-                  <input
-                    v-model="form.nombre"
-                    type="text"
-                    class="input-clinical"
-                    placeholder="Ej: Guardia Diurna, Guardia Nocturna"
-                    :class="{ 'input-error': errors.nombre }"
-                    @focus="errors.nombre = ''"
-                  />
-                </div>
-                <span v-if="errors.nombre" class="error-message">{{ errors.nombre }}</span>
-                <p class="field-hint">Nombre descriptivo del horario de guardia</p>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Tipo de Guardia</label>
-                <div class="input-wrapper">
-                  <UIcon name="i-heroicons-shield-check" class="input-icon" />
-                  <select v-model="form.tipo_guardia_id" class="input-clinical">
-                    <option value="">Sin tipo</option>
-                    <option v-for="t in tipos_guardia" :key="t.id" :value="t.id">{{ t.nombre }}{{ t.horas ? ` (${t.horas}h)` : "" }}</option>
-                  </select>
-                </div>
-                <p class="field-hint">Al seleccionar el tipo se autocompletan las horas</p>
-              </div>
-<div class="form-group">
-                <label class="form-label">Horas Totales</label>
-                <div class="input-wrapper">
-                  <UIcon name="i-heroicons-chart-bar" class="input-icon" />
-                  <input
-                    v-model.number="form.horas_totales"
-                    type="number"
-                    class="input-clinical font-mono-data"
-                    readonly
-                    style="background: var(--mist); cursor: not-allowed;"
-                  />
-                </div>
-                <p class="field-hint">Duración total del horario en horas</p>
-              </div>
-<div class="form-group">
-                <label class="form-label">Hora de Inicio <span class="required">*</span></label>
-                <div class="input-wrapper">
-                  <UIcon name="i-heroicons-arrow-right-circle" class="input-icon" />
-                  <input
-                    v-model="form.hora_inicio"
-                    type="time"
-                    class="input-clinical"
-                    :class="{ 'input-error': errors.hora_inicio }"
-                    @change="errors.hora_inicio = ''"
-                  />
-                </div>
-                <span v-if="errors.hora_inicio" class="error-message">{{ errors.hora_inicio }}</span>
-                <p class="field-hint">Hora de inicio de la guardia</p>
-              </div>
-<div class="form-group">
-                <label class="form-label">Hora de Fin <span class="required">*</span></label>
-                <div class="input-wrapper">
-                  <UIcon name="i-heroicons-arrow-left-circle" class="input-icon" />
-                  <input
-                    v-model="form.hora_fin"
-                    type="time"
-                    class="input-clinical"
-                    readonly
-                    style="background: var(--mist); cursor: not-allowed;"
-                  />
-                </div>
-                <span v-if="errors.hora_fin" class="error-message">{{ errors.hora_fin }}</span>
-                <p class="field-hint">Hora de fin de la guardia</p>
-              </div>
-
-              <div class="form-group full-width">
-                <div class="status-toggle">
-                  <span class="toggle-label">Horario Activo</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    :aria-checked="form.is_active"
-                    @click="form.is_active = !form.is_active"
-                    class="toggle-switch"
-                    :class="{ 'toggle-active': form.is_active }"
-                  >
-                    <span class="toggle-slider" />
-                  </button>
-                </div>
-                <p class="field-hint">Los horarios inactivos no estarán disponibles</p>
-              </div>
+          <div class="form-group">
+            <label class="form-label">Hora Inicio <span class="required">*</span></label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-arrow-right-circle" class="input-icon" />
+              <input v-model="form.hora_inicio" type="time" class="input-clinical font-mono-data" />
             </div>
+          </div>
 
-            <!-- Preview Section -->
-            <div class="preview-section">
-              <h4 class="preview-title">Vista Previa</h4>
-              <div class="preview-card">
-                <div class="preview-icon" :style="{ background: form.is_active ? 'var(--purple-soft)' : 'var(--mist)' }">
-                  <UIcon name="i-heroicons-clock" class="w-5 h-5" :style="{ color: form.is_active ? 'var(--purple)' : 'var(--ink-soft)' }" />
-                </div>
-                <div class="preview-info">
-                  <span class="preview-name">{{ form.nombre || 'Nombre del horario' }}</span>
-                  <span class="preview-detail">
-                    <span class="preview-time">{{ form.hora_inicio || '--:--' }} → {{ form.hora_fin || '--:--' }}</span>
-                    <span class="preview-hours">{{ form.horas_totales ? `${form.horas_totales}h` : 'Sin duración' }}</span>
-                  </span>
-                </div>
-                <span class="preview-status" :class="form.is_active ? 'preview-active' : 'preview-inactive'">
-                  <span class="preview-dot" :class="form.is_active ? 'dot-active' : 'dot-inactive'" />
-                  {{ form.is_active ? 'Activo' : 'Inactivo' }}
-                </span>
-              </div>
+          <div class="form-group">
+            <label class="form-label">Hora Fin</label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-arrow-left-circle" class="input-icon" />
+              <input v-model="form.hora_fin" type="time" class="input-clinical font-mono-data" />
             </div>
+          </div>
 
-            <!-- Actions -->
-            <div class="form-actions">
-              <div class="action-group">
-                <button
-                  class="btn-primary"
-                  :disabled="saving"
-                  @click="handleSave"
-                >
-                  <UIcon v-if="saving" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
-                  <UIcon v-else name="i-heroicons-check" class="w-4 h-4" />
-                  {{ saving ? 'Guardando...' : 'Guardar Cambios' }}
-                </button>
-                <NuxtLink
-                  :to="`/sigarh/mantenimiento/horarios-guardia?tenant=${tenantId}`"
-                  class="btn-cancel"
-                >
-                  Cancelar
-                </NuxtLink>
-              </div>
+          <div class="form-group">
+            <label class="form-label">Estado</label>
+            <div class="status-toggle">
+              <span class="toggle-label">Horario Activo</span>
+              <button type="button" @click="form.is_active = !form.is_active" class="toggle-switch" :class="{ 'toggle-active': form.is_active }">
+                <span class="toggle-slider" />
+              </button>
             </div>
-          </section>
+          </div>
+
+          <SFormPreview
+            :nombre="form.nombre"
+            :extra="`${form.hora_inicio || '--:--'} - ${form.hora_fin || '--:--'}`"
+            :codigo="form.horas_totales ? `${form.horas_totales} h` : ''"
+            :active="form.is_active"
+            icon="i-heroicons-clock"
+            icon-color="var(--purple)"
+            icon-bg="var(--purple-soft)"
+          />
+
+          <template #actions>
+            <SFormActions :saving="saving" save-text="Guardar Cambios" saving-text="Guardando..."
+              :cancel-to="`/sigarh/mantenimiento/horarios-guardia?tenant=${tenantId}`"
+              @save="handleSave" />
+          </template>
+        </SFormCard>
+      </template>
+    </template>
+
+    <template #sidebar>
+      <SWidgetInfo :items="['Definen las franjas horarias de las guardias', 'Al elegir un tipo de guardia se calcula la hora fin', 'Las horas totales se recalculan segun inicio y fin', 'Los horarios inactivos no se pueden asignar']" />
+      <SWidgetSummary :items="[
+        { label: 'Nombre', value: form.nombre },
+        { label: 'Tipo de Guardia', value: tipoGuardiaNombre },
+        { label: 'Inicio', value: form.hora_inicio, mono: true },
+        { label: 'Fin', value: form.hora_fin, mono: true },
+        { label: 'Horas Totales', value: form.horas_totales ? String(form.horas_totales) : '', mono: true },
+        { divider: true },
+        { label: 'Estado', slot: 'estado' },
+      ]">
+        <template #estado>
+          <span class="status-badge-mini" :class="form.is_active ? 'status-active-mini' : 'status-inactive-mini'">
+            <span class="status-dot-mini" :class="form.is_active ? 'dot-active-mini' : 'dot-inactive-mini'" />
+            {{ form.is_active ? 'Activo' : 'Inactivo' }}
+          </span>
         </template>
-      </div>
-
-      <!-- Sidebar Widgets -->
-      <div class="horario-edit-sidebar">
-        <!-- Summary Widget -->
-        <div class="widget widget-summary">
-          <div class="widget-header">
-            <UIcon name="i-heroicons-document-text" class="widget-icon" style="color: var(--purple)" />
-            <h4 class="widget-title">Resumen</h4>
-          </div>
-          <div class="widget-content">
-            <div class="summary-item">
-              <span class="summary-label">Nombre</span>
-              <span class="summary-value">{{ form.nombre || '—' }}</span>
-            </div>
-            <div class="summary-divider"></div>
-            <div class="summary-item">
-              <span class="summary-label">Inicio</span>
-              <span class="summary-value font-mono-data">{{ form.hora_inicio || '—' }}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Fin</span>
-              <span class="summary-value font-mono-data">{{ form.hora_fin || '—' }}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Duración</span>
-              <span class="summary-value">{{ form.horas_totales ? `${form.horas_totales}h` : '—' }}</span>
-            </div>
-            <div class="summary-divider"></div>
-            <div class="summary-item">
-              <span class="summary-label">Estado</span>
-              <span class="summary-value">
-                <span class="status-badge-mini" :class="form.is_active ? 'status-active-mini' : 'status-inactive-mini'">
-                  <span class="status-dot-mini" :class="form.is_active ? 'dot-active-mini' : 'dot-inactive-mini'" />
-                  {{ form.is_active ? 'Activo' : 'Inactivo' }}
-                </span>
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Info Widget -->
-        <div class="widget widget-info">
-          <div class="widget-header">
-            <UIcon name="i-heroicons-information-circle" class="widget-icon" style="color: var(--navy)" />
-            <h4 class="widget-title">Información</h4>
-          </div>
-          <div class="widget-content">
-            <ul class="info-list">
-              <li class="info-item">
-                <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
-                <span>Los horarios definen los turnos de guardia</span>
-              </li>
-              <li class="info-item">
-                <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
-                <span>Se utilizan para asignar guardias al personal</span>
-              </li>
-              <li class="info-item">
-                <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
-                <span>La duración se expresa en horas</span>
-              </li>
-              <li class="info-item">
-                <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
-                <span>Los horarios inactivos no se pueden asignar</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- Tip Widget -->
-        <div class="widget widget-tip">
-          <div class="widget-content">
-            <div class="tip-content">
-              <UIcon name="i-heroicons-light-bulb" class="tip-icon" style="color: var(--amber)" />
-              <div>
-                <p class="tip-title">Consejo</p>
-                <p class="tip-text">
-                  Al editar un horario, verifica que las horas de inicio y fin 
-                  sean correctas y que la duración sea la adecuada para el turno.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Status Widget -->
-        <div class="widget widget-stats">
-          <div class="widget-header">
-            <UIcon name="i-heroicons-chart-bar" class="widget-icon" style="color: var(--purple)" />
-            <h4 class="widget-title">Estado</h4>
-          </div>
-          <div class="widget-content">
-            <div class="stat-item">
-              <span class="stat-label">Estado actual</span>
-              <span class="stat-number" :style="{ color: form.is_active ? 'var(--green)' : 'var(--ink-soft)' }">
-                {{ form.is_active ? 'Activo' : 'Inactivo' }}
-              </span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Duración</span>
-              <span class="stat-number">{{ form.horas_totales ? `${form.horas_totales}h` : '—' }}</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Campos completos</span>
-              <span class="stat-number">{{ filledFields }}/4</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+      </SWidgetSummary>
+      <SWidgetTip text="Elige primero el tipo de guardia: la hora fin y las horas totales se completan automaticamente." />
+    </template>
+  </SFormLayout>
 </template>
 
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
-
 const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
-
 const tenantId = computed(() => route.query.tenant as string || '')
 const id = computed(() => route.params.id as string)
-
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
-const tipos_guardia = ref<any[]>([])
-
-const errors = reactive({
-  nombre: '',
-  hora_inicio: '',
-  hora_fin: '',
-})
-
+const tiposGuardia = ref<any[]>([])
 const form = reactive({
   nombre: '',
   hora_inicio: '',
@@ -339,31 +141,22 @@ const form = reactive({
   is_active: true,
 })
 
-watch(() => form.tipo_guardia_id, (val) => {
-  const tg = tipos_guardia.value.find((t: any) => t.id === val)
-  if (tg && tg.horas) {
-    form.horas_totales = tg.horas
-    if (form.hora_inicio) {
-      const [h, m] = form.hora_inicio.split(':').map(Number)
-      const total = h * 60 + m + tg.horas * 60
-      const hFin = Math.floor(total / 60) % 24
-      const mFin = total % 60
-      form.hora_fin = `${String(hFin).padStart(2, '0')}:${String(mFin).padStart(2, '0')}`
-    }
-  }
-})
+const tipoGuardiaNombre = computed(() => tiposGuardia.value.find(t => t.id === form.tipo_guardia_id)?.nombre || '')
 
-watch(() => form.hora_inicio, (val) => {
-  const tg = tipos_guardia.value.find((t: any) => t.id === form.tipo_guardia_id)
-  if (tg && tg.horas && val) {
-    const [h, m] = val.split(':').map(Number)
+const calcFin = () => {
+  const tg = tiposGuardia.value.find(t => t.id === form.tipo_guardia_id)
+  if (tg && tg.horas && form.hora_inicio) {
+    const [h, m] = form.hora_inicio.split(':').map(Number)
     const total = h * 60 + m + tg.horas * 60
-    const hFin = Math.floor(total / 60) % 24
-    const mFin = total % 60
-    form.hora_fin = `${String(hFin).padStart(2, '0')}:${String(mFin).padStart(2, '0')}`
+    form.hora_fin = `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
   }
-})
+}
 
+watch(() => form.tipo_guardia_id, () => {
+  const tg = tiposGuardia.value.find(t => t.id === form.tipo_guardia_id)
+  if (tg && tg.horas) { form.horas_totales = tg.horas; calcFin() }
+})
+watch(() => form.hora_inicio, calcFin)
 watch([() => form.hora_inicio, () => form.hora_fin], ([inicio, fin]) => {
   if (inicio && fin) {
     const [h1, m1] = inicio.split(':').map(Number)
@@ -374,31 +167,9 @@ watch([() => form.hora_inicio, () => form.hora_fin], ([inicio, fin]) => {
   }
 })
 
-const filledFields = computed(() => {
-  let count = 0
-  if (form.nombre) count++
-  if (form.hora_inicio) count++
-  if (form.hora_fin) count++
-  if (form.horas_totales) count++
-  return count
-})
-
-const validateForm = (): boolean => {
-  let valid = true
-  if (!form.nombre.trim()) {
-    errors.nombre = 'El nombre del horario es requerido'
-    valid = false
-  }
-  if (!form.hora_inicio) {
-    errors.hora_inicio = 'La hora de inicio es requerida'
-    valid = false
-  }
-  return valid
-}
-
 const handleSave = async () => {
-  if (!validateForm()) return
-
+  if (!form.nombre.trim()) { error.value = 'El nombre es requerido'; return }
+  if (!form.hora_inicio) { error.value = 'La hora de inicio es requerida'; return }
   saving.value = true
   error.value = ''
   try {
@@ -409,771 +180,29 @@ const handleSave = async () => {
         hora_inicio: form.hora_inicio,
         hora_fin: form.hora_fin,
         horas_totales: form.horas_totales || null,
+        tipo_guardia_id: form.tipo_guardia_id || null,
         is_active: form.is_active,
-      }
+      },
     })
     router.push(`/sigarh/mantenimiento/horarios-guardia?tenant=${tenantId.value}`)
-  } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo guardar el horario'
-  } finally {
-    saving.value = false
-  }
+  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar' }
+  finally { saving.value = false }
 }
 
 onMounted(async () => {
   try {
-    const data = await api<any>(`/sigarh/mantenimiento/horarios-guardia/${id.value}`)
+    const [data, tipos] = await Promise.all([
+      api<any>(`/sigarh/mantenimiento/horarios-guardia/${id.value}`),
+      api<any[]>('/sigarh/mantenimiento/tipos-guardia').catch(() => []),
+    ])
     form.nombre = data.nombre
     form.hora_inicio = data.hora_inicio
     form.hora_fin = data.hora_fin
-    form.horas_totales = data.horas_totales || null
+    form.horas_totales = data.horas_totales ?? null
+    form.tipo_guardia_id = data.tipo_guardia_id || ''
     form.is_active = data.is_active
-  } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo cargar el horario'
-  } finally {
-    loading.value = false
-  }
+    tiposGuardia.value = tipos
+  } catch (e: any) { error.value = 'No se pudo cargar el horario' }
+  finally { loading.value = false }
 })
 </script>
-
-<style scoped>
-.horario-edit-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 1.5rem 2rem;
-}
-
-/* Grid */
-.horario-edit-grid {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 2rem;
-}
-
-.horario-edit-main {
-  min-width: 0;
-}
-
-.horario-edit-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-/* Header */
-.header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.2;
-}
-
-.page-subtitle {
-  font-size: 0.875rem;
-  color: var(--ink-soft);
-  margin: 0.125rem 0 0 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.time-display {
-  font-size: 0.8125rem;
-}
-
-.status-dot-mini {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.dot-active-mini {
-  background: var(--green);
-}
-
-.dot-inactive-mini {
-  background: var(--ink-soft);
-}
-
-.status-text-mini {
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.text-active {
-  color: var(--green);
-}
-
-.text-inactive {
-  color: var(--ink-soft);
-}
-
-/* Loading State */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  gap: 1rem;
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-}
-
-.loading-spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Form Card */
-.form-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 1.5rem;
-  animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.card-header-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.card-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0;
-}
-
-.card-subtitle {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-  margin: 0;
-}
-
-/* Form */
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
-}
-
-.form-group.full-width {
-  grid-column: 1 / -1;
-}
-
-.form-label {
-  display: block;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink);
-  margin-bottom: 0.5rem;
-}
-
-.required {
-  color: var(--alert);
-}
-
-.input-wrapper {
-  position: relative;
-}
-
-.input-icon {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 1rem;
-  height: 1rem;
-  color: var(--ink-soft);
-}
-
-.input-clinical {
-  width: 100%;
-  padding: 0.625rem 0.875rem;
-  padding-left: 2.5rem;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 0.875rem;
-  transition: all 0.2s ease;
-}
-
-.input-clinical:focus {
-  outline: none;
-  border-color: var(--teal);
-  box-shadow: 0 0 0 3px var(--teal-soft);
-}
-
-.input-clinical.input-error {
-  border-color: var(--alert);
-}
-
-.input-clinical.input-error:focus {
-  box-shadow: 0 0 0 3px var(--alert-soft);
-}
-
-.input-clinical::placeholder {
-  color: var(--ink-soft);
-  opacity: 0.6;
-}
-
-.input-clinical[type="time"] {
-  color-scheme: light;
-}
-
-.input-clinical[type="number"] {
-  -moz-appearance: textfield;
-}
-
-.input-clinical[type="number"]::-webkit-outer-spin-button,
-.input-clinical[type="number"]::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.error-message {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--alert);
-  margin-top: 0.25rem;
-}
-
-.field-hint {
-  font-size: 0.6875rem;
-  color: var(--ink-soft);
-  margin-top: 0.25rem;
-}
-
-/* Status Toggle */
-.status-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  background: var(--mist);
-}
-
-.toggle-label {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--ink);
-}
-
-.toggle-switch {
-  position: relative;
-  width: 44px;
-  height: 24px;
-  border-radius: 12px;
-  background: var(--line);
-  border: none;
-  cursor: pointer;
-  transition: background 0.3s ease;
-  padding: 0;
-}
-
-.toggle-switch.toggle-active {
-  background: var(--teal);
-}
-
-.toggle-slider {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: white;
-  transition: transform 0.3s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.toggle-active .toggle-slider {
-  transform: translateX(20px);
-}
-
-/* Preview Section */
-.preview-section {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--line);
-}
-
-.preview-title {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ink-soft);
-  margin: 0 0 0.75rem 0;
-}
-
-.preview-card {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--line);
-  background: var(--paper);
-  flex-wrap: wrap;
-}
-
-.preview-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.preview-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 120px;
-}
-
-.preview-name {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--ink);
-}
-
-.preview-detail {
-  display: flex;
-  gap: 0.75rem;
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-}
-
-.preview-time {
-  font-family: monospace;
-  font-weight: 500;
-  color: var(--purple);
-}
-
-.preview-hours {
-  background: var(--mist);
-  padding: 0.0625rem 0.375rem;
-  border-radius: 4px;
-}
-
-.preview-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.1875rem 0.625rem;
-  border-radius: 12px;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.preview-active {
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.preview-inactive {
-  background: var(--mist);
-  color: var(--ink-soft);
-}
-
-.preview-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.dot-active {
-  background: var(--green);
-}
-
-.dot-inactive {
-  background: var(--ink-soft);
-}
-
-/* Error Banner */
-.error-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  background: var(--alert-soft);
-  color: var(--alert);
-  font-size: 0.875rem;
-  margin-bottom: 1.5rem;
-}
-
-/* Form Actions */
-.form-actions {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--line);
-}
-
-.action-group {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.5rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border: none;
-  background: var(--teal);
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--teal-dark);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-cancel {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--ink-soft);
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.btn-cancel:hover {
-  background: var(--mist);
-}
-
-/* Widgets */
-.widget {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
-  border: 1px solid var(--line);
-}
-
-.widget-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.widget-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-.widget-title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0;
-}
-
-.widget-content {
-  padding: 1rem 1.25rem;
-}
-
-/* Summary Widget */
-.summary-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.375rem 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.summary-item:last-of-type {
-  border-bottom: none;
-}
-
-.summary-label {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-.summary-value {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink);
-  max-width: 60%;
-  text-align: right;
-  word-break: break-word;
-}
-
-.summary-divider {
-  height: 1px;
-  background: var(--line);
-  margin: 0.5rem 0;
-}
-
-/* Status Badge Mini */
-.status-badge-mini {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.125rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.6875rem;
-  font-weight: 500;
-}
-
-.status-active-mini {
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.status-inactive-mini {
-  background: var(--mist);
-  color: var(--ink-soft);
-}
-
-.status-dot-mini {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.dot-active-mini {
-  background: var(--green);
-}
-
-.dot-inactive-mini {
-  background: var(--ink-soft);
-}
-
-/* Info Widget */
-.info-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.info-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.625rem;
-  padding: 0.375rem 0;
-  font-size: 0.8125rem;
-  color: var(--ink);
-}
-
-.info-item-icon {
-  width: 1rem;
-  height: 1rem;
-  margin-top: 0.125rem;
-  flex-shrink: 0;
-}
-
-/* Tip Widget */
-.widget-tip {
-  background: var(--amber-soft);
-  border-color: var(--amber-soft);
-}
-
-.tip-content {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.tip-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  flex-shrink: 0;
-  margin-top: 0.125rem;
-}
-
-.tip-title {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0 0 0.25rem 0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.tip-text {
-  font-size: 0.8125rem;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.5;
-}
-
-/* Stats Widget */
-.stat-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.375rem 0;
-}
-
-.stat-item + .stat-item {
-  border-top: 1px solid var(--line);
-}
-
-.stat-label {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-.stat-number {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-/* Responsive */
-@media (max-width: 1024px) {
-  .horario-edit-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .horario-edit-sidebar {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.25rem;
-  }
-}
-
-@media (max-width: 768px) {
-  .horario-edit-container {
-    padding: 1rem;
-  }
-
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .horario-edit-sidebar {
-    grid-template-columns: 1fr;
-  }
-
-  .action-group {
-    flex-direction: column;
-    width: 100%;
-  }
-
-  .action-group > * {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .page-subtitle {
-    flex-wrap: wrap;
-  }
-
-  .preview-card {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .preview-info {
-    min-width: auto;
-    width: 100%;
-  }
-
-  .preview-detail {
-    flex-wrap: wrap;
-  }
-
-  .preview-status {
-    align-self: flex-start;
-  }
-}
-
-@media (max-width: 480px) {
-  .status-toggle {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.5rem;
-  }
-
-  .preview-card {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .summary-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
-  }
-
-  .summary-value {
-    max-width: 100%;
-    text-align: left;
-  }
-}
-</style>

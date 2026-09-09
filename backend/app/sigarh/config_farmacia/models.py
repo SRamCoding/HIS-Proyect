@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, Integer, Text, Float, ForeignKey
+from sqlalchemy import String, Boolean, DateTime, Integer, Text, Float, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -24,6 +24,27 @@ class Almacen(Base):
 
     def __repr__(self) -> str:
         return f"<Almacen {self.codigo} - {self.nombre}>"
+
+
+class ProveedorFarmacia(Base):
+    """Proveedor habilitado para compras y transferencias SISMED."""
+    __tablename__ = "sigarh_proveedores_farmacia"
+    __table_args__ = (UniqueConstraint("tenant_id", "ruc"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    ruc: Mapped[str] = mapped_column(String(11)); razon_social: Mapped[str] = mapped_column(String(255))
+    direccion: Mapped[str | None] = mapped_column(Text, nullable=True); telefono: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True); registro_digemid: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True); created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CatalogoFarmacia(Base):
+    """Valores administrables usados en documentos farmacéuticos."""
+    __tablename__ = "sigarh_catalogos_farmacia"
+    __table_args__ = (UniqueConstraint("tenant_id", "categoria", "codigo"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True); categoria: Mapped[str] = mapped_column(String(50), index=True)
+    codigo: Mapped[str] = mapped_column(String(30)); nombre: Mapped[str] = mapped_column(String(150)); is_active: Mapped[bool] = mapped_column(Boolean, default=True); created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class Medicamento(Base):

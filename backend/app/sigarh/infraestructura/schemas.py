@@ -1,7 +1,21 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from app.sigarh.infraestructura.models import CATEGORIAS_CATALOGO
+
+
+def _limpiar(v):
+    if v is None:
+        return None
+    v = str(v).strip()
+    return v or None
+
+
+def _max(v, n, etiqueta):
+    v = _limpiar(v)
+    if v is not None and len(v) > n:
+        raise ValueError(f"{etiqueta} no debe superar {n} caracteres")
+    return v
 
 
 # ─── Catálogo ─────────────────────────────────────────────────────────────────
@@ -14,14 +28,62 @@ class CatalogoCreate(BaseModel):
     orden: int = 0
     is_active: bool = True
 
+    @field_validator("categoria")
+    @classmethod
+    def _v_categoria(cls, v):
+        v = _limpiar(v)
+        if v is None:
+            raise ValueError("La categoría es requerida")
+        if v not in CATEGORIAS_CATALOGO:
+            raise ValueError(f"Categoría inválida. Opciones: {', '.join(CATEGORIAS_CATALOGO)}")
+        return v
 
-class CatalogoUpdate(BaseModel):
+    @field_validator("codigo")
+    @classmethod
+    def _v_codigo(cls, v):
+        return _max(v, 20, "El código")
+
+    @field_validator("nombre")
+    @classmethod
+    def _v_nombre(cls, v):
+        v = _limpiar(v)
+        if v is None:
+            raise ValueError("El nombre es requerido")
+        if len(v) > 100:
+            raise ValueError("El nombre no debe superar 100 caracteres")
+        return v
+
+    @field_validator("descripcion")
+    @classmethod
+    def _v_desc(cls, v):
+        return _max(v, 255, "La descripción")
+
+    @field_validator("orden")
+    @classmethod
+    def _v_orden(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("El orden no puede ser negativo")
+        return v
+
+
+class CatalogoUpdate(CatalogoCreate):
     categoria: str | None = None
-    codigo: str | None = None
     nombre: str | None = None
-    descripcion: str | None = None
     orden: int | None = None
     is_active: bool | None = None
+
+    @field_validator("categoria")
+    @classmethod
+    def _v_categoria_upd(cls, v):
+        v = _limpiar(v)
+        if v is not None and v not in CATEGORIAS_CATALOGO:
+            raise ValueError(f"Categoría inválida. Opciones: {', '.join(CATEGORIAS_CATALOGO)}")
+        return v
+
+    @field_validator("nombre")
+    @classmethod
+    def _v_nombre_upd(cls, v):
+        return _max(v, 100, "El nombre")
 
 
 class CatalogoResponse(BaseModel):
@@ -48,14 +110,38 @@ class ConsultorioCreate(BaseModel):
     equipamiento: str | None = None
     is_active: bool = True
 
+    @field_validator("nombre")
+    @classmethod
+    def _v_nombre(cls, v):
+        v = _limpiar(v)
+        if v is None:
+            raise ValueError("El nombre del consultorio es requerido")
+        if len(v) > 100:
+            raise ValueError("El nombre no debe superar 100 caracteres")
+        return v
 
-class ConsultorioUpdate(BaseModel):
+    @field_validator("capacidad")
+    @classmethod
+    def _v_capacidad(cls, v):
+        if v is not None and v < 1:
+            raise ValueError("La capacidad debe ser al menos 1")
+        return v
+
+    @field_validator("equipamiento")
+    @classmethod
+    def _v_equipamiento(cls, v):
+        return _max(v, 255, "El equipamiento")
+
+
+class ConsultorioUpdate(ConsultorioCreate):
     nombre: str | None = None
-    especialidad_id: uuid.UUID | None = None
-    piso_id: uuid.UUID | None = None
     capacidad: int | None = None
-    equipamiento: str | None = None
     is_active: bool | None = None
+
+    @field_validator("nombre")
+    @classmethod
+    def _v_nombre_upd(cls, v):
+        return _max(v, 100, "El nombre")
 
 
 class ConsultorioResponse(BaseModel):
@@ -65,6 +151,7 @@ class ConsultorioResponse(BaseModel):
     especialidad_id: uuid.UUID | None
     especialidad_nombre: str | None = None
     piso_id: uuid.UUID | None
+    piso_nombre: str | None = None
     capacidad: int
     equipamiento: str | None
     is_active: bool

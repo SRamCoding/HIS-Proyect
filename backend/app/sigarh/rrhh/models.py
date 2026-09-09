@@ -100,6 +100,7 @@ class Especialidad(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     nombre: Mapped[str] = mapped_column(String(255))
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -122,7 +123,11 @@ class EmpleadoEspecialidad(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     empleado: Mapped["Empleado"] = relationship(back_populates="especialidades")
-    especialidad: Mapped["Especialidad"] = relationship()
+    especialidad: Mapped["Especialidad"] = relationship(lazy="selectin")
+
+    @property
+    def especialidad_nombre(self) -> str | None:
+        return self.especialidad.nombre if self.especialidad else None
 
     def __repr__(self) -> str:
         return f"<EmpleadoEspecialidad {self.empleado_id} - {self.especialidad_id}>"
@@ -161,34 +166,51 @@ class MotivoJustificacion(Base):
 
 
 class Tolerancia(Base):
-    """Márgenes de tolerancia para marcaciones de asistencia."""
+    """Minutos de tolerancia por dependencia y grupo ocupacional (consumido por Asistencia)."""
     __tablename__ = "sigarh_tolerancias"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
-    nombre: Mapped[str] = mapped_column(String(255))
-    minutos_entrada: Mapped[int] = mapped_column(Integer, default=0)
-    minutos_salida: Mapped[int] = mapped_column(Integer, default=0)
-    descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    nombre: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    dependencia_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sigarh_dependencias.id", ondelete="SET NULL"), nullable=True
+    )
+    grupo_ocupacional_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sigarh_grupos_ocupacionales.id", ondelete="SET NULL"), nullable=True
+    )
+    minutos_tolerancia: Mapped[int] = mapped_column(Integer, default=0)        # tolerancia por marcación
+    minutos_tolerancia_dia: Mapped[int] = mapped_column(Integer, default=0)    # tolerancia acumulada diaria
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     def __repr__(self) -> str:
-        return f"<Tolerancia {self.nombre}>"
+        return f"<Tolerancia grupo={self.grupo_ocupacional_id} {self.minutos_tolerancia}min>"
 
 
 class RegistroAsistencia(Base):
-    """Control de asistencia diaria del personal."""
+    """Control de asistencia diaria: horas programadas vs. reales y cálculo de tardanza."""
     __tablename__ = "sigarh_registro_asistencia"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     empleado_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="CASCADE"))
+    grupo_ocupacional_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sigarh_grupos_ocupacionales.id", ondelete="SET NULL"), nullable=True
+    )
+    horario_guardia_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sigarh_horarios_guardia.id", ondelete="SET NULL"), nullable=True
+    )
     fecha: Mapped[date] = mapped_column(Date)
-    hora_entrada: Mapped[str | None] = mapped_column(String(5), nullable=True)   # HH:MM
-    hora_salida: Mapped[str | None] = mapped_column(String(5), nullable=True)    # HH:MM
+    actividad_texto: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    servicio_texto: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    hora_entrada_programada: Mapped[str | None] = mapped_column(String(5), nullable=True)   # HH:MM
+    hora_salida_programada: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    hora_entrada_real: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    hora_salida_real: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    minutos_tardanza: Mapped[int] = mapped_column(Integer, default=0)
     estado: Mapped[str] = mapped_column(String(20), default="presente")          # presente, ausente, tardanza, justificado
     observacion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    registrado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     empleado: Mapped["Empleado"] = relationship()
@@ -205,6 +227,8 @@ class Justificacion(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     empleado_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="CASCADE"))
     motivo_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_motivos_justificacion.id", ondelete="SET NULL"), nullable=True)
+    numero_documento: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    fecha_tramite: Mapped[date | None] = mapped_column(Date, nullable=True)
     fecha_inicio: Mapped[date] = mapped_column(Date)
     fecha_fin: Mapped[date] = mapped_column(Date)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)

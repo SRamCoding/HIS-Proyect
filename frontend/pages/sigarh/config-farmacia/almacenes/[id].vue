@@ -1,7 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Editar Almacén' })
 
-const { $api } = useNuxtApp()
+const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
 const tenant = route.query.tenant as string
@@ -103,7 +103,7 @@ async function guardar() {
   saving.value = true
   error.value = ''
   try {
-    await $api(`/sigarh/config-farmacia/almacenes/${id}`, {
+    await api(`/sigarh/config-farmacia/almacenes/${id}`, {
       method: 'PATCH',
       tenant,
       body: {
@@ -126,7 +126,7 @@ async function guardar() {
 
 onMounted(async () => {
   try {
-    const data = await $api(`/sigarh/config-farmacia/almacenes/${id}`, { tenant })
+    const data = await api(`/sigarh/config-farmacia/almacenes/${id}`, { tenant })
     Object.assign(form, data)
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al cargar datos'

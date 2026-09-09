@@ -3,6 +3,8 @@ Modelos de Caja.
 Submodulos de este modulo:
 # - comprobantes-pago: Comprobantes de Pago
 # - cuentas: Cuentas
+# - cobro-por-paciente: Cobro por Paciente
+# - mi-caja: Mi Caja
 
 TODO: definir las tablas reales de cada submodulo.
 Recuerda: todo modelo debe tener tenant_id para aislamiento multi-tenant.
