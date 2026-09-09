@@ -1,887 +1,148 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'sigarh', title: 'Almacenes / Farmacias' })
-
+definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
 const { api } = useApi()
 const route = useRoute()
-const tenant = route.query.tenant as string
-
-const lista = ref<any[]>([])
+const tenantId = computed(() => route.query.tenant as string || '')
+interface Item {
+  id: string; codigo: string; nombre: string; tipo: string
+  fuente_financiamiento: string | null; ubicacion_fisica: string | null
+  despacha_recetas: boolean; is_active: boolean
+}
+const items = ref<Item[]>([])
 const loading = ref(true)
 const error = ref('')
 const search = ref('')
-const activeFilter = ref('all')
+const fTipo = ref('')
+const fDespacha = ref('')
+const fEstado = ref('all')
 
-const filters = computed(() => [
-  { label: 'Todos', value: 'all', count: lista.value.length },
-  { label: 'Activos', value: 'active', count: activeItems.value },
-  { label: 'Inactivos', value: 'inactive', count: inactiveItems.value },
-])
+const TIPOS: Record<string, string> = { farmacia: 'Farmacia', almacen_central: 'Almacén Central', laboratorio: 'Laboratorio', dispensacion: 'Dispensación' }
+const FUENTES: Record<string, string> = { sismed: 'SISMED', donaciones: 'Donaciones', mixto: 'Mixto' }
 
-const activeItems = computed(() => lista.value.filter(a => a.is_active).length)
-const inactiveItems = computed(() => lista.value.filter(a => !a.is_active).length)
-
-const filteredLista = computed(() => {
-  let result = lista.value
-
-  if (activeFilter.value === 'active') {
-    result = result.filter(a => a.is_active)
-  } else if (activeFilter.value === 'inactive') {
-    result = result.filter(a => !a.is_active)
-  }
-
-  if (search.value.trim()) {
-    const q = search.value.toLowerCase().trim()
-    result = result.filter(a =>
-      a.nombre?.toLowerCase().includes(q) ||
-      a.codigo?.toLowerCase().includes(q) ||
-      a.tipo?.toLowerCase().includes(q) ||
-      a.responsable?.toLowerCase().includes(q)
-    )
-  }
-
-  return result
+const activos = computed(() => items.value.filter(i => i.is_active).length)
+const despachan = computed(() => items.value.filter(i => i.despacha_recetas).length)
+const filtrados = computed(() => {
+  let r = items.value
+  if (fEstado.value === 'active') r = r.filter(i => i.is_active)
+  else if (fEstado.value === 'inactive') r = r.filter(i => !i.is_active)
+  if (search.value.trim()) { const q = search.value.toLowerCase(); r = r.filter(i => i.nombre.toLowerCase().includes(q) || i.codigo.toLowerCase().includes(q)) }
+  return r
 })
 
-const getTipoColor = (tipo: string) => {
-  const map: Record<string, string> = {
-    farmacia: 'var(--teal-soft)',
-    almacen: 'var(--navy-soft)',
-    deposito: 'var(--amber-soft)',
-    bodega: 'var(--purple-soft)',
-  }
-  return map[tipo?.toLowerCase()] || 'var(--mist)'
+const cargar = async () => {
+  loading.value = true; error.value = ''
+  const q = new URLSearchParams()
+  if (fTipo.value) q.set('tipo', fTipo.value)
+  if (fDespacha.value) q.set('despacha_recetas', fDespacha.value)
+  try { items.value = await api<Item[]>(`/sigarh/config-farmacia/almacenes?${q}`) }
+  catch (e: any) { error.value = apiErr(e, 'Error de conexión') }
+  finally { loading.value = false }
 }
-
-const getTipoTextColor = (tipo: string) => {
-  const map: Record<string, string> = {
-    farmacia: 'var(--teal)',
-    almacen: 'var(--navy)',
-    deposito: 'var(--amber)',
-    bodega: 'var(--purple)',
-  }
-  return map[tipo?.toLowerCase()] || 'var(--ink-soft)'
+const eliminar = async (it: Item) => {
+  if (!confirm(`Eliminar el almacén "${it.nombre}"?`)) return
+  try { await api(`/sigarh/config-farmacia/almacenes/${it.id}`, { method: 'DELETE' }); items.value = items.value.filter(i => i.id !== it.id) }
+  catch (e: any) { error.value = apiErr(e, 'No se pudo eliminar') }
 }
-
-const formatTipo = (tipo: string) => {
-  if (!tipo) return '—'
-  return tipo.charAt(0).toUpperCase() + tipo.slice(1).toLowerCase()
-}
-
-const clearFilters = () => {
-  search.value = ''
-  activeFilter.value = 'all'
-}
-
-onMounted(async () => {
-  try {
-    lista.value = await api('/sigarh/config-farmacia/almacenes', { tenant })
-  } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al cargar datos'
-  } finally {
-    loading.value = false
-  }
-})
+watch([fTipo, fDespacha], cargar)
+onMounted(cargar)
 </script>
 
 <template>
-  <div class="almacenes-container">
-    <!-- Header with Stats -->
-    <div class="page-header">
-      <div class="header-left">
-        <div class="header-icon" style="background: var(--teal-soft)">
-          <UIcon name="i-heroicons-building-storefront" class="w-5 h-5" style="color: var(--teal)" />
-        </div>
-        <div>
-          <h1 class="page-title">Almacenes / Farmacias</h1>
-          <p class="page-subtitle">Almacenes y farmacias del hospital</p>
-        </div>
+  <div class="sigarh-index-container">
+    <div class="sigarh-page-header">
+      <div class="sigarh-header-left">
+        <div class="sigarh-header-icon" style="background: var(--navy-soft)"><UIcon name="i-heroicons-building-storefront" class="w-5 h-5" style="color: var(--navy)" /></div>
+        <div><h1 class="page-title">Almacenes / Farmacias</h1><p class="page-subtitle">Establecimientos y depósitos que manejan existencias</p></div>
       </div>
-      <NuxtLink :to="`/sigarh/config-farmacia/almacenes/create?tenant=${tenant}`" class="btn-primary">
-        <UIcon name="i-heroicons-plus" class="w-4 h-4" />
-        Nuevo Almacén
-      </NuxtLink>
+      <NuxtLink :to="`/sigarh/config-farmacia/almacenes/create?tenant=${tenantId}`" class="btn-primary"><UIcon name="i-heroicons-plus" class="w-4 h-4" /> Nuevo Almacén</NuxtLink>
     </div>
 
-    <!-- Dashboard Widgets Grid -->
-    <div class="widgets-grid">
-      <!-- Total -->
-      <div class="stat-widget" style="background: var(--paper); border-left: 4px solid var(--teal)">
-        <div class="stat-icon" style="background: var(--teal-soft)">
-          <UIcon name="i-heroicons-building-storefront" class="w-5 h-5" style="color: var(--teal)" />
-        </div>
-        <div class="stat-content">
-          <span class="stat-value">{{ lista.length }}</span>
-          <span class="stat-label">Total Almacenes</span>
-        </div>
+    <div class="sigarh-stats-grid">
+      <div class="sigarh-stat-card" style="border-left-color: var(--navy)">
+        <div class="sigarh-stat-icon" style="background: var(--navy-soft)"><UIcon name="i-heroicons-building-storefront" class="w-5 h-5" style="color: var(--navy)" /></div>
+        <div><div class="sigarh-stat-value">{{ items.length }}</div><div class="sigarh-stat-label">Total</div></div>
       </div>
-
-      <!-- Activos -->
-      <div class="stat-widget" style="background: var(--paper); border-left: 4px solid var(--green)">
-        <div class="stat-icon" style="background: var(--green-soft)">
-          <UIcon name="i-heroicons-check-circle" class="w-5 h-5" style="color: var(--green)" />
-        </div>
-        <div class="stat-content">
-          <span class="stat-value">{{ activeItems }}</span>
-          <span class="stat-label">Activos</span>
-        </div>
+      <div class="sigarh-stat-card" style="border-left-color: var(--green)">
+        <div class="sigarh-stat-icon" style="background: var(--green-soft)"><UIcon name="i-heroicons-check-circle" class="w-5 h-5" style="color: var(--green)" /></div>
+        <div><div class="sigarh-stat-value">{{ activos }}</div><div class="sigarh-stat-label">Activos</div></div>
       </div>
-
-      <!-- Inactivos -->
-      <div class="stat-widget" style="background: var(--paper); border-left: 4px solid var(--amber)">
-        <div class="stat-icon" style="background: var(--amber-soft)">
-          <UIcon name="i-heroicons-x-circle" class="w-5 h-5" style="color: var(--amber)" />
-        </div>
-        <div class="stat-content">
-          <span class="stat-value">{{ inactiveItems }}</span>
-          <span class="stat-label">Inactivos</span>
-        </div>
+      <div class="sigarh-stat-card" style="border-left-color: var(--teal)">
+        <div class="sigarh-stat-icon" style="background: var(--teal-soft)"><UIcon name="i-heroicons-document-check" class="w-5 h-5" style="color: var(--teal)" /></div>
+        <div><div class="sigarh-stat-value">{{ despachan }}</div><div class="sigarh-stat-label">Despachan recetas</div></div>
       </div>
-
-      <!-- Tipos -->
-      <div class="stat-widget" style="background: var(--paper); border-left: 4px solid var(--purple)">
-        <div class="stat-icon" style="background: var(--purple-soft)">
-          <UIcon name="i-heroicons-list-bullet" class="w-5 h-5" style="color: var(--purple)" />
-        </div>
-        <div class="stat-content">
-          <span class="stat-value">{{ new Set(lista.map(a => a.tipo)).size }}</span>
-          <span class="stat-label">Tipos Diferentes</span>
-        </div>
+      <div class="sigarh-stat-card" style="border-left-color: var(--amber)">
+        <div class="sigarh-stat-icon" style="background: var(--amber-soft)"><UIcon name="i-heroicons-x-circle" class="w-5 h-5" style="color: var(--amber)" /></div>
+        <div><div class="sigarh-stat-value">{{ items.length - activos }}</div><div class="sigarh-stat-label">Inactivos</div></div>
       </div>
     </div>
 
-    <!-- Filter Bar -->
-    <div class="filter-bar">
-      <div class="filter-left">
-        <div class="search-wrapper">
-          <UIcon name="i-heroicons-magnifying-glass" class="search-icon" />
-          <input
-            v-model="search"
-            type="text"
-            placeholder="Buscar por nombre, código o responsable..."
-            class="search-input"
-            style="border: 1px solid var(--line); background: var(--paper)"
-          />
+    <div class="sigarh-table-container">
+      <div class="sigarh-filter-bar">
+        <div class="sigarh-filter-left" style="flex-wrap: wrap">
+          <div class="sigarh-search-wrapper">
+            <UIcon name="i-heroicons-magnifying-glass" class="sigarh-search-icon" />
+            <input v-model="search" type="text" placeholder="Buscar por nombre o código..." class="sigarh-search-input" />
+          </div>
+          <select v-model="fTipo" class="input-clinical" style="max-width: 170px; padding-left: 0.75rem">
+            <option value="">Todos los tipos</option>
+            <option v-for="(t, k) in TIPOS" :key="k" :value="k">{{ t }}</option>
+          </select>
+          <select v-model="fDespacha" class="input-clinical" style="max-width: 170px; padding-left: 0.75rem">
+            <option value="">Despacho: todos</option>
+            <option value="true">Solo despachan recetas</option>
+            <option value="false">No despachan</option>
+          </select>
+          <div class="sigarh-filter-group">
+            <button @click="fEstado = 'all'" class="sigarh-filter-btn" :class="{ active: fEstado === 'all' }">Todos</button>
+            <button @click="fEstado = 'active'" class="sigarh-filter-btn" :class="{ active: fEstado === 'active' }">Activos</button>
+            <button @click="fEstado = 'inactive'" class="sigarh-filter-btn" :class="{ active: fEstado === 'inactive' }">Inactivos</button>
+          </div>
         </div>
-        <div class="filter-group">
-          <button
-            v-for="filter in filters"
-            :key="filter.value"
-            class="filter-chip"
-            :class="{ 'filter-chip--active': activeFilter === filter.value }"
-            @click="activeFilter = filter.value"
-          >
-            {{ filter.label }}
-            <span class="filter-count" :style="{ background: activeFilter === filter.value ? 'var(--teal)' : 'var(--mist)' }">
-              {{ filter.count }}
-            </span>
-          </button>
-        </div>
-      </div>
-      <div class="filter-right">
-        <span class="result-count">{{ filteredLista.length }} resultados</span>
-        <button
-          v-if="filteredLista.length < lista.length || search || activeFilter !== 'all'"
-          class="btn-secondary btn-sm"
-          @click="clearFilters"
-        >
-          <UIcon name="i-heroicons-arrow-path" class="w-3.5 h-3.5" />
-          Resetear
-        </button>
-      </div>
-    </div>
-
-    <!-- Main Table Card -->
-    <div class="table-card" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-card)">
-      <!-- Loading State -->
-      <div v-if="loading" class="table-loading">
-        <div class="loading-spinner">
-          <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin" style="color: var(--teal)" />
-        </div>
-        <p style="color: var(--ink-soft)">Cargando almacenes...</p>
+        <span class="sigarh-result-count">{{ filtrados.length }} resultados</span>
       </div>
 
-      <!-- Error State -->
-      <div v-else-if="error" class="table-error">
-        <UIcon name="i-heroicons-exclamation-triangle" class="w-8 h-8" style="color: var(--alert)" />
-        <p style="color: var(--alert)">{{ error }}</p>
-        <button class="btn-secondary" @click="onMounted">Reintentar</button>
+      <div v-if="loading" class="sigarh-table-state"><UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--navy)" /></div>
+      <div v-else-if="error" class="sigarh-table-state"><UIcon name="i-heroicons-exclamation-triangle" class="w-8 h-8" style="color: var(--alert)" /><p style="color: var(--alert)">{{ error }}</p><button @click="cargar" class="btn-outline">Reintentar</button></div>
+      <div v-else-if="!filtrados.length" class="sigarh-table-state">
+        <UIcon name="i-heroicons-building-storefront" class="w-12 h-12" style="color: var(--ink-soft); opacity: .4" />
+        <p style="color: var(--ink-soft)">Sin almacenes</p>
+        <NuxtLink :to="`/sigarh/config-farmacia/almacenes/create?tenant=${tenantId}`" class="btn-primary"><UIcon name="i-heroicons-plus" class="w-4 h-4" /> Nuevo</NuxtLink>
       </div>
 
-      <!-- Empty State -->
-      <div v-else-if="filteredLista.length === 0" class="table-empty">
-        <div class="empty-icon" style="background: var(--mist)">
-          <UIcon name="i-heroicons-building-storefront" class="w-12 h-12" style="color: var(--ink-soft)" />
-        </div>
-        <h3 style="color: var(--ink)">No hay almacenes registrados</h3>
-        <p style="color: var(--ink-soft)">Comienza creando un almacén o farmacia</p>
-        <NuxtLink :to="`/sigarh/config-farmacia/almacenes/create?tenant=${tenant}`" class="btn-primary">
-          <UIcon name="i-heroicons-plus" class="w-4 h-4" />
-          Nuevo Almacén
-        </NuxtLink>
-      </div>
-
-      <!-- Table -->
-      <div v-else class="table-responsive">
-        <table class="almacenes-table">
-          <thead>
-            <tr>
-              <th class="col-name">
-                <span class="th-content">Nombre</span>
-              </th>
-              <th class="col-code">
-                <span class="th-content">Código</span>
-              </th>
-              <th class="col-type">
-                <span class="th-content">Tipo</span>
-              </th>
-              <th class="col-responsible">
-                <span class="th-content">Responsable</span>
-              </th>
-              <th class="col-status">
-                <span class="th-content">Estado</span>
-              </th>
-              <th class="col-actions">
-                <span class="th-content">Acciones</span>
-              </th>
-            </tr>
-          </thead>
+      <div v-else class="sigarh-table-responsive">
+        <table class="sigarh-table">
+          <thead><tr>
+            <th style="width: 12%">Código</th><th style="width: 26%">Nombre</th><th style="width: 15%">Tipo</th>
+            <th style="width: 13%">Financiamiento</th><th style="width: 12%">Despacha recetas</th>
+            <th style="width: 12%">Estado</th><th style="width: 10%; text-align: right">Acciones</th>
+          </tr></thead>
           <tbody>
-            <tr v-for="a in filteredLista" :key="a.id" class="table-row">
-              <td class="col-name">
-                <div class="name-cell">
-                  <div class="almacen-icon" :style="{ background: a.is_active ? 'var(--teal-soft)' : 'var(--mist)' }">
-                    <UIcon name="i-heroicons-building-storefront" class="w-4 h-4" :style="{ color: a.is_active ? 'var(--teal)' : 'var(--ink-soft)' }" />
+            <tr v-for="it in filtrados" :key="it.id">
+              <td><span class="sigarh-code-badge">{{ it.codigo }}</span></td>
+              <td>
+                <div class="sigarh-item-cell">
+                  <div class="sigarh-item-icon" style="background: var(--navy-soft)"><UIcon name="i-heroicons-building-storefront" class="w-4 h-4" style="color: var(--navy)" /></div>
+                  <div>
+                    <span class="sigarh-item-name">{{ it.nombre }}</span>
+                    <div v-if="it.ubicacion_fisica" style="font-size: 0.72rem; color: var(--ink-soft)">{{ it.ubicacion_fisica }}</div>
                   </div>
-                  <span class="name-text">{{ a.nombre }}</span>
                 </div>
               </td>
-              <td class="col-code">
-                <span class="code-text font-mono-data">{{ a.codigo || '—' }}</span>
-              </td>
-              <td class="col-type">
-                <span class="type-badge" :style="{ background: getTipoColor(a.tipo), color: getTipoTextColor(a.tipo) }">
-                  {{ formatTipo(a.tipo) }}
-                </span>
-              </td>
-              <td class="col-responsible">
-                <span class="responsible-text">{{ a.responsable || '—' }}</span>
-              </td>
-              <td class="col-status">
-                <span class="status-badge" :class="a.is_active ? 'status-active' : 'status-inactive'">
-                  <span class="status-dot" :class="a.is_active ? 'dot-active' : 'dot-inactive'" />
-                  {{ a.is_active ? 'Activo' : 'Inactivo' }}
-                </span>
-              </td>
-              <td class="col-actions">
-                <div class="action-buttons">
-                  <NuxtLink
-                    :to="`/sigarh/config-farmacia/almacenes/${a.id}?tenant=${tenant}`"
-                    class="action-btn action-edit"
-                    title="Editar almacén"
-                  >
-                    <UIcon name="i-heroicons-pencil-square" class="w-4 h-4" />
-                  </NuxtLink>
+              <td><span class="badge badge--neutral">{{ TIPOS[it.tipo] || it.tipo }}</span></td>
+              <td style="font-size: 0.8125rem; color: var(--ink-soft)">{{ it.fuente_financiamiento ? (FUENTES[it.fuente_financiamiento] || it.fuente_financiamiento) : '—' }}</td>
+              <td><span class="badge" :class="it.despacha_recetas ? 'badge--ok' : 'badge--neutral'">{{ it.despacha_recetas ? 'Sí' : 'No' }}</span></td>
+              <td><span class="badge" :class="it.is_active ? 'badge--ok' : 'badge--neutral'">{{ it.is_active ? 'Activo' : 'Inactivo' }}</span></td>
+              <td style="text-align: right">
+                <div class="sigarh-actions">
+                  <NuxtLink :to="`/sigarh/config-farmacia/almacenes/${it.id}?tenant=${tenantId}`" class="sigarh-action-btn" title="Editar"><UIcon name="i-heroicons-pencil-square" class="w-4 h-4" style="color: var(--teal)" /></NuxtLink>
+                  <button class="sigarh-action-btn danger" title="Eliminar" @click="eliminar(it)"><UIcon name="i-heroicons-trash" class="w-4 h-4" style="color: var(--alert)" /></button>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
-      </div>
-
-      <!-- Table Footer -->
-      <div v-if="filteredLista.length > 0" class="table-footer">
-        <span class="footer-info">
-          Mostrando <strong>{{ filteredLista.length }}</strong> de <strong>{{ lista.length }}</strong> almacenes
-          <span v-if="filteredLista.length < lista.length">(filtrados)</span>
-        </span>
-        <div class="footer-actions">
-          <button
-            v-if="filteredLista.length < lista.length || search || activeFilter !== 'all'"
-            class="btn-secondary btn-sm"
-            @click="clearFilters"
-          >
-            Limpiar filtros
-          </button>
-        </div>
+        <div class="sigarh-table-footer">Mostrando <strong>{{ filtrados.length }}</strong> de <strong>{{ items.length }}</strong> almacenes</div>
       </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.almacenes-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 1.5rem 2rem;
-}
-
-/* Page Header */
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 2rem;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.2;
-}
-
-.page-subtitle {
-  font-size: 0.875rem;
-  color: var(--ink-soft);
-  margin: 0.125rem 0 0 0;
-}
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.5rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  background: var(--teal);
-  color: white;
-  border: none;
-  text-decoration: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-primary:hover {
-  background: var(--teal-dark);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-secondary:hover {
-  background: var(--mist);
-}
-
-.btn-sm {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
-}
-
-/* Widgets Grid */
-.widgets-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.stat-widget {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1.25rem 1.5rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s ease;
-}
-
-.stat-widget:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-.stat-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.stat-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.stat-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--ink);
-  line-height: 1.2;
-}
-
-.stat-label {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-/* Filter Bar */
-.filter-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.filter-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-  flex: 1;
-}
-
-.search-wrapper {
-  position: relative;
-  min-width: 200px;
-  flex: 1;
-  max-width: 300px;
-}
-
-.search-icon {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 1rem;
-  height: 1rem;
-  color: var(--ink-soft);
-}
-
-.search-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem 0.5rem 2.5rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  transition: all 0.2s ease;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--teal);
-  box-shadow: 0 0 0 3px var(--teal-soft);
-}
-
-.filter-group {
-  display: flex;
-  gap: 0.375rem;
-  flex-wrap: wrap;
-}
-
-.filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--ink-soft);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.filter-chip:hover {
-  background: var(--mist);
-}
-
-.filter-chip--active {
-  background: var(--teal-soft);
-  border-color: var(--teal);
-  color: var(--teal);
-}
-
-.filter-count {
-  padding: 0.0625rem 0.375rem;
-  border-radius: 10px;
-  font-size: 0.625rem;
-  font-weight: 600;
-  color: var(--ink-soft);
-  background: var(--mist);
-  transition: all 0.2s ease;
-}
-
-.filter-chip--active .filter-count {
-  background: var(--teal);
-  color: white;
-}
-
-.filter-right {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.result-count {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-/* Table States */
-.table-loading,
-.table-error,
-.table-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  gap: 1rem;
-}
-
-.loading-spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.empty-icon {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.table-empty h3 {
-  font-size: 1.125rem;
-  margin: 0;
-}
-
-.table-empty p {
-  margin: 0;
-}
-
-/* Table Card */
-.table-card {
-  overflow: hidden;
-}
-
-.table-responsive {
-  overflow-x: auto;
-}
-
-.almacenes-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.almacenes-table thead {
-  background: var(--mist);
-}
-
-.almacenes-table th {
-  padding: 0.75rem 1rem;
-  text-align: left;
-  font-weight: 600;
-  color: var(--ink-soft);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--line);
-}
-
-.th-content {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.almacenes-table td {
-  padding: 0.875rem 1rem;
-  border-bottom: 1px solid var(--line);
-  vertical-align: middle;
-}
-
-.table-row {
-  transition: background 0.15s ease;
-}
-
-.table-row:hover {
-  background: var(--mist);
-}
-
-.col-name { width: 22%; }
-.col-code { width: 15%; }
-.col-type { width: 15%; }
-.col-responsible { width: 20%; }
-.col-status { width: 13%; }
-.col-actions { width: 15%; text-align: right; }
-
-/* Name Cell */
-.name-cell {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-}
-
-.almacen-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.name-text {
-  font-weight: 500;
-  color: var(--ink);
-}
-
-/* Code */
-.code-text {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-/* Type Badge */
-.type-badge {
-  display: inline-block;
-  padding: 0.1875rem 0.625rem;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-/* Responsible */
-.responsible-text {
-  color: var(--ink-soft);
-}
-
-/* Status Badge */
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.25rem 0.625rem;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.status-active {
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.status-inactive {
-  background: var(--mist);
-  color: var(--ink-soft);
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.dot-active {
-  background: var(--green);
-}
-
-.dot-inactive {
-  background: var(--ink-soft);
-}
-
-/* Action Buttons */
-.action-buttons {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.25rem;
-}
-
-.action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--ink-soft);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-decoration: none;
-}
-
-.action-btn:hover {
-  background: var(--mist);
-}
-
-.action-edit:hover {
-  color: var(--teal);
-  border-color: var(--teal-soft);
-  background: var(--teal-soft);
-}
-
-/* Table Footer */
-.table-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1.5rem;
-  border-top: 1px solid var(--line);
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.footer-info {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-.footer-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-/* Responsive */
-@media (max-width: 1200px) {
-  .widgets-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 1024px) {
-  .almacenes-container {
-    padding: 1rem 1.5rem;
-  }
-
-  .filter-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .filter-left {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .search-wrapper {
-    max-width: none;
-  }
-}
-
-@media (max-width: 768px) {
-  .almacenes-container {
-    padding: 1rem;
-  }
-
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .page-header .btn-primary {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .widgets-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .filter-group {
-    flex-wrap: wrap;
-  }
-
-  .col-actions {
-    min-width: 60px;
-  }
-
-  .col-responsible {
-    min-width: 120px;
-  }
-
-  .table-footer {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.5rem;
-  }
-}
-
-@media (max-width: 480px) {
-  .widgets-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .filter-chip {
-    font-size: 0.6875rem;
-    padding: 0.25rem 0.5rem;
-  }
-
-  .table-responsive {
-    margin: 0 -0.5rem;
-  }
-
-  .almacenes-table td,
-  .almacenes-table th {
-    padding: 0.5rem 0.625rem;
-    font-size: 0.8125rem;
-  }
-
-  .col-name {
-    min-width: 120px;
-  }
-
-  .col-actions {
-    min-width: 50px;
-  }
-
-  .action-btn {
-    width: 28px;
-    height: 28px;
-  }
-}
-</style>
