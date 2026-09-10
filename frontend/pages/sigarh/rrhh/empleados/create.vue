@@ -48,7 +48,7 @@ const form = reactive({
   sexo: '', estado_civil: '', grupo_sanguineo: '', celular: '', telefono_fijo: '', correo: '',
   is_active: true,
   tipo_trabajador_id: '', nivel_remunerativo_id: '', grupo_ocupacional_id: '',
-  departamento_id: '', servicio_id: '', cargo_laboral: '', modalidad: '',
+  departamento_id: '', servicio_id: '', cargo_laboral: '', es_jefe_servicio: false, modalidad: '',
   codigo_minsa: '', numero_cmp: '', fecha_ingreso: '', fecha_nombramiento: '', fecha_cese: '',
   resolucion_nombramiento: '', resolucion_cese: '',
   especialidades: [] as any[],
@@ -443,6 +443,12 @@ onMounted(async () => {
             <select v-model="form.servicio_id" class="input-clinical" :class="{ 'input-error': errors.servicio_id }"><option value="">Seleccione</option><option v-for="s in servicios" :key="s.id" :value="s.id">{{ s.nombre }}</option></select>
           </div>
           <span v-if="errors.servicio_id" class="error-message">{{ errors.servicio_id }}</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">&nbsp;</label>
+          <label class="text-xs flex items-center gap-1.5" style="color: var(--ink-soft); padding-top: 0.7rem">
+            <input type="checkbox" v-model="form.es_jefe_servicio" /> Jefe de este servicio (podrá aprobar sus roles de turno)
+          </label>
         </div>
         <div class="form-group">
           <label class="form-label">Cargo Laboral <span class="required">*</span></label>

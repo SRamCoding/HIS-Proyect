@@ -81,7 +81,7 @@ async def listar(
 @router.post("/roles", response_model=RolDetail, status_code=201)
 async def crear(request: Request, data: RolCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
     try:
-        return await svc.crear_rol(db, _tid(current_user, request), data, _nombre(current_user))
+        return await svc.crear_rol(db, _tid(current_user, request), data, _nombre(current_user), uuid.UUID(current_user["sub"]))
     except svc.ReglaNegocioError as e:
         raise _rn(e) from e
 
@@ -93,6 +93,15 @@ async def obtener(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depend
     if not rol:
         raise HTTPException(404, detail="Rol no encontrado")
     return await svc.serializar_uno(db, tid, rol)
+
+
+@router.get("/roles/{rol_id}/diagnostico")
+async def diagnostico(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+    tid = _tid(current_user, request)
+    rol = await svc.obtener_rol_orm(db, rol_id, tid)
+    if not rol:
+        raise HTTPException(404, detail="Rol no encontrado")
+    return await svc.diagnosticar_rol(db, tid, rol)
 
 
 @router.patch("/roles/{rol_id}", response_model=RolDetail)

@@ -65,6 +65,31 @@
             </div>
           </div>
 
+          <div class="form-group">
+            <label class="form-label">Vigente desde <span class="required">*</span></label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-calendar" class="input-icon" />
+              <input v-model="form.vigencia_desde" type="date" class="input-clinical font-mono-data" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Vigente hasta</label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-calendar" class="input-icon" />
+              <input v-model="form.vigencia_hasta" type="date" class="input-clinical font-mono-data" />
+            </div>
+            <p class="field-hint">Vacío = sigue vigente</p>
+          </div>
+
+          <div class="form-group full-width">
+            <label class="form-label">Sustento <span class="required">*</span></label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" />
+              <textarea v-model="form.sustento" class="input-clinical" rows="2" placeholder="Base normativa o documento que sustenta este importe" />
+            </div>
+          </div>
+
           <div class="form-group full-width">
             <label class="form-label">Estado</label>
             <div class="status-toggle">
@@ -114,20 +139,26 @@ const error = ref('')
 const tiposGuardia = ref<any[]>([])
 const gruposOcupacionales = ref<any[]>([])
 const nivelesRemunerativos = ref<any[]>([])
-const form = reactive({ tipo_guardia_id: '', grupo_ocupacional_id: '', nivel_remunerativo_id: '', valor: 0, is_active: true })
+const form = reactive({
+  tipo_guardia_id: '', grupo_ocupacional_id: '', nivel_remunerativo_id: '', valor: 0,
+  vigencia_desde: '', vigencia_hasta: '', sustento: '', is_active: true,
+})
 const handleSave = async () => {
   if (!form.tipo_guardia_id) { error.value = 'El tipo de guardia es requerido'; return }
   if (!form.valor || form.valor <= 0) { error.value = 'El valor debe ser mayor a 0'; return }
+  if (!form.vigencia_desde) { error.value = 'La fecha de vigencia es requerida'; return }
+  if (!form.sustento.trim()) { error.value = 'El sustento es requerido'; return }
   saving.value = true; error.value = ''
   try {
     await api(`/sigarh/mantenimiento/guardias-valorizadas/${id.value}`, { method: 'PATCH', body: {
       tipo_guardia_id: form.tipo_guardia_id || null,
       grupo_ocupacional_id: form.grupo_ocupacional_id || null,
       nivel_remunerativo_id: form.nivel_remunerativo_id || null,
-      valor: form.valor, is_active: form.is_active
+      valor: form.valor, vigencia_desde: form.vigencia_desde, vigencia_hasta: form.vigencia_hasta || null,
+      sustento: form.sustento, is_active: form.is_active,
     }})
     router.push(`/sigarh/mantenimiento/guardias-valorizadas?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar') }
   finally { saving.value = false }
 }
 onMounted(async () => {
@@ -142,9 +173,12 @@ onMounted(async () => {
     form.grupo_ocupacional_id = data.grupo_ocupacional_id || ''
     form.nivel_remunerativo_id = data.nivel_remunerativo_id || ''
     form.valor = data.valor || 0
+    form.vigencia_desde = data.vigencia_desde || ''
+    form.vigencia_hasta = data.vigencia_hasta || ''
+    form.sustento = data.sustento || ''
     form.is_active = data.is_active
     tiposGuardia.value = tg; gruposOcupacionales.value = go; nivelesRemunerativos.value = nr
-  } catch (e: any) { error.value = 'No se pudo cargar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo cargar') }
   finally { loading.value = false }
 })
 </script>

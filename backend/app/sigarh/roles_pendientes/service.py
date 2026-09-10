@@ -9,7 +9,9 @@ from app.sigarh.creacion_roles.models import (
     Rol, RolEmpleado, RolActividad, RolTurno, SolicitudModificacionRol,
 )
 from app.sigarh.creacion_roles.service import (
-    ReglaNegocioError, obtener_rol_orm, serializar_uno,
+    ReglaNegocioError, PermisoError, obtener_rol_orm, serializar_uno,
+    diagnosticar_rol, errores_bloqueantes, _empleados_en_otro_rol_ordinario,
+    puede_aprobar_roles,
 )
 from app.sigarh.mantenimiento.models import Servicio, Actividad, HorarioGuardia
 from app.sigarh.rrhh.models import Empleado
@@ -21,14 +23,22 @@ MESES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
 
 # ─── Revisión del rol ────────────────────────────────────────────────────────
 
-async def aprobar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID, revisor: str | None) -> dict | None:
+async def aprobar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID, current_user: dict) -> dict | None:
     rol = await obtener_rol_orm(db, rol_id, tenant_id)
     if not rol:
         return None
+    if not await puede_aprobar_roles(db, tenant_id, current_user, rol.servicio_id):
+        raise PermisoError("No tiene permiso para aprobar roles de turno de este servicio.")
+    revisor = current_user.get("name") or current_user.get("email")
     if rol.status != "pending":
         raise ReglaNegocioError("Solo se pueden aprobar roles en estado pendiente.")
-    if not rol.empleados or any(not re.actividades or any(not a.turnos for a in re.actividades) for re in rol.empleados):
-        raise ReglaNegocioError("No se puede aprobar: la programación está incompleta.")
+    if not rol.created_by_id:
+        raise ReglaNegocioError("El rol antiguo requiere identificar a su elaborador antes de aprobarse.")
+    if str(rol.created_by_id) == str(current_user.get("sub")):
+        raise ReglaNegocioError("Quien elaboró el rol no puede aprobarlo; debe revisarlo otra persona.")
+    errores = errores_bloqueantes(await diagnosticar_rol(db, tenant_id, rol))
+    if errores:
+        raise ReglaNegocioError("No se puede aprobar el rol: " + " · ".join(errores[:8]))
     rol.status = "approved"
     rol.reviewed_by = revisor
     rol.reviewed_at = datetime.utcnow()
@@ -38,15 +48,17 @@ async def aprobar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID,
     return await serializar_uno(db, tenant_id, await obtener_rol_orm(db, rol_id, tenant_id))
 
 
-async def rechazar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID, motivo: str, revisor: str | None) -> dict | None:
+async def rechazar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID, motivo: str, current_user: dict) -> dict | None:
     rol = await obtener_rol_orm(db, rol_id, tenant_id)
     if not rol:
         return None
+    if not await puede_aprobar_roles(db, tenant_id, current_user, rol.servicio_id):
+        raise PermisoError("No tiene permiso para revisar roles de turno de este servicio.")
     if rol.status != "pending":
         raise ReglaNegocioError("Solo se pueden rechazar roles en estado pendiente.")
     rol.status = "rejected"
     rol.rejection_reason = motivo
-    rol.reviewed_by = revisor
+    rol.reviewed_by = current_user.get("name") or current_user.get("email")
     rol.reviewed_at = datetime.utcnow()
     await db.commit()
     return await serializar_uno(db, tenant_id, await obtener_rol_orm(db, rol_id, tenant_id))
@@ -106,17 +118,25 @@ async def _sol_orm(db: AsyncSession, tenant_id: uuid.UUID, sol_id: uuid.UUID) ->
     ))
 
 
-async def aprobar_solicitud(db: AsyncSession, tenant_id: uuid.UUID, sol_id: uuid.UUID, revisor: str | None) -> dict | None:
+async def aprobar_solicitud(db: AsyncSession, tenant_id: uuid.UUID, sol_id: uuid.UUID, current_user: dict) -> dict | None:
     sol = await _sol_orm(db, tenant_id, sol_id)
     if not sol:
         return None
     if sol.status != "pendiente":
         raise ReglaNegocioError("La solicitud ya fue revisada.")
-    rol = await db.scalar(select(Rol).where(Rol.id == sol.rol_id, Rol.tenant_id == tenant_id))
+    rol_previo = await db.scalar(select(Rol).where(Rol.id == sol.rol_id, Rol.tenant_id == tenant_id))
+    if not await puede_aprobar_roles(db, tenant_id, current_user, rol_previo.servicio_id if rol_previo else None):
+        raise PermisoError("No tiene permiso para aprobar modificaciones de roles de este servicio.")
+    revisor = current_user.get("name") or current_user.get("email")
+    if revisor and sol.requested_by and revisor == sol.requested_by:
+        raise ReglaNegocioError("Quien solicitó la modificación no puede aprobarla; debe revisarla otra persona.")
+    rol = rol_previo
     if not rol or rol.status != "approved":
         raise ReglaNegocioError("El rol asociado ya no está aprobado.")
     if not sol.empleado_id:
         raise ReglaNegocioError("La solicitud no indica un empleado.")
+    if await _empleados_en_otro_rol_ordinario(db, tenant_id, rol, [sol.empleado_id]):
+        raise ReglaNegocioError("El empleado ya pertenece a otro rol ordinario de este servicio y período.")
 
     # Incorporar empleado + su programación propuesta, de forma atómica.
     re_ = await db.scalar(select(RolEmpleado).where(
@@ -155,6 +175,15 @@ async def aprobar_solicitud(db: AsyncSession, tenant_id: uuid.UUID, sol_id: uuid
             dias = [d for d in (tno.get("dias_semana") or []) if isinstance(d, int) and 0 <= d <= 6]
             db.add(RolTurno(rol_actividad_id=ra.id, horario_guardia_id=hg_id, dias_semana=sorted(set(dias))))
 
+    # Mismo diagnóstico que se exige para enviar/aprobar el rol original: la
+    # modificación no puede introducir turnos que no generarían cupos válidos.
+    await db.flush()
+    rol_actualizado = await obtener_rol_orm(db, rol.id, tenant_id)
+    errores = errores_bloqueantes(await diagnosticar_rol(db, tenant_id, rol_actualizado))
+    if errores:
+        await db.rollback()
+        raise ReglaNegocioError("No se puede aprobar la modificación: " + " · ".join(errores[:8]))
+
     sol.status = "aprobado"
     sol.reviewed_by = revisor
     sol.reviewed_at = datetime.utcnow()
@@ -163,15 +192,18 @@ async def aprobar_solicitud(db: AsyncSession, tenant_id: uuid.UUID, sol_id: uuid
     return await _serializa_solicitud(db, tenant_id, await _sol_orm(db, tenant_id, sol_id))
 
 
-async def rechazar_solicitud(db: AsyncSession, tenant_id: uuid.UUID, sol_id: uuid.UUID, motivo: str, revisor: str | None) -> dict | None:
+async def rechazar_solicitud(db: AsyncSession, tenant_id: uuid.UUID, sol_id: uuid.UUID, motivo: str, current_user: dict) -> dict | None:
     sol = await _sol_orm(db, tenant_id, sol_id)
     if not sol:
         return None
     if sol.status != "pendiente":
         raise ReglaNegocioError("La solicitud ya fue revisada.")
+    rol = await db.scalar(select(Rol).where(Rol.id == sol.rol_id, Rol.tenant_id == tenant_id))
+    if not await puede_aprobar_roles(db, tenant_id, current_user, rol.servicio_id if rol else None):
+        raise PermisoError("No tiene permiso para revisar modificaciones de roles de este servicio.")
     sol.status = "rechazado"
     sol.motivo = f"{sol.motivo}\n\n[Rechazo] {motivo}" if motivo else sol.motivo
-    sol.reviewed_by = revisor
+    sol.reviewed_by = current_user.get("name") or current_user.get("email")
     sol.reviewed_at = datetime.utcnow()
     await db.commit()
     return await _serializa_solicitud(db, tenant_id, await _sol_orm(db, tenant_id, sol_id))

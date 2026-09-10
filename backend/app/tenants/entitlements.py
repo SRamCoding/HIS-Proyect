@@ -51,6 +51,9 @@ def require_module_jwt(module_code: str):
         from app.core.database import AsyncSessionLocal
         from sqlalchemy import text
 
+        if current_user.get("panel") == "sigarh" and module_code not in current_user.get("active_modules", []):
+            raise HTTPException(403, detail="Su perfil no permite este módulo")
+
         # Obtener tenant_id del JWT o del header X-Tenant-ID
         tenant_id = current_user.get("tenant_id")
         if not tenant_id:

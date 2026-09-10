@@ -1,0 +1,12 @@
+﻿from pathlib import Path
+p=Path('backend/app/core/dependencies.py')
+s=p.read_text(encoding='utf-8-sig').replace('    return payload\n','    from app.sigarh.mantenimiento.security import usuario_actual\n    return await usuario_actual(db, payload)\n',1)
+p.write_text(s,encoding='utf-8')
+p=Path('backend/app/sigarh/mantenimiento/models.py')
+s=p.read_text(encoding='utf-8-sig').replace('Integer, Text, ForeignKey, Float','Integer, Text, ForeignKey, Float, Numeric, Date')
+s=s.replace('from datetime import datetime','from datetime import datetime, date\nfrom decimal import Decimal')
+s=s.replace('horas_totales: Mapped[int | None] = mapped_column(Integer, nullable=True)','horas_totales: Mapped[float | None] = mapped_column(Float, nullable=True)\n    duracion_minutos: Mapped[int | None] = mapped_column(Integer, nullable=True)')
+s=s.replace('valor: Mapped[float] = mapped_column(Float, default=0.0)','valor: Mapped[Decimal] = mapped_column(Numeric(12, 2))\n    moneda: Mapped[str] = mapped_column(String(3), default="PEN", server_default="PEN")\n    vigencia_desde: Mapped[date | None] = mapped_column(Date, nullable=True)\n    vigencia_hasta: Mapped[date | None] = mapped_column(Date, nullable=True)\n    sustento: Mapped[str | None] = mapped_column(Text, nullable=True)')
+s=s.replace('requiere_consultorio: Mapped[bool] = mapped_column(Boolean, default=False)','requiere_consultorio: Mapped[bool] = mapped_column(Boolean, default=False)\n    genera_agenda: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")')
+s=s.replace('password: Mapped[str] = mapped_column(String(255))','password: Mapped[str] = mapped_column(String(255))\n    session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")')
+p.write_text(s,encoding='utf-8')

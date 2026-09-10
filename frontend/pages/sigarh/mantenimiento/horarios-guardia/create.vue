@@ -163,7 +163,9 @@ const buildBody = () => ({
   nombre: form.nombre,
   hora_inicio: form.hora_inicio,
   hora_fin: form.hora_fin,
-  horas_totales: form.horas_totales || null,
+  // El servidor calcula horas_totales/duracion_minutos exactos a partir de
+  // hora_inicio y hora_fin; enviar un valor redondeado del cliente puede no
+  // coincidir con ese cálculo y rechazar el guardado.
   tipo_guardia_id: form.tipo_guardia_id || null,
   is_active: form.is_active,
 })
@@ -180,7 +182,7 @@ const handleCreate = async (createAnother: boolean) => {
     } else {
       router.push(`/sigarh/mantenimiento/horarios-guardia?tenant=${tenantId.value}`)
     }
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear') }
   finally { saving.value = false }
 }
 

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from sqlalchemy import String, Boolean, DateTime, Date, Text, Integer, Float, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Boolean, DateTime, Date, Text, Integer, Float, ForeignKey, UniqueConstraint, Index, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -25,6 +25,15 @@ class ProgramacionMedica(Base):
         UUID(as_uuid=True), ForeignKey("sigarh_roles_turno_turnos.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
+    # Correlativo legible; lo asigna la secuencia en cualquier inserción (sync o manual).
+    codigo: Mapped[str] = mapped_column(
+        String(20), index=True,
+        server_default=text("nextval('programacion_medica_codigo_seq')::text"),
+    )
+    consultorio_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sigarh_consultorios.id", ondelete="SET NULL"), nullable=True
+    )
+
     fecha: Mapped[date] = mapped_column(Date)
     turno: Mapped[str] = mapped_column(String(20))
     hora_inicio: Mapped[str] = mapped_column(String(5))
@@ -32,6 +41,7 @@ class ProgramacionMedica(Base):
     tiempo_promedio_atencion: Mapped[int] = mapped_column(Integer, default=15)
 
     tipo_servicio: Mapped[str] = mapped_column(String(50), default="CONSULTORIO_EXTERNO")
+    modalidad: Mapped[str] = mapped_column(String(20), default="PRESENCIAL", server_default="PRESENCIAL")
     mostrar_en_consultorio: Mapped[bool] = mapped_column(Boolean, default=False)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     estado: Mapped[str] = mapped_column(String(20), default="activo")
@@ -46,6 +56,14 @@ class ProgramacionMedica(Base):
 class Cita(Base):
     """Cita agendada dentro de un cupo de una ProgramacionMedica."""
     __tablename__ = "citas"
+    __table_args__ = (
+        # Evita doble reserva del mismo cupo bajo concurrencia (dos operadores
+        # reservando el mismo horario a la vez); las canceladas no cuentan.
+        Index(
+            "ux_citas_cupo_activo", "programacion_medica_id", "hora_inicio",
+            unique=True, postgresql_where=text("estado <> 'cancelada'"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)

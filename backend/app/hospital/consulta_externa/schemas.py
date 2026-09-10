@@ -3,16 +3,21 @@ from datetime import datetime, date
 from pydantic import BaseModel, Field, model_validator
 
 
+_MODALIDADES = {"PRESENCIAL", "VIRTUAL"}
+
+
 class ProgramacionMedicaCreate(BaseModel):
     medico_id: uuid.UUID
     servicio_id: uuid.UUID
     especialidad_id: uuid.UUID | None = None
+    consultorio_id: uuid.UUID | None = None
     fecha: date
     turno: str
     hora_inicio: str
     hora_fin: str
     tiempo_promedio_atencion: int = 15
     tipo_servicio: str = "CONSULTORIO_EXTERNO"
+    modalidad: str = "PRESENCIAL"
     mostrar_en_consultorio: bool = False
     descripcion: str | None = None
 
@@ -23,26 +28,46 @@ class ProgramacionMedicaCreate(BaseModel):
             return {k: (None if v == "" else v) for k, v in data.items()}
         return data
 
+    @model_validator(mode="after")
+    def _v_modalidad(self):
+        if self.modalidad not in _MODALIDADES:
+            raise ValueError("modalidad debe ser PRESENCIAL o VIRTUAL")
+        return self
+
 
 class ProgramacionMedicaUpdate(BaseModel):
+    servicio_id: uuid.UUID | None = None
+    especialidad_id: uuid.UUID | None = None
+    consultorio_id: uuid.UUID | None = None
     fecha: date | None = None
     turno: str | None = None
     hora_inicio: str | None = None
     hora_fin: str | None = None
     tiempo_promedio_atencion: int | None = None
+    tipo_servicio: str | None = None
+    modalidad: str | None = None
     mostrar_en_consultorio: bool | None = None
     descripcion: str | None = None
     estado: str | None = None
 
+    @model_validator(mode="after")
+    def _v_modalidad(self):
+        if self.modalidad is not None and self.modalidad not in _MODALIDADES:
+            raise ValueError("modalidad debe ser PRESENCIAL o VIRTUAL")
+        return self
+
 
 class ProgramacionMedicaResponse(BaseModel):
     id: uuid.UUID
+    codigo: str | None = None
     medico_id: uuid.UUID
     medico_nombre: str
     servicio_id: uuid.UUID | None
     servicio_nombre: str | None
     especialidad_id: uuid.UUID | None
     especialidad_nombre: str | None
+    consultorio_id: uuid.UUID | None = None
+    consultorio_nombre: str | None = None
     origen_sigarh_turno_id: uuid.UUID | None = None
     origen: str = "MANUAL"
     fecha: date
@@ -51,6 +76,7 @@ class ProgramacionMedicaResponse(BaseModel):
     hora_fin: str
     tiempo_promedio_atencion: int
     tipo_servicio: str
+    modalidad: str = "PRESENCIAL"
     mostrar_en_consultorio: bool
     descripcion: str | None
     estado: str
@@ -59,10 +85,18 @@ class ProgramacionMedicaResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ConsultorioOut(BaseModel):
+    id: uuid.UUID
+    nombre: str
+    especialidad_id: uuid.UUID | None = None
+
+
 class SincronizacionSIGARHResponse(BaseModel):
     creadas: int
     actualizadas: int
     omitidas: int
+    ausencias: int = 0
+    citas_en_riesgo: int = 0
     mes: int
     anio: int
 

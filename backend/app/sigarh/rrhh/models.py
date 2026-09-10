@@ -38,6 +38,9 @@ class Empleado(Base):
     departamento_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_departamentos.id", ondelete="SET NULL"), nullable=True)
     servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="SET NULL"), nullable=True)
     cargo_laboral: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Habilita al empleado como aprobador de roles de turno de su propio servicio_id,
+    # cuando además su perfil de usuario SIGARH tiene el permiso "aprobar_roles_turno".
+    es_jefe_servicio: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     modalidad: Mapped[str | None] = mapped_column(String(100), nullable=True)
     codigo_minsa: Mapped[str | None] = mapped_column(String(50), nullable=True)
     numero_cmp: Mapped[str | None] = mapped_column(String(50), nullable=True)      # Colegio Médico del Perú

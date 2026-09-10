@@ -150,20 +150,48 @@ async def crear_cambio_turno(db: AsyncSession, tenant_id: uuid.UUID, data, usuar
 
 
 async def decidir_cambio_turno(db, id, tenant_id, aprobar: bool, revisor: str | None = None, motivo_rechazo: str | None = None) -> dict | None:
+    from app.hospital.consulta_externa.models import ProgramacionMedica
+
     item = await _obtener(db, CambioTurno, id, tenant_id)
     if not item:
         return None
     if item.estado != "pendiente":
         raise ReglaNegocioError(f"El cambio de turno ya fue {item.estado}")
+
+    emps = await _emp_map(db, tenant_id)
+    s = emps.get(item.solicitante_id)
+    a = emps.get(item.aceptante_id)
+
+    # La agenda solo se puede reasignar automáticamente cuando el aceptante
+    # pertenece al mismo servicio de cada programación del solicitante ese
+    # día; si no, la modalidad/actividad concreta debe resolverse a mano.
+    agendas_a_reasignar: list[ProgramacionMedica] = []
+    if aprobar and item.aceptante_id:
+        if not a:
+            raise ReglaNegocioError("El aceptante no existe.")
+        agendas_a_reasignar = list((await db.execute(
+            select(ProgramacionMedica).where(
+                ProgramacionMedica.tenant_id == tenant_id,
+                ProgramacionMedica.medico_id == item.solicitante_id,
+                ProgramacionMedica.fecha == item.fecha_original,
+                ProgramacionMedica.estado == "activo",
+            )
+        )).scalars().all())
+        incompatibles = [ag for ag in agendas_a_reasignar if ag.servicio_id and ag.servicio_id != a.servicio_id]
+        if incompatibles:
+            raise ReglaNegocioError(
+                "El aceptante no pertenece al servicio de la agenda que cubriría ese día; "
+                "no se puede reasignar automáticamente la programación médica."
+            )
+
     item.estado = "aprobado" if aprobar else "rechazado"
     item.revisado_por = revisor
     item.revisado_at = datetime.utcnow()
     item.motivo_rechazo = None if aprobar else motivo_rechazo
+    for agenda in agendas_a_reasignar:
+        agenda.medico_id = item.aceptante_id
     await db.commit()
     if aprobar:
-        emps = await _emp_map(db, tenant_id)
-        s = emps.get(item.solicitante_id)
-        a = emps.get(item.aceptante_id)
         await _marcar_asistencia(db, tenant_id, item.solicitante_id, item.fecha_original,
                                  f"Cambio de turno: cubierto por {a.nombre_completo if a else 'otro'}")
         if item.aceptante_id:

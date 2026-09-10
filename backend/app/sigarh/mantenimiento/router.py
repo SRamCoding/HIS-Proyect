@@ -1,344 +1,116 @@
-﻿# backend/app/sigarh/mantenimiento/router.py
+﻿"""API de catálogos; permisos explícitos y contratos consistentes en todas las rutas."""
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Request
+from datetime import date
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.tenants.entitlements import require_module_jwt
-from app.sigarh.mantenimiento.models import (
-    Departamento, Servicio, TipoTrabajador, TipoGuardia,
-    NivelRemunerativo, HorarioGuardia, GrupoOcupacional,
-    TipoActividad, Actividad, GuardiaValorizada,
-    RolSistema, PerfilUsuario, Dependencia, UsuarioSigarh
-)
-from app.sigarh.mantenimiento.schemas import (
-    DepartamentoCreate, DepartamentoResponse,
-    ServicioCreate, ServicioResponse,
-    TipoTrabajadorCreate, TipoTrabajadorResponse,
-    TipoGuardiaCreate, TipoGuardiaResponse,
-    NivelRemunerativoCreate, NivelRemunerativoResponse,
-    HorarioGuardiaCreate, HorarioGuardiaResponse,
-    GrupoOcupacionalCreate, GrupoOcupacionalResponse,
-    TipoActividadCreate, TipoActividadResponse,
-    ActividadCreate, ActividadResponse,
-    GuardiaValorizadaCreate, GuardiaValorizadaResponse,
-    RolSistemaCreate, RolSistemaResponse,
-    PerfilUsuarioCreate, PerfilUsuarioResponse,
-    DependenciaCreate, DependenciaResponse,
-    UsuarioSigarhCreate, UsuarioSigarhUpdate, UsuarioSigarhResponse,
-)
-from app.sigarh.mantenimiento.service import (
-    listar, obtener, eliminar,
-    crud_crear, crud_actualizar,
-    crear_perfil,
-    listar_roles, obtener_rol, crear_rol, actualizar_rol,
-    listar_perfiles_usuario, obtener_perfil_usuario, actualizar_perfil_usuario,
-    listar_servicios, obtener_servicio,
-    crear_servicio, actualizar_servicio,
-    listar_dependencias, obtener_dependencia,
-    crear_dependencia, actualizar_dependencia,
-    listar_horarios_guardia, obtener_horario_guardia,
-    crear_horario_guardia, actualizar_horario_guardia,
-)
+from app.sigarh.mantenimiento import service as svc
+from app.sigarh.mantenimiento.schemas import esquema_parcial
+from app.sigarh.mantenimiento.security import es_admin_erp, exigir_permiso
+from app.tenants.hospitales.models import Tenant, TenantModule
 
 router = APIRouter()
 
 
-def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
-    tid = current_user.get("tenant_id")
-    if not tid:
-        tid = request.headers.get("X-Tenant-ID")
-    if not tid:
-        raise HTTPException(403, detail="Sin tenant asignado")
-    return uuid.UUID(tid)
-
-
-def make_crud(subrouter, prefix, modelo, schema_create, schema_response, modulo):
-    @subrouter.get(f"/{prefix}", response_model=list[schema_response])
-    async def listar_items(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt(modulo)), current_user: dict = Depends(get_current_user)):
-        return await listar(db, modelo, get_tenant_id(current_user, request))
-
-    @subrouter.post(f"/{prefix}", response_model=schema_response, status_code=201)
-    async def crear_item(request: Request, data: schema_create, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt(modulo)), current_user: dict = Depends(get_current_user)):
-        return await crud_crear(db, modelo, get_tenant_id(current_user, request), data)
-
-    @subrouter.get(f"/{prefix}/{{id}}", response_model=schema_response)
-    async def obtener_item(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt(modulo)), current_user: dict = Depends(get_current_user)):
-        item = await obtener(db, modelo, id, get_tenant_id(current_user, request))
-        if not item: raise HTTPException(404, detail="No encontrado")
-        return item
-
-    @subrouter.patch(f"/{prefix}/{{id}}", response_model=schema_response)
-    async def actualizar_item(request: Request, id: uuid.UUID, data: schema_create, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt(modulo)), current_user: dict = Depends(get_current_user)):
-        item = await crud_actualizar(db, modelo, id, get_tenant_id(current_user, request), data)
-        if not item: raise HTTPException(404, detail="No encontrado")
-        return item
-
-    @subrouter.delete(f"/{prefix}/{{id}}")
-    async def eliminar_item(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt(modulo)), current_user: dict = Depends(get_current_user)):
-        ok = await eliminar(db, modelo, id, get_tenant_id(current_user, request))
-        if not ok: raise HTTPException(404, detail="No encontrado")
-        return {"ok": True}
-
-
-# ─── CRUDs simples ────────────────────────────────────────────────────────────
-make_crud(router, "departamentos", Departamento, DepartamentoCreate, DepartamentoResponse, "sigarh_mantenimiento")
-# Servicios (endpoints propios para incluir piso)
-@router.get("/servicios", response_model=list[ServicioResponse])
-async def listar_servicios_endpoint(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    items = await listar_servicios(db, get_tenant_id(current_user, request))
-    return [ServicioResponse(
-        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
-        departamento_nombre=item.departamento.nombre if item.departamento else None,
-        piso_nombre=item.piso.nombre if item.piso else None,
-    ) for item in items]
-
-@router.post("/servicios", response_model=ServicioResponse, status_code=201)
-async def crear_servicio_endpoint(request: Request, data: ServicioCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    return await crear_servicio(db, get_tenant_id(current_user, request), data)
-
-@router.get("/servicios/{id}", response_model=ServicioResponse)
-async def obtener_servicio_endpoint(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    item = await obtener_servicio(db, id, get_tenant_id(current_user, request))
-    if not item: raise HTTPException(404, detail="No encontrado")
-    return ServicioResponse(
-        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
-        departamento_nombre=item.departamento.nombre if item.departamento else None,
-        piso_nombre=item.piso.nombre if item.piso else None,
-    )
-
-@router.patch("/servicios/{id}", response_model=ServicioResponse)
-async def actualizar_servicio_endpoint(request: Request, id: uuid.UUID, data: ServicioCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    item = await actualizar_servicio(db, id, get_tenant_id(current_user, request), data)
-    if not item: raise HTTPException(404, detail="No encontrado")
-    item = await obtener_servicio(db, id, get_tenant_id(current_user, request))
-    return ServicioResponse(
-        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
-        departamento_nombre=item.departamento.nombre if item.departamento else None,
-        piso_nombre=item.piso.nombre if item.piso else None,
-    )
-
-@router.delete("/servicios/{id}")
-async def eliminar_servicio_endpoint(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    ok = await eliminar(db, Servicio, id, get_tenant_id(current_user, request))
-    if not ok: raise HTTPException(404, detail="No encontrado")
-    return {"ok": True}
-# Dependencias (endpoints propios para incluir departamento y servicio)
-@router.get("/dependencias", response_model=list[DependenciaResponse])
-async def listar_dependencias_endpoint(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    items = await listar_dependencias(db, get_tenant_id(current_user, request))
-    return [DependenciaResponse(
-        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
-        departamento_nombre=item.departamento.nombre if item.departamento else None,
-        servicio_nombre=item.servicio.nombre if item.servicio else None,
-    ) for item in items]
-
-@router.post("/dependencias", response_model=DependenciaResponse, status_code=201)
-async def crear_dependencia_endpoint(request: Request, data: DependenciaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    return await crear_dependencia(db, get_tenant_id(current_user, request), data)
-
-@router.get("/dependencias/{id}", response_model=DependenciaResponse)
-async def obtener_dependencia_endpoint(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    item = await obtener_dependencia(db, id, get_tenant_id(current_user, request))
-    if not item: raise HTTPException(404, detail="No encontrado")
-    return DependenciaResponse(
-        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
-        departamento_nombre=item.departamento.nombre if item.departamento else None,
-        servicio_nombre=item.servicio.nombre if item.servicio else None,
-    )
-
-@router.patch("/dependencias/{id}", response_model=DependenciaResponse)
-async def actualizar_dependencia_endpoint(request: Request, id: uuid.UUID, data: DependenciaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    item = await actualizar_dependencia(db, id, get_tenant_id(current_user, request), data)
-    if not item: raise HTTPException(404, detail="No encontrado")
-    item = await obtener_dependencia(db, id, get_tenant_id(current_user, request))
-    return DependenciaResponse(
-        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
-        departamento_nombre=item.departamento.nombre if item.departamento else None,
-        servicio_nombre=item.servicio.nombre if item.servicio else None,
-    )
-
-@router.delete("/dependencias/{id}")
-async def eliminar_dependencia_endpoint(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    ok = await eliminar(db, Dependencia, id, get_tenant_id(current_user, request))
-    if not ok: raise HTTPException(404, detail="No encontrado")
-    return {"ok": True}
-make_crud(router, "tipos-trabajador", TipoTrabajador, TipoTrabajadorCreate, TipoTrabajadorResponse, "sigarh_mantenimiento")
-make_crud(router, "tipos-guardia", TipoGuardia, TipoGuardiaCreate, TipoGuardiaResponse, "sigarh_mantenimiento")
-make_crud(router, "niveles-remunerativos", NivelRemunerativo, NivelRemunerativoCreate, NivelRemunerativoResponse, "sigarh_mantenimiento")
-# Horarios Guardia (endpoints propios para incluir tipo_guardia)
-@router.get("/horarios-guardia", response_model=list[HorarioGuardiaResponse])
-async def listar_horarios_endpoint(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    items = await listar_horarios_guardia(db, get_tenant_id(current_user, request))
-    return [HorarioGuardiaResponse(
-        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
-        tipo_guardia_nombre=item.tipo_guardia.nombre if item.tipo_guardia else None,
-    ) for item in items]
-
-@router.post("/horarios-guardia", response_model=HorarioGuardiaResponse, status_code=201)
-async def crear_horario_endpoint(request: Request, data: HorarioGuardiaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    return await crear_horario_guardia(db, get_tenant_id(current_user, request), data)
-
-@router.get("/horarios-guardia/{id}", response_model=HorarioGuardiaResponse)
-async def obtener_horario_endpoint(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    item = await obtener_horario_guardia(db, id, get_tenant_id(current_user, request))
-    if not item: raise HTTPException(404, detail="No encontrado")
-    return HorarioGuardiaResponse(
-        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
-        tipo_guardia_nombre=item.tipo_guardia.nombre if item.tipo_guardia else None,
-    )
-
-@router.patch("/horarios-guardia/{id}", response_model=HorarioGuardiaResponse)
-async def actualizar_horario_endpoint(request: Request, id: uuid.UUID, data: HorarioGuardiaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    item = await actualizar_horario_guardia(db, id, get_tenant_id(current_user, request), data)
-    if not item: raise HTTPException(404, detail="No encontrado")
-    item = await obtener_horario_guardia(db, id, get_tenant_id(current_user, request))
-    return HorarioGuardiaResponse(
-        **{k: v for k, v in item.__dict__.items() if not k.startswith("_")},
-        tipo_guardia_nombre=item.tipo_guardia.nombre if item.tipo_guardia else None,
-    )
-
-@router.delete("/horarios-guardia/{id}")
-async def eliminar_horario_endpoint(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    ok = await eliminar(db, HorarioGuardia, id, get_tenant_id(current_user, request))
-    if not ok: raise HTTPException(404, detail="No encontrado")
-    return {"ok": True}
-make_crud(router, "grupos-ocupacionales", GrupoOcupacional, GrupoOcupacionalCreate, GrupoOcupacionalResponse, "sigarh_mantenimiento")
-make_crud(router, "tipos-actividad", TipoActividad, TipoActividadCreate, TipoActividadResponse, "sigarh_mantenimiento")
-make_crud(router, "actividades", Actividad, ActividadCreate, ActividadResponse, "sigarh_mantenimiento")
-make_crud(router, "guardias-valorizadas", GuardiaValorizada, GuardiaValorizadaCreate, GuardiaValorizadaResponse, "sigarh_mantenimiento")
-
-# ─── Roles del Sistema ─────────────────────────────────────────────────────
-
-@router.get("/roles-sistema", response_model=list[RolSistemaResponse])
-async def listar_roles_sistema(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    return await listar_roles(db, get_tenant_id(current_user, request))
-
-
-@router.post("/roles-sistema", response_model=RolSistemaResponse, status_code=201)
-async def crear_rol_sistema(request: Request, data: RolSistemaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    return await crear_rol(db, get_tenant_id(current_user, request), data)
-
-
-@router.get("/roles-sistema/{id}", response_model=RolSistemaResponse)
-async def obtener_rol_sistema(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    item = await obtener_rol(db, id, get_tenant_id(current_user, request))
-    if not item: raise HTTPException(404, detail="No encontrado")
-    return item
-
-
-@router.patch("/roles-sistema/{id}", response_model=RolSistemaResponse)
-async def actualizar_rol_sistema(request: Request, id: uuid.UUID, data: RolSistemaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    item = await actualizar_rol(db, id, get_tenant_id(current_user, request), data)
-    if not item: raise HTTPException(404, detail="No encontrado")
-    return item
-
-
-@router.delete("/roles-sistema/{id}")
-async def eliminar_rol_sistema(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    ok = await eliminar(db, RolSistema, id, get_tenant_id(current_user, request))
-    if not ok: raise HTTPException(404, detail="No encontrado")
-    return {"ok": True}
-
-
-@router.get("/modulos-catalogo", summary="Catálogo de módulos (para checkboxes de roles)")
-async def catalogo_modulos_sigarh(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_mantenimiento")),
-    current_user: dict = Depends(get_current_user),
-):
-    from app.tenants.modulos.service import get_all_modules
-    modules = await get_all_modules(db)
-    return [
-        {"id": str(m.id), "code": m.code, "name": m.name, "category": m.category, "is_active": m.is_active}
-        for m in modules
-    ]
-
-
-# ─── Perfiles ─────────────────────────────────────────────────────────────────
-
-@router.get("/perfiles-usuario", response_model=list[PerfilUsuarioResponse])
-async def listar_perfiles(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    return await listar_perfiles_usuario(db, get_tenant_id(current_user, request))
-
-@router.post("/perfiles-usuario", response_model=PerfilUsuarioResponse, status_code=201)
-async def crear_perfil_usuario(request: Request, data: PerfilUsuarioCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
+def get_tenant_id(user, request):
+    value = user.get("tenant_id")
+    if es_admin_erp(user):
+        value = request.headers.get("X-Tenant-ID") or value
     try:
-        return await crear_perfil(db, get_tenant_id(current_user, request), data)
-    except ValueError as exc:
-        raise HTTPException(400, detail=str(exc)) from exc
+        return uuid.UUID(str(value))
+    except (ValueError, TypeError):
+        raise HTTPException(403, "Seleccione un hospital válido")
 
-@router.get("/perfiles-usuario/{id}", response_model=PerfilUsuarioResponse)
-async def obtener_perfil(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    item = await obtener_perfil_usuario(db, id, get_tenant_id(current_user, request))
-    if not item: raise HTTPException(404, detail="No encontrado")
-    return item
 
-@router.patch("/perfiles-usuario/{id}", response_model=PerfilUsuarioResponse)
-async def actualizar_perfil(request: Request, id: uuid.UUID, data: PerfilUsuarioCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    try:
-        item = await actualizar_perfil_usuario(db, id, get_tenant_id(current_user, request), data)
-    except ValueError as exc:
-        raise HTTPException(400, detail=str(exc)) from exc
-    if not item: raise HTTPException(404, detail="No encontrado")
-    return item
+async def autorizar(request, db, user, recurso, escritura=False):
+    tid = get_tenant_id(user, request)
+    hospital = await db.scalar(select(Tenant.id).where(Tenant.id == tid, Tenant.is_active.is_(True)))
+    modulo = await db.scalar(select(TenantModule.id).where(
+        TenantModule.tenant_id == tid, TenantModule.module_code == "sigarh_mantenimiento", TenantModule.is_active.is_(True),
+    ))
+    if not hospital or not modulo:
+        raise HTTPException(403, "Hospital o módulo Mantenimiento inactivo")
+    if not es_admin_erp(user):
+        if user.get("panel") != "sigarh" or not user.get("active_modules"):
+            raise HTTPException(403, "Acceso restringido a SIGARH")
+        if recurso in svc.SEGURIDAD:
+            exigir_permiso(user, "administrar_seguridad")
+        elif escritura:
+            exigir_permiso(user, "administrar_mantenimiento")
+        if escritura or recurso in svc.SEGURIDAD:
+            if "sigarh_mantenimiento" not in user.get("active_modules", []):
+                raise HTTPException(403, "Su perfil no permite Mantenimiento")
+    return tid
 
-@router.delete("/perfiles-usuario/{id}")
-async def eliminar_perfil(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    ok = await eliminar(db, PerfilUsuario, id, get_tenant_id(current_user, request))
-    if not ok: raise HTTPException(404, detail="No encontrado")
-    return {"ok": True}
 
-# ─── Usuarios SIGARH ──────────────────────────────────────────────────────────
+def ip(request):
+    return request.client.host if request.client else None
 
-@router.get("/usuarios", response_model=list[UsuarioSigarhResponse])
-async def listar_usuarios(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    return await listar(db, UsuarioSigarh, get_tenant_id(current_user, request))
 
-@router.post("/usuarios", response_model=UsuarioSigarhResponse, status_code=201)
-async def crear_usuario(request: Request, data: UsuarioSigarhCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    import bcrypt
-    hashed = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
-    usuario = UsuarioSigarh(
-        tenant_id=get_tenant_id(current_user, request),
-        empleado_id=data.empleado_id,
-        perfil_id=data.perfil_id,
-        username=data.username,
-        email=data.email,
-        password=hashed,
-        is_active=data.is_active,
-    )
-    db.add(usuario)
-    await db.commit()
-    await db.refresh(usuario)
-    return usuario
+# Rutas auxiliares antes de los identificadores dinámicos.
+@router.get("/modulos-catalogo")
+async def modulos(request: Request, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+    tid = await autorizar(request, db, user, "roles-sistema")
+    return [{"id": str(m.id), "code": m.code, "name": m.name, "category": m.category, "is_active": m.is_active}
+            for m in await svc.modulos_habilitados(db, tid)]
 
-@router.get("/usuarios/{id}", response_model=UsuarioSigarhResponse)
-async def obtener_usuario(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    item = await obtener(db, UsuarioSigarh, id, get_tenant_id(current_user, request))
-    if not item: raise HTTPException(404, detail="No encontrado")
-    return item
 
-@router.patch("/usuarios/{id}", response_model=UsuarioSigarhResponse)
-async def actualizar_usuario(request: Request, id: uuid.UUID, data: UsuarioSigarhUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    import bcrypt
-    item = await obtener(db, UsuarioSigarh, id, get_tenant_id(current_user, request))
-    if not item: raise HTTPException(404, detail="No encontrado")
-    cambios = data.model_dump(exclude_unset=True)
-    if cambios.get("password"):
-        cambios["password"] = bcrypt.hashpw(cambios["password"].encode(), bcrypt.gensalt()).decode()
-    else:
-        cambios.pop("password", None)
-    for field, value in cambios.items():
-        setattr(item, field, value)
-    await db.commit()
-    await db.refresh(item)
-    return item
+@router.get("/personal-catalogo")
+async def personal(request: Request, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+    from app.sigarh.rrhh.models import Empleado
+    tid = await autorizar(request, db, user, "usuarios")
+    empleados = (await db.scalars(select(Empleado).where(Empleado.tenant_id == tid, Empleado.is_active.is_(True)).order_by(Empleado.apellido_paterno))).all()
+    return [{"id": str(e.id), "nombre": e.nombre_completo, "grupo_ocupacional_id": str(e.grupo_ocupacional_id) if e.grupo_ocupacional_id else None} for e in empleados]
 
-@router.delete("/usuarios/{id}")
-async def eliminar_usuario(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_mantenimiento")), current_user: dict = Depends(get_current_user)):
-    ok = await eliminar(db, UsuarioSigarh, id, get_tenant_id(current_user, request))
-    if not ok: raise HTTPException(404, detail="No encontrado")
-    return {"ok": True}
+
+@router.get("/guardias-valorizadas/resolver")
+async def tarifa(request: Request, tipo_guardia_id: uuid.UUID, fecha: date,
+                 grupo_id: uuid.UUID | None = None, nivel_id: uuid.UUID | None = None,
+                 db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+    tid = await autorizar(request, db, user, "guardias-valorizadas")
+    item = await svc.resolver_tarifa(db, tid, tipo_guardia_id, grupo_id, nivel_id, fecha)
+    return {"id": str(item.id), "valor": str(item.valor), "moneda": item.moneda}
+
+
+def registrar(recurso, modelo, entrada, salida):
+    # entrada/parcial son clases Pydantic resueltas en tiempo de ejecución (una
+    # por recurso); FastAPI las usa igual como anotación, pero un type checker
+    # estático no puede verificarlas -> se silencia con type: ignore abajo.
+    parcial = esquema_parcial(entrada)
+
+    async def listar_items(request: Request, offset: int = Query(0, ge=0), limit: int = Query(200, ge=1, le=500),
+                           q: str | None = Query(None, max_length=255), is_active: bool | None = None,
+                           db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+        tid = await autorizar(request, db, current_user, recurso)
+        return [svc.serializar(i) for i in await svc.listar(db, modelo, tid, offset, limit, q, is_active)]
+
+    async def crear_item(request: Request, data: entrada, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):  # type: ignore[valid-type]
+        tid = await autorizar(request, db, current_user, recurso, True)
+        return await svc.guardar(db, recurso, tid, data, current_user, ip=ip(request))
+
+    async def obtener_item(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+        tid = await autorizar(request, db, current_user, recurso)
+        item = await svc.obtener(db, modelo, id, tid)
+        if not item:
+            raise HTTPException(404, "Registro no encontrado")
+        return svc.serializar(item)
+
+    async def actualizar_item(request: Request, id: uuid.UUID, data: parcial, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):  # type: ignore[valid-type]
+        tid = await autorizar(request, db, current_user, recurso, True)
+        return await svc.guardar(db, recurso, tid, data, current_user, id, ip(request))
+
+    async def eliminar_item(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+        tid = await autorizar(request, db, current_user, recurso, True)
+        return await svc.eliminar(db, recurso, tid, id, current_user, ip(request))
+
+    router.add_api_route(f"/{recurso}", listar_items, methods=["GET"], response_model=list[salida], name=f"listar_{recurso}")
+    router.add_api_route(f"/{recurso}", crear_item, methods=["POST"], response_model=salida, status_code=201, name=f"crear_{recurso}")
+    router.add_api_route(f"/{recurso}/{{id}}", obtener_item, methods=["GET"], response_model=salida, name=f"obtener_{recurso}")
+    router.add_api_route(f"/{recurso}/{{id}}", actualizar_item, methods=["PATCH"], response_model=salida, name=f"actualizar_{recurso}")
+    router.add_api_route(f"/{recurso}/{{id}}", eliminar_item, methods=["DELETE"], name=f"eliminar_{recurso}")
+
+
+for recurso, configuracion in svc.REGISTROS.items():
+    registrar(recurso, *configuracion)

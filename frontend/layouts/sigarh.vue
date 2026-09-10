@@ -316,6 +316,13 @@
   </script>
 
   <style scoped>
+  .sigarh-nav {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge legacy */
+  }
+  .sigarh-nav::-webkit-scrollbar {
+    display: none; /* Chrome/Edge/Safari */
+  }
   .nav-link {
     display: flex;
     align-items: center;

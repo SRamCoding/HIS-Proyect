@@ -5,6 +5,7 @@ from calendar import monthrange
 from xml.sax.saxutils import escape
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
+from sqlalchemy.exc import IntegrityError
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -22,15 +23,36 @@ from app.sigarh.general.models import DiagnosticoCIE10
 from app.hospital.consulta_externa.schemas import (
     ProgramacionMedicaCreate, ProgramacionMedicaUpdate, CitaCreate, CitaUpdate,TriajeCreate, TriajeUpdate, AtencionMedicaCreate, AtencionMedicaUpdate, AtencionMedicaResponse
 )
-from app.sigarh.rrhh.models import Empleado, Especialidad, EmpleadoEspecialidad
+from app.sigarh.rrhh.models import Empleado, Especialidad, EmpleadoEspecialidad, Justificacion
 from app.sigarh.mantenimiento.models import Servicio, Actividad, HorarioGuardia
+from app.sigarh.infraestructura.models import Consultorio
 from app.sigarh.creacion_roles.models import Rol, RolEmpleado, RolActividad, RolTurno
+
+
+def _turno_desde_hora(hhmm: str | None) -> str:
+    """Clasifica un turno genérico a partir de la hora de inicio (HH:MM)."""
+    try:
+        h = int(str(hhmm).split(":")[0])
+    except (ValueError, TypeError, AttributeError):
+        h = 0
+    if h < 12:
+        return "MAÑANA"
+    if h < 18:
+        return "TARDE"
+    return "NOCHE"
 
 
 # ─── Catalogos desde SIGARH ─────────────────────────────────────────────
 async def get_servicios(db: AsyncSession, tenant_id: uuid.UUID) -> list[Servicio]:
     result = await db.execute(
         select(Servicio).where(Servicio.tenant_id == tenant_id, Servicio.is_active == True).order_by(Servicio.nombre)
+    )
+    return result.scalars().all()
+
+
+async def get_consultorios(db: AsyncSession, tenant_id: uuid.UUID) -> list[Consultorio]:
+    result = await db.execute(
+        select(Consultorio).where(Consultorio.tenant_id == tenant_id, Consultorio.is_active == True).order_by(Consultorio.nombre)
     )
     return result.scalars().all()
 
@@ -79,10 +101,7 @@ async def sincronizar_programacion_sigarh(
             Actividad.is_active == True,
             HorarioGuardia.tenant_id == tenant_id,
             HorarioGuardia.is_active == True,
-            or_(
-                Actividad.requiere_consultorio == True,
-                func.lower(Actividad.nombre).in_(("consulta externa", "atencion ambulatoria", "atención ambulatoria")),
-            ),
+            Actividad.genera_agenda == True,
         )
     )
     filas = result.all()
@@ -99,6 +118,29 @@ async def sincronizar_programacion_sigarh(
             especialidad_por_empleado.setdefault(empleado_id, especialidad_id)
 
     ultimo_dia = monthrange(anio, mes)[1]
+    primer_dia, ultimo_fecha = date_type(anio, mes, 1), date_type(anio, mes, ultimo_dia)
+
+    # Ausencias aprobadas (licencia / vacaciones) que suprimen cupos ese día.
+    rangos_ausencia: dict[uuid.UUID, list[tuple[date_type, date_type]]] = {}
+    if empleado_ids:
+        ausencias_rows = await db.execute(
+            select(Justificacion.empleado_id, Justificacion.fecha_inicio, Justificacion.fecha_fin)
+            .where(
+                Justificacion.empleado_id.in_(empleado_ids),
+                Justificacion.estado == "aprobado",
+                Justificacion.tipo.in_(("licencia", "vacacion")),
+                Justificacion.fecha_inicio <= ultimo_fecha,
+                Justificacion.fecha_fin >= primer_dia,
+            )
+        )
+        for emp_id, ini, fin in ausencias_rows.all():
+            rangos_ausencia.setdefault(emp_id, []).append((ini, fin))
+
+    # Minutos por paciente definidos a nivel de servicio (NULL -> 15).
+    tiempos_servicio = dict((await db.execute(
+        select(Servicio.id, Servicio.tiempo_atencion_min).where(Servicio.tenant_id == tenant_id)
+    )).all())
+
     existentes_result = await db.execute(
         select(ProgramacionMedica).where(
             ProgramacionMedica.tenant_id == tenant_id,
@@ -107,7 +149,7 @@ async def sincronizar_programacion_sigarh(
         )
     )
     existentes = {(p.origen_sigarh_turno_id, p.fecha): p for p in existentes_result.scalars().all()}
-    creadas = actualizadas = omitidas = 0
+    creadas = actualizadas = omitidas = ausencias = 0
     claves_vigentes: set[tuple[uuid.UUID, date_type]] = set()
 
     for rol, turno, actividad, horario, empleado in filas:
@@ -117,18 +159,26 @@ async def sincronizar_programacion_sigarh(
             omitidas += 1
             continue
 
+        rangos = rangos_ausencia.get(empleado.id, ())
+        servicio_id = rol.servicio_id or empleado.servicio_id
+        tiempo_atencion = tiempos_servicio.get(servicio_id) or 15
+
         for dia_mes in range(1, ultimo_dia + 1):
             fecha = date_type(anio, mes, dia_mes)
             if (fecha.weekday() + 1) % 7 not in dias:  # SIGARH usa domingo=0.
                 continue
+            if any(ini <= fecha <= fin for ini, fin in rangos):  # médico de licencia/vacaciones.
+                ausencias += 1
+                continue
             claves_vigentes.add((turno.id, fecha))
             valores = {
                 "medico_id": empleado.id,
-                "servicio_id": rol.servicio_id or empleado.servicio_id,
+                "servicio_id": servicio_id,
                 "especialidad_id": especialidad_id,
-                "turno": horario.nombre[:20],
+                "turno": _turno_desde_hora(horario.hora_inicio),
                 "hora_inicio": horario.hora_inicio,
                 "hora_fin": horario.hora_fin,
+                "tiempo_promedio_atencion": tiempo_atencion,
                 "tipo_servicio": "CONSULTORIO_EXTERNO",
                 "descripcion": f"SIGARH: {actividad.nombre} · rol aprobado {mes:02d}/{anio}",
                 "estado": "activo",
@@ -137,7 +187,7 @@ async def sincronizar_programacion_sigarh(
             if programacion is None:
                 db.add(ProgramacionMedica(
                     tenant_id=tenant_id, origen_sigarh_turno_id=turno.id, fecha=fecha,
-                    tiempo_promedio_atencion=15, mostrar_en_consultorio=True, **valores,
+                    mostrar_en_consultorio=True, **valores,
                 ))
                 creadas += 1
             elif any(getattr(programacion, campo) != valor for campo, valor in valores.items()):
@@ -146,13 +196,28 @@ async def sincronizar_programacion_sigarh(
                 actualizadas += 1
 
     # Si el rol deja de estar aprobado o cambia sus días, ya no debe ofrecer nuevos cupos.
+    # La inactivación no cancela citas ya reservadas sobre esa fecha: se cuentan aquí
+    # para que el resultado de la sincronización avise de pacientes que requieren
+    # gestión manual (reprogramar o contactar), en vez de quedar en silencio.
+    citas_en_riesgo = 0
     for clave, programacion in existentes.items():
         if clave not in claves_vigentes and programacion.estado == "activo":
+            pendientes = await db.scalar(
+                select(func.count(Cita.id)).where(
+                    Cita.programacion_medica_id == programacion.id,
+                    Cita.estado.not_in(("cancelada", "atendida")),
+                )
+            )
+            citas_en_riesgo += pendientes or 0
             programacion.estado = "inactivo"
             actualizadas += 1
 
     await db.commit()
-    return {"creadas": creadas, "actualizadas": actualizadas, "omitidas": omitidas, "mes": mes, "anio": anio}
+    return {
+        "creadas": creadas, "actualizadas": actualizadas, "omitidas": omitidas,
+        "citas_en_riesgo": citas_en_riesgo,
+        "ausencias": ausencias, "mes": mes, "anio": anio,
+    }
 
 
 async def create_programacion(db: AsyncSession, tenant_id: uuid.UUID, data: ProgramacionMedicaCreate) -> dict:
@@ -162,13 +227,19 @@ async def create_programacion(db: AsyncSession, tenant_id: uuid.UUID, data: Prog
     return await get_programacion_by_id(db, tenant_id, prog.id)
 
 
-async def get_programacion_by_id(db: AsyncSession, tenant_id: uuid.UUID, prog_id: uuid.UUID) -> dict | None:
-    result = await db.execute(
-        select(ProgramacionMedica, Empleado, Servicio, Especialidad)
+def _prog_select():
+    return (
+        select(ProgramacionMedica, Empleado, Servicio, Especialidad, Consultorio)
         .join(Empleado, Empleado.id == ProgramacionMedica.medico_id)
         .outerjoin(Servicio, Servicio.id == ProgramacionMedica.servicio_id)
         .outerjoin(Especialidad, Especialidad.id == ProgramacionMedica.especialidad_id)
-        .where(ProgramacionMedica.tenant_id == tenant_id, ProgramacionMedica.id == prog_id)
+        .outerjoin(Consultorio, Consultorio.id == ProgramacionMedica.consultorio_id)
+    )
+
+
+async def get_programacion_by_id(db: AsyncSession, tenant_id: uuid.UUID, prog_id: uuid.UUID) -> dict | None:
+    result = await db.execute(
+        _prog_select().where(ProgramacionMedica.tenant_id == tenant_id, ProgramacionMedica.id == prog_id)
     )
     row = result.first()
     if not row:
@@ -182,18 +253,27 @@ async def list_programaciones(
     especialidad_id: uuid.UUID | None = None,
     medico_id: uuid.UUID | None = None,
     fecha: date_type | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+    estado: str | None = None,
+    codigo: str | None = None,
+    descripcion: str | None = None,
+    tipo_servicio: str | None = None,
 ) -> list[dict]:
-    fecha_sincronizacion = fecha or date_type.today()
-    await sincronizar_programacion_sigarh(
-        db, tenant_id, fecha_sincronizacion.month, fecha_sincronizacion.year
-    )
+    # Sincroniza el periodo consultado (mes/año explícito, la fecha, o el mes actual).
+    if mes and anio:
+        sync_mes, sync_anio = mes, anio
+    elif fecha:
+        sync_mes, sync_anio = fecha.month, fecha.year
+    else:
+        hoy = date_type.today()
+        sync_mes, sync_anio = hoy.month, hoy.year
+    await sincronizar_programacion_sigarh(db, tenant_id, sync_mes, sync_anio)
+
     query = (
-        select(ProgramacionMedica, Empleado, Servicio, Especialidad)
-        .join(Empleado, Empleado.id == ProgramacionMedica.medico_id)
-        .outerjoin(Servicio, Servicio.id == ProgramacionMedica.servicio_id)
-        .outerjoin(Especialidad, Especialidad.id == ProgramacionMedica.especialidad_id)
+        _prog_select()
         .where(ProgramacionMedica.tenant_id == tenant_id)
-        .order_by(ProgramacionMedica.fecha.desc())
+        .order_by(ProgramacionMedica.fecha.desc(), ProgramacionMedica.codigo.desc())
     )
     if servicio_id:
         query = query.where(ProgramacionMedica.servicio_id == servicio_id)
@@ -203,6 +283,17 @@ async def list_programaciones(
         query = query.where(ProgramacionMedica.medico_id == medico_id)
     if fecha:
         query = query.where(ProgramacionMedica.fecha == fecha)
+    elif mes and anio:
+        ultimo = monthrange(anio, mes)[1]
+        query = query.where(ProgramacionMedica.fecha.between(date_type(anio, mes, 1), date_type(anio, mes, ultimo)))
+    if estado:
+        query = query.where(ProgramacionMedica.estado == estado)
+    if tipo_servicio:
+        query = query.where(ProgramacionMedica.tipo_servicio == tipo_servicio)
+    if codigo:
+        query = query.where(ProgramacionMedica.codigo.ilike(f"%{codigo}%"))
+    if descripcion:
+        query = query.where(ProgramacionMedica.descripcion.ilike(f"%{descripcion}%"))
     result = await db.execute(query)
     return [_prog_to_dict(*row) for row in result.all()]
 
@@ -218,15 +309,32 @@ async def update_programacion(db: AsyncSession, tenant_id: uuid.UUID, prog_id: u
     return await get_programacion_by_id(db, tenant_id, prog_id)
 
 
-def _prog_to_dict(prog: ProgramacionMedica, medico: Empleado, servicio: Servicio | None, especialidad: Especialidad | None) -> dict:
+async def delete_programacion(db: AsyncSession, tenant_id: uuid.UUID, prog_id: uuid.UUID) -> str:
+    """'ok' si se eliminó, 'not_found', o 'sigarh' si proviene de un rol (no se borra aquí)."""
+    prog = await db.scalar(select(ProgramacionMedica).where(
+        ProgramacionMedica.tenant_id == tenant_id, ProgramacionMedica.id == prog_id))
+    if not prog:
+        return "not_found"
+    if prog.origen_sigarh_turno_id:
+        return "sigarh"
+    await db.delete(prog)
+    await db.commit()
+    return "ok"
+
+
+def _prog_to_dict(prog: ProgramacionMedica, medico: Empleado, servicio: Servicio | None,
+                  especialidad: Especialidad | None, consultorio: "Consultorio | None" = None) -> dict:
     return {
         "id": prog.id,
+        "codigo": prog.codigo,
         "medico_id": prog.medico_id,
         "medico_nombre": medico.nombre_completo,
         "servicio_id": prog.servicio_id,
         "servicio_nombre": servicio.nombre if servicio else None,
         "especialidad_id": prog.especialidad_id,
         "especialidad_nombre": especialidad.nombre if especialidad else None,
+        "consultorio_id": prog.consultorio_id,
+        "consultorio_nombre": consultorio.nombre if consultorio else None,
         "origen_sigarh_turno_id": prog.origen_sigarh_turno_id,
         "origen": "SIGARH" if prog.origen_sigarh_turno_id else "MANUAL",
         "fecha": prog.fecha,
@@ -235,6 +343,7 @@ def _prog_to_dict(prog: ProgramacionMedica, medico: Empleado, servicio: Servicio
         "hora_fin": prog.hora_fin,
         "tiempo_promedio_atencion": prog.tiempo_promedio_atencion,
         "tipo_servicio": prog.tipo_servicio,
+        "modalidad": getattr(prog, "modalidad", "PRESENCIAL"),
         "mostrar_en_consultorio": prog.mostrar_en_consultorio,
         "descripcion": prog.descripcion,
         "estado": prog.estado,
@@ -366,7 +475,12 @@ async def create_cita(db: AsyncSession, tenant_id: uuid.UUID, data: CitaCreate) 
 
     cita = Cita(tenant_id=tenant_id, **data.model_dump())
     db.add(cita)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Otro operador reservó el mismo cupo entre la validación previa y este commit.
+        await db.rollback()
+        raise ValueError("Ese cupo ya está ocupado")
     return await get_cita_by_id(db, tenant_id, cita.id)
 
 

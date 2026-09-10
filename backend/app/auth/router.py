@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from app.core.dependencies import get_current_user
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import bcrypt
@@ -23,49 +24,18 @@ async def login(
     data: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    # Si el panel es sigarh, buscar primero en sigarh_usuarios
     if data.panel == "sigarh":
-        import json
-        sigarh_result = await db.execute(
-            select(UsuarioSigarh).where(
-                (UsuarioSigarh.email == data.email) | (UsuarioSigarh.username == data.email)
-            )
-        )
-        sigarh_user = sigarh_result.scalar_one_or_none()
-        if sigarh_user and verify_password(data.password, sigarh_user.password):
-            if not sigarh_user.is_active:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo")
-            active_modules = []
-            if sigarh_user.perfil_id:
-                perfil_result = await db.execute(select(PerfilUsuario).where(PerfilUsuario.id == sigarh_user.perfil_id))
-                perfil = perfil_result.scalar_one_or_none()
-                if perfil and perfil.modulos_acceso:
-                    active_modules = json.loads(perfil.modulos_acceso)
-            token_data = {
-                "sub": str(sigarh_user.id),
-                "email": sigarh_user.email,
-                "name": sigarh_user.username,
-                "role": "sigarh",
-                "panel": "sigarh",
-                "tenant_id": str(sigarh_user.tenant_id) if sigarh_user.tenant_id else None,
-                "active_modules": active_modules,
-            }
-            access_token = create_access_token(token_data)
-            refresh_token = create_refresh_token(token_data)
-            return TokenResponse(
-                access_token=access_token,
-                refresh_token=refresh_token,
-                token_type="bearer",
-                user={
-                    "id": str(sigarh_user.id),
-                    "name": sigarh_user.username,
-                    "email": sigarh_user.email,
-                    "role": "sigarh",
-                    "panel": "sigarh",
-                    "tenant_id": str(sigarh_user.tenant_id) if sigarh_user.tenant_id else None,
-                    "active_modules": active_modules,
-                }
-            )
+        from sqlalchemy import func, or_
+        from app.sigarh.mantenimiento.security import contexto_sigarh
+        identifier = data.email.strip().lower()
+        matches = (await db.scalars(select(UsuarioSigarh).where(or_(
+            func.lower(UsuarioSigarh.email) == identifier,
+            func.lower(UsuarioSigarh.username) == identifier,
+        )).limit(2))).all()
+        if len(matches) != 1 or not verify_password(data.password, matches[0].password):
+            raise HTTPException(401, "Credenciales incorrectas o identificador ambiguo")
+        token_data = await contexto_sigarh(db, matches[0])
+        return _respuesta_sesion(token_data)
 
     result = await db.execute(
         select(User).where(User.email == data.email)
@@ -162,70 +132,37 @@ async def refresh_token(
             detail="Refresh token inválido o expirado"
         )
 
-    result = await db.execute(
-        select(User).where(User.id == payload["sub"])
-    )
-    user = result.scalar_one_or_none()
-
-    if not user or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuario no encontrado o inactivo"
-        )
-
-    # obtener módulos activos del tenant en refresh también
-    active_modules = []
-    if user.tenant_id:
+    from app.sigarh.mantenimiento.security import usuario_actual
+    token_data = await usuario_actual(db, payload)
+    if token_data.get("auth_source") != "sigarh":
         from app.tenants.hospitales.models import TenantModule
-        mods_result = await db.execute(
-            select(TenantModule).where(
-                TenantModule.tenant_id == user.tenant_id,
-                TenantModule.is_active == True
-            )
-        )
-        active_modules = [m.module_code for m in mods_result.scalars().all()]
+        active_modules = []
+        if token_data.get("tenant_id"):
+            import uuid
+            active_modules = list((await db.scalars(select(TenantModule.module_code).where(
+                TenantModule.tenant_id == uuid.UUID(token_data["tenant_id"]), TenantModule.is_active.is_(True),
+            ))).all())
+        token_data["active_modules"] = active_modules
+    return _respuesta_sesion(token_data)
 
-    token_data = {
-        "sub": str(user.id),
-        "email": user.email,
-        "name": user.name,
-        "role": user.role,
-        "panel": user.panel,
-        "tenant_id": str(user.tenant_id) if user.tenant_id else None,
-        "active_modules": active_modules,
-    }
 
-    return TokenResponse(
-        access_token=create_access_token(token_data),
-        refresh_token=create_refresh_token(token_data),
-        user={
-            "id": str(user.id),
-            "name": user.name,
-            "email": user.email,
-            "role": user.role,
-            "panel": user.panel,
-            "tenant_id": str(user.tenant_id) if user.tenant_id else None,
-            "active_modules": active_modules,
-        }
-    )
+def _respuesta_sesion(token_data):
+    claims = {k: v for k, v in token_data.items() if k not in {"exp", "type", "iat", "nbf"}}
+    return TokenResponse(access_token=create_access_token(claims), refresh_token=create_refresh_token(claims),
+                         user={"id": claims["sub"], **claims})
 
 
 @router.post("/logout")
-async def logout(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    await _log_audit(
-        db=db,
-        user_id=None,
-        user_name="Admin",
-        tenant_id=None,
-        action="logout",
-        model="User",
-        description="Cierre de sesión",
-        ip_address=request.client.host if request.client else None,
-    )
-    return {"ok": True, "message": "Sesión cerrada correctamente"}
+async def logout(request: Request, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+    if user.get("auth_source") == "sigarh":
+        import uuid
+        cuenta = await db.scalar(select(UsuarioSigarh).where(UsuarioSigarh.id == uuid.UUID(user["sub"])).with_for_update())
+        if cuenta:
+            cuenta.session_version += 1
+    await _log_audit(db, user["sub"], user.get("name"), user.get("tenant_id"), "logout",
+                     model="UsuarioSigarh" if user.get("auth_source") == "sigarh" else "User",
+                     description="Cierre de sesión", ip_address=request.client.host if request.client else None)
+    return {"ok": True}
 
 
 async def _log_audit(

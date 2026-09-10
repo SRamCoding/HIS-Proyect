@@ -23,6 +23,10 @@ class UserInfo(BaseModel):
     tenant_id: str | None = None
     tenant_name: str | None = None
     active_modules: list[str] = []
+    permisos_accion: list[str] = []
+    perfil_id: str | None = None
+    empleado_id: str | None = None
+    alcance_global: bool = False
 
 
 class RefreshRequest(BaseModel):

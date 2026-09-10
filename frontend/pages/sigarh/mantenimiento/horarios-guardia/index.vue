@@ -125,7 +125,7 @@
               </td>
               <td style="font-family: monospace; color: var(--ink-soft)">{{ item.hora_inicio }}</td>
               <td style="font-family: monospace; color: var(--ink-soft)">{{ item.hora_fin }}</td>
-              <td style="font-family: monospace; color: var(--ink-soft)">{{ item.horas_totales ?? '-' }}</td>
+              <td style="font-family: monospace; color: var(--ink-soft)">{{ item.horas_totales != null ? item.horas_totales.toFixed(2).replace(/\.?0+$/, '') : '-' }}</td>
               <td>
                 <span class="badge" :class="item.is_active ? 'badge--ok' : 'badge--neutral'">
                   {{ item.is_active ? 'Activo' : 'Inactivo' }}

@@ -3,7 +3,8 @@
 Importado por los routers de creacion_roles, roles_pendientes y roles_aprobados.
 """
 import uuid
-from datetime import datetime
+from calendar import monthrange
+from datetime import datetime, date
 
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -12,14 +13,108 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.sigarh.creacion_roles.models import (
     Rol, RolEmpleado, RolActividad, RolTurno, SolicitudModificacionRol, MODALIDADES,
 )
-from app.sigarh.mantenimiento.models import Departamento, Servicio, Actividad, HorarioGuardia
-from app.sigarh.rrhh.models import Empleado
+from app.sigarh.mantenimiento.models import Departamento, Servicio, Actividad, HorarioGuardia, PerfilUsuario, RolSistema
+from app.sigarh.rrhh.models import Empleado, EmpleadoEspecialidad
 
 EDITABLE = ("draft", "rejected")
+
+PERMISO_APROBAR_ROLES = "aprobar_roles_turno"
+
+
+async def puede_aprobar_roles(db: AsyncSession, tenant_id: uuid.UUID, current_user: dict, servicio_id: uuid.UUID | None) -> bool:
+    """Permiso real de aprobación: el perfil del usuario debe tener el permiso
+    de acción, y si su rol de sistema no tiene alcance global, además debe ser
+    jefe del servicio concreto del rol que se aprueba."""
+    import json
+
+    perfil_id = current_user.get("perfil_id")
+    if not perfil_id:
+        return False
+    try:
+        perfil_uuid = uuid.UUID(str(perfil_id))
+    except (ValueError, TypeError):
+        return False
+
+    perfil = await db.scalar(
+        select(PerfilUsuario).where(PerfilUsuario.id == perfil_uuid, PerfilUsuario.tenant_id == tenant_id, PerfilUsuario.is_active == True)
+    )
+    if not perfil or not perfil.rol_sistema_id:
+        return False
+    rol_sistema = await db.scalar(
+        select(RolSistema).where(
+            RolSistema.id == perfil.rol_sistema_id, RolSistema.tenant_id == tenant_id, RolSistema.is_active == True
+        )
+    )
+    if not rol_sistema or not rol_sistema.permisos_accion:
+        return False
+    try:
+        permisos = set(json.loads(rol_sistema.permisos_accion))
+    except (ValueError, TypeError):
+        permisos = set()
+    if PERMISO_APROBAR_ROLES not in permisos:
+        return False
+    if rol_sistema.alcance_global:
+        return True
+
+    empleado_id = current_user.get("empleado_id")
+    if not empleado_id or not servicio_id:
+        return False
+    try:
+        empleado_uuid = uuid.UUID(str(empleado_id))
+    except (ValueError, TypeError):
+        return False
+    empleado = await db.scalar(
+        select(Empleado).where(Empleado.id == empleado_uuid, Empleado.tenant_id == tenant_id)
+    )
+    return bool(empleado and empleado.is_active and empleado.es_jefe_servicio and empleado.servicio_id == servicio_id)
+
+# Nombres de actividad que App Hospitalario trata como consulta externa aunque
+# la actividad no tenga marcado `requiere_consultorio` (mismo criterio que el sync).
+_NOMBRES_CONSULTA_EXTERNA = {"consulta externa", "atencion ambulatoria", "atención ambulatoria"}
+
+
+def _es_actividad_asistencial(act) -> bool:
+    if act is None:
+        return False
+    if bool(getattr(act, "genera_agenda", False)):
+        return True
+    return False
+
+
+def _hhmm_a_min(s: str | None) -> int | None:
+    if not s or ":" not in str(s):
+        return None
+    try:
+        h, m = str(s).split(":")[:2]
+        return int(h) * 60 + int(m)
+    except (ValueError, TypeError):
+        return None
+
+
+def _rango_min(hora_inicio: str | None, hora_fin: str | None) -> tuple[int, int] | None:
+    """(inicio, fin) en minutos; si el turno cruza medianoche, fin += 24h."""
+    a, b = _hhmm_a_min(hora_inicio), _hhmm_a_min(hora_fin)
+    if a is None or b is None:
+        return None
+    if b <= a:
+        b += 1440
+    return (a, b)
+
+
+def _rangos_solapan(r1: tuple[int, int], r2: tuple[int, int]) -> bool:
+    return max(r1[0], r2[0]) < min(r1[1], r2[1])
+
+
+def _dias_set(dias) -> set[int]:
+    return {int(d) for d in (dias or []) if str(d).lstrip("-").isdigit() and 0 <= int(d) <= 6}
 
 
 class ReglaNegocioError(Exception):
     """Operación bloqueada por regla de negocio -> HTTP 409."""
+
+
+class PermisoError(Exception):
+    """El usuario no tiene el permiso o el ámbito requerido -> HTTP 403."""
 
 
 # ─── Carga ───────────────────────────────────────────────────────────────────
@@ -157,6 +252,174 @@ async def serializar_uno(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol, detal
     return _serializa_rol(rol, cat, detalle)
 
 
+# ─── Diagnóstico de completitud (para el consumo de App Hospitalario) ─────────
+
+async def diagnosticar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol) -> list[dict]:
+    """Revisa que el rol produzca cupos válidos al sincronizarse con la
+    programación médica de App Hospitalario.
+
+    Devuelve hallazgos ``{nivel, empleado, actividad, mensaje}``. Un ``"error"``
+    impide enviar/aprobar el rol; una ``"advertencia"`` solo informa.
+    """
+    cat = await _catalogos(db, tenant_id)
+    hallazgos: list[dict] = []
+
+    def add(nivel: str, mensaje: str, empleado: str | None = None, actividad: str | None = None):
+        hallazgos.append({"nivel": nivel, "empleado": empleado, "actividad": actividad, "mensaje": mensaje})
+
+    if not rol.empleados:
+        add("error", "El rol no tiene personal asignado.")
+        return hallazgos
+
+    es_medicos = rol.categoria_personal == "medicos"
+    esp_por_empleado: dict[uuid.UUID, list[bool]] = {}
+    if es_medicos:
+        emp_ids = [re_.empleado_id for re_ in rol.empleados]
+        filas = (await db.execute(
+            select(EmpleadoEspecialidad.empleado_id, EmpleadoEspecialidad.validado)
+            .where(EmpleadoEspecialidad.empleado_id.in_(emp_ids))
+        )).all()
+        for eid, validado in filas:
+            esp_por_empleado.setdefault(eid, []).append(bool(validado))
+
+    for re_ in rol.empleados:
+        emp = cat["emps"].get(re_.empleado_id)
+        nombre_emp = getattr(emp, "nombre_completo", None) or "Empleado sin nombre"
+        if not re_.actividades:
+            add("error", f"{nombre_emp}: no tiene actividades asignadas.", nombre_emp)
+            continue
+
+        tiene_asistencial = False
+        franjas: list[tuple[str, set[int], tuple[int, int]]] = []  # (actividad, días, rango) asistenciales
+        for a in re_.actividades:
+            act = cat["acts"].get(a.actividad_id)
+            nombre_act = getattr(act, "nombre", None) or "Actividad"
+            asistencial = _es_actividad_asistencial(act)
+            tiene_asistencial = tiene_asistencial or asistencial
+
+            if not a.turnos:
+                add("error", f"{nombre_emp} · {nombre_act}: la actividad no tiene turnos.", nombre_emp, nombre_act)
+                continue
+
+            for t in a.turnos:
+                sin_horario = not t.horario_guardia_id
+                sin_dias = not (t.dias_semana or [])
+                if asistencial and sin_horario:
+                    add("error", f"{nombre_emp} · {nombre_act}: un turno no tiene horario; no generará cupos.", nombre_emp, nombre_act)
+                if asistencial and sin_dias:
+                    add("error", f"{nombre_emp} · {nombre_act}: un turno no tiene días de la semana.", nombre_emp, nombre_act)
+                if not asistencial and sin_horario:
+                    add("advertencia", f"{nombre_emp} · {nombre_act}: un turno no tiene horario asignado.", nombre_emp, nombre_act)
+                if asistencial and not sin_horario and not sin_dias:
+                    hor = cat["hors"].get(t.horario_guardia_id)
+                    rango = _rango_min(getattr(hor, "hora_inicio", None), getattr(hor, "hora_fin", None))
+                    dset = _dias_set(t.dias_semana)
+                    if rango and dset:
+                        franjas.append((nombre_act, dset, rango))
+
+        # Solape de franjas asistenciales del mismo médico dentro del rol.
+        for i in range(len(franjas)):
+            for j in range(i + 1, len(franjas)):
+                n1, d1, r1 = franjas[i]
+                n2, d2, r2 = franjas[j]
+                if (d1 & d2) and _rangos_solapan(r1, r2):
+                    detalle = f"'{n1}' y '{n2}'" if n1 != n2 else f"dos turnos de '{n1}'"
+                    add("error", f"{nombre_emp}: {detalle} se solapan en día y horario.", nombre_emp)
+
+        if es_medicos and tiene_asistencial:
+            validados = esp_por_empleado.get(re_.empleado_id)
+            if not validados:
+                add("error", f"{nombre_emp}: el médico no tiene especialidad registrada; sus cupos no se sincronizarán con App Hospitalario.", nombre_emp)
+            elif not any(validados):
+                add("advertencia", f"{nombre_emp}: la especialidad del médico no está validada.", nombre_emp)
+
+    hallazgos.extend(await _solapes_entre_roles(db, tenant_id, rol, cat))
+    return hallazgos
+
+
+async def _solapes_entre_roles(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol, cat: dict) -> list[dict]:
+    """Choques del rol contra la programación médica ya generada por OTROS roles.
+
+    Compara cada franja asistencial que este rol produciría (por médico y fecha
+    concreta del mes) contra las ``ProgramacionMedica`` activas de esos médicos
+    que provienen de un turno distinto.
+    """
+    from app.hospital.consulta_externa.models import ProgramacionMedica
+
+    hallazgos: list[dict] = []
+    if not rol.empleados:
+        return hallazgos
+
+    turno_ids_propios = {t.id for re_ in rol.empleados for a in re_.actividades for t in a.turnos}
+    emp_ids = [re_.empleado_id for re_ in rol.empleados]
+    ultimo = monthrange(rol.anio, rol.mes)[1]
+
+    progs = (await db.execute(
+        select(ProgramacionMedica).where(
+            ProgramacionMedica.tenant_id == tenant_id,
+            ProgramacionMedica.medico_id.in_(emp_ids),
+            ProgramacionMedica.estado == "activo",
+            ProgramacionMedica.fecha.between(date(rol.anio, rol.mes, 1), date(rol.anio, rol.mes, ultimo)),
+        )
+    )).scalars().all()
+    ajenas = [p for p in progs if p.origen_sigarh_turno_id not in turno_ids_propios]
+    if not ajenas:
+        return hallazgos
+
+    # Servicio de origen de cada programación ajena, para el mensaje.
+    otros_turnos = {p.origen_sigarh_turno_id for p in ajenas if p.origen_sigarh_turno_id}
+    origen: dict[uuid.UUID, str] = {}
+    if otros_turnos:
+        rows = (await db.execute(
+            select(RolTurno.id, Rol.mes, Rol.anio, Rol.servicio_id)
+            .join(RolActividad, RolActividad.id == RolTurno.rol_actividad_id)
+            .join(RolEmpleado, RolEmpleado.id == RolActividad.rol_empleado_id)
+            .join(Rol, Rol.id == RolEmpleado.rol_id)
+            .where(RolTurno.id.in_(otros_turnos))
+        )).all()
+        for tid_, mes_, anio_, serv_ in rows:
+            origen[tid_] = cat["servs"].get(serv_) or f"rol {mes_:02d}/{anio_}"
+
+    for re_ in rol.empleados:
+        emp = cat["emps"].get(re_.empleado_id)
+        nombre_emp = getattr(emp, "nombre_completo", None) or "Empleado"
+        franjas_por_fecha: dict[date, list[tuple[int, int]]] = {}
+        for a in re_.actividades:
+            if not _es_actividad_asistencial(cat["acts"].get(a.actividad_id)):
+                continue
+            for t in a.turnos:
+                hor = cat["hors"].get(t.horario_guardia_id)
+                rango = _rango_min(getattr(hor, "hora_inicio", None), getattr(hor, "hora_fin", None))
+                dset = _dias_set(t.dias_semana)
+                if not rango or not dset:
+                    continue
+                for dia in range(1, ultimo + 1):
+                    f = date(rol.anio, rol.mes, dia)
+                    if (f.weekday() + 1) % 7 in dset:
+                        franjas_por_fecha.setdefault(f, []).append(rango)
+
+        vistos: set[str] = set()
+        for p in ajenas:
+            if p.medico_id != re_.empleado_id:
+                continue
+            r_exist = _rango_min(p.hora_inicio, p.hora_fin)
+            if not r_exist:
+                continue
+            if any(_rangos_solapan(r, r_exist) for r in franjas_por_fecha.get(p.fecha, ())):
+                quien = origen.get(p.origen_sigarh_turno_id, "otro rol aprobado")
+                if quien not in vistos:
+                    vistos.add(quien)
+                    hallazgos.append({
+                        "nivel": "error", "empleado": nombre_emp, "actividad": None,
+                        "mensaje": f"{nombre_emp}: choca con la programación ya aprobada de '{quien}' (mismo día y franja horaria).",
+                    })
+    return hallazgos
+
+
+def errores_bloqueantes(hallazgos: list[dict]) -> list[str]:
+    return [h["mensaje"] for h in hallazgos if h["nivel"] == "error"]
+
+
 # ─── Listado genérico ────────────────────────────────────────────────────────
 
 async def listar_roles(
@@ -187,7 +450,7 @@ async def listar_roles(
 
 # ─── CRUD cabecera ───────────────────────────────────────────────────────────
 
-async def crear_rol(db: AsyncSession, tenant_id: uuid.UUID, data, usuario: str | None) -> dict:
+async def crear_rol(db: AsyncSession, tenant_id: uuid.UUID, data, usuario: str | None, usuario_id: uuid.UUID | None = None) -> dict:
     await _validar_ambito(db, tenant_id, data.departamento_id, data.servicio_id)
     # Regla de la variante médica ordinaria: no duplicar dep+serv+mes+anio
     if data.categoria_personal == "medicos" and data.tipo_rol == "ordinario":
@@ -211,6 +474,7 @@ async def crear_rol(db: AsyncSession, tenant_id: uuid.UUID, data, usuario: str |
         anio=data.anio,
         status="draft",
         created_by=usuario,
+        created_by_id=usuario_id,
     )
     db.add(rol)
     await db.commit()
@@ -252,8 +516,9 @@ async def enviar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID) 
         return None
     if rol.status not in EDITABLE:
         raise ReglaNegocioError("El rol ya fue enviado.")
-    if not rol.empleados or any(not re.actividades or any(not a.turnos for a in re.actividades) for re in rol.empleados):
-        raise ReglaNegocioError("La programación está incompleta: cada empleado debe tener actividades y cada actividad al menos un turno.")
+    errores = errores_bloqueantes(await diagnosticar_rol(db, tenant_id, rol))
+    if errores:
+        raise ReglaNegocioError("No se puede enviar el rol: " + " · ".join(errores[:8]))
     rol.status = "pending"
     rol.submitted_at = datetime.utcnow()
     rol.rejection_reason = None
@@ -296,17 +561,50 @@ async def _rol_actividad(db: AsyncSession, tenant_id: uuid.UUID, rol_actividad_i
     return ra
 
 
+async def _empleados_en_otro_rol_ordinario(
+    db: AsyncSession, tenant_id: uuid.UUID, rol: Rol, empleado_ids: list[uuid.UUID]
+) -> list[uuid.UUID]:
+    """empleado_ids que ya pertenecen a otro rol 'ordinario' del mismo servicio y período."""
+    if rol.tipo_rol != "ordinario" or not empleado_ids:
+        return []
+    return list((await db.execute(
+        select(RolEmpleado.empleado_id)
+        .join(Rol, Rol.id == RolEmpleado.rol_id)
+        .where(
+            Rol.tenant_id == tenant_id,
+            Rol.id != rol.id,
+            Rol.tipo_rol == "ordinario",
+            Rol.servicio_id == rol.servicio_id,
+            Rol.mes == rol.mes,
+            Rol.anio == rol.anio,
+            Rol.status != "rejected",
+            RolEmpleado.empleado_id.in_(empleado_ids),
+        )
+    )).scalars().all())
+
+
 async def agregar_personal(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID, empleado_ids: list[uuid.UUID]) -> dict:
-    await _rol_editable(db, tenant_id, rol_id)
+    rol = await _rol_editable(db, tenant_id, rol_id)
     existentes = set((await db.execute(
         select(RolEmpleado.empleado_id).where(RolEmpleado.rol_id == rol_id)
     )).scalars().all())
     validos = set((await db.execute(
         select(Empleado.id).where(Empleado.tenant_id == tenant_id, Empleado.id.in_(empleado_ids))
     )).scalars().all())
-    for eid in empleado_ids:
-        if eid in validos and eid not in existentes:
-            db.add(RolEmpleado(rol_id=rol_id, empleado_id=eid))
+
+    nuevos = [eid for eid in empleado_ids if eid in validos and eid not in existentes]
+    chocan = await _empleados_en_otro_rol_ordinario(db, tenant_id, rol, nuevos)
+    if chocan:
+        nombres = (await db.execute(
+            select(Empleado.apellido_paterno, Empleado.nombres).where(Empleado.id.in_(chocan))
+        )).all()
+        etq = ", ".join(f"{ap} {no}".strip() for ap, no in nombres) or "un empleado"
+        raise ReglaNegocioError(
+            f"{etq} ya pertenece a otro rol ordinario de este servicio para {rol.mes:02d}/{rol.anio}."
+        )
+
+    for eid in nuevos:
+        db.add(RolEmpleado(rol_id=rol_id, empleado_id=eid))
     await db.commit()
     return await serializar_uno(db, tenant_id, await obtener_rol_orm(db, rol_id, tenant_id))
 

@@ -14,12 +14,13 @@ from app.core.database import get_db
 from app.tenants.entitlements import require_module_jwt
 from app.hospital.consulta_externa.schemas import (
     ProgramacionMedicaCreate, ProgramacionMedicaUpdate, ProgramacionMedicaResponse, SincronizacionSIGARHResponse,
-    ServicioOut, EspecialidadOut, MedicoOut, CupoOut,
+    ServicioOut, EspecialidadOut, MedicoOut, CupoOut, ConsultorioOut,
     CitaCreate, CitaUpdate, CitaResponse, CitaReprogramar, CitasReprogramarBloque,
 )
 from app.hospital.consulta_externa.service import (
-    get_servicios, get_especialidades, get_medicos_por_especialidad,
-    create_programacion, get_programacion_by_id, list_programaciones, update_programacion, sincronizar_programacion_sigarh,
+    get_servicios, get_especialidades, get_medicos_por_especialidad, get_consultorios,
+    create_programacion, get_programacion_by_id, list_programaciones, update_programacion,
+    delete_programacion, sincronizar_programacion_sigarh,
     get_cupos, create_cita, get_cita_by_id, list_citas, update_cita, generar_comprobante_cita_pdf,
     reprogramar_cita, reprogramar_citas_bloque,
 )
@@ -54,6 +55,11 @@ async def listar_medicos(especialidad_id: uuid.UUID, request: Request, db: Async
     return [{"id": m.id, "nombre_completo": m.nombre_completo} for m in medicos]
 
 
+@router.get("/programacion-medica/consultorios", response_model=list[ConsultorioOut])
+async def listar_consultorios(request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+    return await get_consultorios(db, get_tenant_id(current_user, request))
+
+
 # --- Programaciones ---
 @router.post("/programacion-medica/sincronizar-sigarh", response_model=SincronizacionSIGARHResponse)
 async def sincronizar_sigarh(
@@ -79,11 +85,25 @@ async def listar_programaciones(
     especialidad_id: uuid.UUID | None = None,
     medico_id: uuid.UUID | None = None,
     fecha: date_type | None = None,
+    anio: int | None = None,
+    mes: int | None = None,
+    estado: str | None = None,
+    codigo: str | None = None,
+    descripcion: str | None = None,
+    tipo_servicio: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_module_jwt("consulta_externa")),
 ):
     tenant_id = get_tenant_id(current_user, request)
-    return await list_programaciones(db, tenant_id, servicio_id, especialidad_id, medico_id, fecha)
+    return await list_programaciones(
+        db, tenant_id, servicio_id, especialidad_id, medico_id, fecha,
+        anio, mes, estado, codigo, descripcion, tipo_servicio,
+    )
+
+
+@router.post("/programacion-medica", response_model=ProgramacionMedicaResponse, status_code=201)
+async def crear_programacion(data: ProgramacionMedicaCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+    return await create_programacion(db, get_tenant_id(current_user, request), data)
 
 
 @router.get("/programacion-medica/{prog_id}", response_model=ProgramacionMedicaResponse)
@@ -92,6 +112,24 @@ async def obtener_programacion(prog_id: uuid.UUID, request: Request, db: AsyncSe
     if not prog:
         raise HTTPException(404, detail="Programación no encontrada")
     return prog
+
+
+@router.patch("/programacion-medica/{prog_id}", response_model=ProgramacionMedicaResponse)
+async def actualizar_programacion(prog_id: uuid.UUID, data: ProgramacionMedicaUpdate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+    prog = await update_programacion(db, get_tenant_id(current_user, request), prog_id, data)
+    if not prog:
+        raise HTTPException(404, detail="Programación no encontrada")
+    return prog
+
+
+@router.delete("/programacion-medica/{prog_id}")
+async def eliminar_programacion(prog_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+    res = await delete_programacion(db, get_tenant_id(current_user, request), prog_id)
+    if res == "not_found":
+        raise HTTPException(404, detail="Programación no encontrada")
+    if res == "sigarh":
+        raise HTTPException(409, detail="Esta programación proviene de un rol de SIGARH; modifícala o anula el rol allí.")
+    return {"ok": True}
 
 
 

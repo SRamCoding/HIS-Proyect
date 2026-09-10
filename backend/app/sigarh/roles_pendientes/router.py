@@ -22,10 +22,6 @@ def _tid(current_user: dict, request: Request) -> uuid.UUID:
     return uuid.UUID(str(tid))
 
 
-def _nombre(current_user: dict) -> str | None:
-    return current_user.get("name") or current_user.get("email")
-
-
 # ─── Bandeja de roles pendientes ─────────────────────────────────────────────
 
 @router.get("/roles", response_model=list[RolListItem])
@@ -54,10 +50,21 @@ async def detalle(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depend
     return await base_svc.serializar_uno(db, tid, rol)
 
 
+@router.get("/roles/{rol_id}/diagnostico")
+async def diagnostico(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+    tid = _tid(current_user, request)
+    rol = await base_svc.obtener_rol_orm(db, rol_id, tid)
+    if not rol:
+        raise HTTPException(404, detail="Rol no encontrado")
+    return await base_svc.diagnosticar_rol(db, tid, rol)
+
+
 @router.post("/roles/{rol_id}/aprobar", response_model=RolDetail)
 async def aprobar(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
     try:
-        rol = await svc.aprobar_rol(db, _tid(current_user, request), rol_id, _nombre(current_user))
+        rol = await svc.aprobar_rol(db, _tid(current_user, request), rol_id, current_user)
+    except base_svc.PermisoError as e:
+        raise HTTPException(403, detail=str(e)) from e
     except base_svc.ReglaNegocioError as e:
         raise HTTPException(409, detail=str(e)) from e
     if not rol:
@@ -68,7 +75,9 @@ async def aprobar(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depend
 @router.post("/roles/{rol_id}/rechazar", response_model=RolDetail)
 async def rechazar(request: Request, rol_id: uuid.UUID, data: RechazoRequest, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
     try:
-        rol = await svc.rechazar_rol(db, _tid(current_user, request), rol_id, data.motivo, _nombre(current_user))
+        rol = await svc.rechazar_rol(db, _tid(current_user, request), rol_id, data.motivo, current_user)
+    except base_svc.PermisoError as e:
+        raise HTTPException(403, detail=str(e)) from e
     except base_svc.ReglaNegocioError as e:
         raise HTTPException(409, detail=str(e)) from e
     if not rol:
@@ -100,7 +109,9 @@ async def detalle_solicitud(request: Request, sol_id: uuid.UUID, db: AsyncSessio
 @router.post("/solicitudes-modificacion/{sol_id}/aprobar", response_model=SolicitudModificacionResponse)
 async def aprobar_solicitud(request: Request, sol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
     try:
-        sol = await svc.aprobar_solicitud(db, _tid(current_user, request), sol_id, _nombre(current_user))
+        sol = await svc.aprobar_solicitud(db, _tid(current_user, request), sol_id, current_user)
+    except base_svc.PermisoError as e:
+        raise HTTPException(403, detail=str(e)) from e
     except base_svc.ReglaNegocioError as e:
         raise HTTPException(409, detail=str(e)) from e
     if not sol:
@@ -111,7 +122,9 @@ async def aprobar_solicitud(request: Request, sol_id: uuid.UUID, db: AsyncSessio
 @router.post("/solicitudes-modificacion/{sol_id}/rechazar", response_model=SolicitudModificacionResponse)
 async def rechazar_solicitud(request: Request, sol_id: uuid.UUID, data: RechazoRequest, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
     try:
-        sol = await svc.rechazar_solicitud(db, _tid(current_user, request), sol_id, data.motivo, _nombre(current_user))
+        sol = await svc.rechazar_solicitud(db, _tid(current_user, request), sol_id, data.motivo, current_user)
+    except base_svc.PermisoError as e:
+        raise HTTPException(403, detail=str(e)) from e
     except base_svc.ReglaNegocioError as e:
         raise HTTPException(409, detail=str(e)) from e
     if not sol:

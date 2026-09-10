@@ -75,18 +75,58 @@
         <div class="filter-body">
           <div class="filter-group">
             <div class="filter-item">
+              <label class="filter-label">Periodo</label>
+              <div class="input-wrapper-small" style="min-width: 100px">
+                <select v-model.number="anio" class="input-clinical-small" style="padding-left: 0.625rem" @change="cargar">
+                  <option v-for="y in anios" :key="y" :value="y">{{ y }}</option>
+                </select>
+              </div>
+              <div class="input-wrapper-small" style="min-width: 130px">
+                <select v-model.number="mes" class="input-clinical-small" style="padding-left: 0.625rem" @change="cargar">
+                  <option v-for="(m, i) in MESES" :key="i" :value="i + 1">{{ m }}</option>
+                </select>
+              </div>
+            </div>
+            <div class="filter-item">
+              <label class="filter-label">Servicio</label>
+              <div class="input-wrapper-small">
+                <UIcon name="i-heroicons-building-office-2" class="input-icon-small" />
+                <select v-model="filtroServicio" class="input-clinical-small" @change="cargar">
+                  <option value="">Todos</option>
+                  <option v-for="s in servicios" :key="s.id" :value="s.id">{{ s.nombre }}</option>
+                </select>
+              </div>
+            </div>
+            <div class="filter-item">
               <label class="filter-label">Especialidad</label>
               <div class="input-wrapper-small">
                 <UIcon name="i-heroicons-star" class="input-icon-small" />
                 <select v-model="filtroEspecialidad" class="input-clinical-small" @change="cargar">
-                  <option value="">Todas las especialidades</option>
+                  <option value="">Todas</option>
                   <option v-for="e in especialidades" :key="e.id" :value="e.id">{{ e.nombre }}</option>
                 </select>
               </div>
             </div>
-            <button class="btn-clear-filter" @click="filtroEspecialidad = ''; cargar()">
+            <div class="filter-item">
+              <label class="filter-label">Estado</label>
+              <div class="input-wrapper-small" style="min-width: 130px">
+                <select v-model="filtroEstado" class="input-clinical-small" style="padding-left: 0.625rem" @change="cargar">
+                  <option value="">Todos</option>
+                  <option value="activo">Activa</option>
+                  <option value="inactivo">Inactiva</option>
+                </select>
+              </div>
+            </div>
+            <div class="filter-item">
+              <label class="filter-label">Código</label>
+              <div class="input-wrapper-small" style="min-width: 130px">
+                <UIcon name="i-heroicons-hashtag" class="input-icon-small" />
+                <input v-model="filtroCodigo" type="text" class="input-clinical-small" placeholder="N°" @input="onCodigoInput" />
+              </div>
+            </div>
+            <button class="btn-clear-filter" @click="limpiarFiltros">
               <UIcon name="i-heroicons-arrow-path" class="w-4 h-4" />
-              Limpiar filtro
+              Limpiar
             </button>
           </div>
           <div class="filter-result">
@@ -122,34 +162,22 @@
         <table class="programacion-table">
           <thead>
             <tr>
-              <th class="col-medico">
-                <span class="th-content">Médico</span>
-              </th>
-              <th class="col-especialidad">
-                <span class="th-content">Especialidad</span>
-              </th>
-              <th class="col-fecha">
-                <span class="th-content">Fecha</span>
-              </th>
-              <th class="col-turno">
-                <span class="th-content">Turno</span>
-              </th>
-              <th class="col-hora">
-                <span class="th-content">Hora</span>
-              </th>
-              <th>
-                <span class="th-content">Origen</span>
-              </th>
-              <th class="col-estado">
-                <span class="th-content">Estado</span>
-              </th>
-              <th class="col-actions">
-                <span class="th-content">Acciones</span>
-              </th>
+              <th><span class="th-content">Código</span></th>
+              <th class="col-medico"><span class="th-content">Médico</span></th>
+              <th class="col-especialidad"><span class="th-content">Especialidad</span></th>
+              <th><span class="th-content">Servicio</span></th>
+              <th class="col-fecha"><span class="th-content">Fecha</span></th>
+              <th class="col-turno"><span class="th-content">Turno</span></th>
+              <th class="col-hora"><span class="th-content">Hora</span></th>
+              <th><span class="th-content">Modalidad</span></th>
+              <th><span class="th-content">Origen</span></th>
+              <th class="col-estado"><span class="th-content">Estado</span></th>
+              <th class="col-actions"><span class="th-content">Acciones</span></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="p in programaciones" :key="p.id" class="table-row">
+              <td><span class="fecha-text font-mono-data">{{ p.codigo || '—' }}</span></td>
               <td class="col-medico">
                 <div class="medico-cell">
                   <div class="medico-avatar" :style="{ background: getMedicoColor(p.medico_nombre) }">
@@ -163,6 +191,7 @@
                   {{ p.especialidad_nombre }}
                 </span>
               </td>
+              <td><span class="fecha-text">{{ p.servicio_nombre || '—' }}</span></td>
               <td class="col-fecha">
                 <span class="fecha-text font-mono-data">{{ formatFecha(p.fecha) }}</span>
               </td>
@@ -174,6 +203,11 @@
               </td>
               <td class="col-hora">
                 <span class="hora-text font-mono-data">{{ p.hora_inicio }} - {{ p.hora_fin }}</span>
+              </td>
+              <td>
+                <span class="status-badge" :class="p.modalidad === 'VIRTUAL' ? 'status-active' : 'status-inactive'">
+                  {{ p.modalidad === 'VIRTUAL' ? 'Virtual' : 'Presencial' }}
+                </span>
               </td>
               <td>
                 <span class="status-badge" :class="p.origen === 'SIGARH' ? 'status-active' : 'status-inactive'">
@@ -221,11 +255,29 @@ definePageMeta({ layout: 'app', middleware: ['auth'] })
 const { api } = useApi()
 const { link } = useHospitalNav()
 
+const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+const hoy = new Date()
+const anios = Array.from({ length: 5 }, (_, i) => hoy.getFullYear() - 2 + i)
+
 const especialidades = ref<any[]>([])
+const servicios = ref<any[]>([])
 const programaciones = ref<any[]>([])
 const filtroEspecialidad = ref('')
+const filtroServicio = ref('')
+const filtroEstado = ref('')
+const filtroCodigo = ref('')
+const anio = ref(hoy.getFullYear())
+const mes = ref(hoy.getMonth() + 1)
 const cargando = ref(false)
 const error = ref('')
+
+let codigoTimer: any
+const onCodigoInput = () => { clearTimeout(codigoTimer); codigoTimer = setTimeout(cargar, 400) }
+const limpiarFiltros = () => {
+  filtroEspecialidad.value = ''; filtroServicio.value = ''; filtroEstado.value = ''; filtroCodigo.value = ''
+  anio.value = hoy.getFullYear(); mes.value = hoy.getMonth() + 1
+  cargar()
+}
 
 const activas = computed(() => programaciones.value.filter(p => p.estado === 'activo').length)
 const inactivas = computed(() => programaciones.value.filter(p => p.estado !== 'activo').length)
@@ -303,7 +355,14 @@ async function cargar() {
   cargando.value = true
   error.value = ''
   try {
-    const query = filtroEspecialidad.value ? `?especialidad_id=${filtroEspecialidad.value}` : ''
+    const params = new URLSearchParams()
+    if (filtroEspecialidad.value) params.set('especialidad_id', filtroEspecialidad.value)
+    if (filtroServicio.value) params.set('servicio_id', filtroServicio.value)
+    if (filtroEstado.value) params.set('estado', filtroEstado.value)
+    if (filtroCodigo.value) params.set('codigo', filtroCodigo.value)
+    if (anio.value) params.set('anio', String(anio.value))
+    if (mes.value) params.set('mes', String(mes.value))
+    const query = params.toString() ? `?${params.toString()}` : ''
     programaciones.value = await api(`/app/consulta-externa/programacion-medica${query}`)
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al cargar programaciones'
@@ -314,9 +373,14 @@ async function cargar() {
 
 onMounted(async () => {
   try {
-    especialidades.value = await api('/app/consulta-externa/programacion-medica/especialidades')
+    const [esp, serv] = await Promise.all([
+      api('/app/consulta-externa/programacion-medica/especialidades'),
+      api('/app/consulta-externa/programacion-medica/servicios'),
+    ])
+    especialidades.value = esp
+    servicios.value = serv
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al cargar especialidades'
+    error.value = e?.data?.detail || 'Error al cargar catálogos'
   }
   await cargar()
 })

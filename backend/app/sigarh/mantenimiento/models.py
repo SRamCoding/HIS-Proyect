@@ -1,6 +1,7 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, Integer, Text, ForeignKey, Float
+from datetime import datetime, date
+from decimal import Decimal
+from sqlalchemy import String, Boolean, DateTime, Integer, Text, ForeignKey, Float, Numeric, Date
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -37,6 +38,9 @@ class Servicio(Base):
     nombre: Mapped[str] = mapped_column(String(255))
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Minutos por paciente en consulta externa; usado para calcular cupos al
+    # sincronizar la programación médica de App Hospitalario. NULL -> 15 por defecto.
+    tiempo_atencion_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -58,6 +62,7 @@ class TipoTrabajador(Base):
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def __repr__(self) -> str:
         return f"<TipoTrabajador {self.nombre}>"
@@ -77,6 +82,7 @@ class TipoGuardia(Base):
     requiere_epp: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def __repr__(self) -> str:
         return f"<TipoGuardia {self.nombre}>"
@@ -93,6 +99,7 @@ class NivelRemunerativo(Base):
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def __repr__(self) -> str:
         return f"<NivelRemunerativo {self.nombre}>"
@@ -108,10 +115,12 @@ class HorarioGuardia(Base):
     hora_inicio: Mapped[str] = mapped_column(String(5))   # HH:MM
     hora_fin: Mapped[str] = mapped_column(String(5))      # HH:MM
     tipo_guardia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_tipos_guardia.id", ondelete="SET NULL"), nullable=True)
-    horas_totales: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    horas_totales: Mapped[float | None] = mapped_column(Float, nullable=True)
+    duracion_minutos: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tipo_guardia: Mapped["TipoGuardia"] = relationship()
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def __repr__(self) -> str:
         return f"<HorarioGuardia {self.nombre}>"
@@ -129,6 +138,7 @@ class GrupoOcupacional(Base):
     tipo_grupo_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def __repr__(self) -> str:
         return f"<GrupoOcupacional {self.nombre}>"
@@ -144,6 +154,7 @@ class TipoActividad(Base):
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     actividades: Mapped[list["Actividad"]] = relationship(back_populates="tipo_actividad")
 
@@ -161,8 +172,10 @@ class Actividad(Base):
     nombre: Mapped[str] = mapped_column(String(255))
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     requiere_consultorio: Mapped[bool] = mapped_column(Boolean, default=False)
+    genera_agenda: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     tipo_actividad: Mapped["TipoActividad"] = relationship(back_populates="actividades")
 
@@ -179,9 +192,18 @@ class GuardiaValorizada(Base):
     tipo_guardia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_tipos_guardia.id", ondelete="SET NULL"), nullable=True)
     grupo_ocupacional_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_grupos_ocupacionales.id", ondelete="SET NULL"), nullable=True)
     nivel_remunerativo_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_niveles_remunerativos.id", ondelete="SET NULL"), nullable=True)
-    valor: Mapped[float] = mapped_column(Float, default=0.0)
+    valor: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    moneda: Mapped[str] = mapped_column(String(3), default="PEN", server_default="PEN")
+    vigencia_desde: Mapped[date | None] = mapped_column(Date, nullable=True)
+    vigencia_hasta: Mapped[date | None] = mapped_column(Date, nullable=True)
+    sustento: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    tipo_guardia: Mapped["TipoGuardia"] = relationship()
+    grupo_ocupacional: Mapped["GrupoOcupacional"] = relationship()
+    nivel_remunerativo: Mapped["NivelRemunerativo"] = relationship()
 
     def __repr__(self) -> str:
         return f"<GuardiaValorizada {self.valor}>"
@@ -198,9 +220,18 @@ class RolSistema(Base):
     modulo_requerido: Mapped[str | None] = mapped_column(String(100), nullable=True)
     modulos_permitidos: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: lista de codigos
     grupos_ocupacionales_permitidos: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: lista de UUIDs (str)
+    # JSON: lista de acciones granulares habilitadas para este rol de acceso,
+    # ej. ["aprobar_roles_turno"]. Independiente de modulos_permitidos (ver módulo)
+    # porque ver un módulo no implica poder aprobar dentro de él.
+    permisos_accion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Si es True, un permiso de permisos_accion aplica a cualquier servicio/ámbito
+    # del hospital (ej. RR. HH., dirección). Si es False, además del permiso se
+    # exige que el empleado sea jefe del servicio concreto (Empleado.es_jefe_servicio).
+    alcance_global: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def __repr__(self) -> str:
         return f"<RolSistema {self.nombre}>"
@@ -218,6 +249,7 @@ class PerfilUsuario(Base):
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def __repr__(self) -> str:
         return f"<PerfilUsuario {self.nombre}>"
@@ -235,6 +267,7 @@ class Dependencia(Base):
     servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="SET NULL"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     departamento: Mapped["Departamento"] = relationship()
     servicio: Mapped["Servicio"] = relationship()
@@ -251,11 +284,14 @@ class UsuarioSigarh(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
-    empleado_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    empleado_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="SET NULL"), nullable=True
+    )
     perfil_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_perfiles_usuario.id", ondelete="SET NULL"), nullable=True)
     username: Mapped[str] = mapped_column(String(100))
     email: Mapped[str] = mapped_column(String(255))
     password: Mapped[str] = mapped_column(String(255))
+    session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

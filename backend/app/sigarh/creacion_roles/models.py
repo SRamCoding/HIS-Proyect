@@ -65,6 +65,7 @@ class Rol(Base):
     anio: Mapped[int] = mapped_column(Integer, index=True)
 
     status: Mapped[str] = mapped_column(String(15), default="draft", index=True)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     reviewed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)

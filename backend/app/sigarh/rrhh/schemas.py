@@ -75,6 +75,7 @@ class _EmpleadoCampos(BaseModel):
     departamento_id: uuid.UUID | None = None
     servicio_id: uuid.UUID | None = None
     cargo_laboral: str | None = None
+    es_jefe_servicio: bool = False
     modalidad: str | None = None
     codigo_minsa: str | None = None
     numero_cmp: str | None = None
@@ -296,6 +297,7 @@ class EmpleadoResponse(BaseModel):
     departamento_id: uuid.UUID | None
     servicio_id: uuid.UUID | None
     cargo_laboral: str | None
+    es_jefe_servicio: bool
     modalidad: str | None
     codigo_minsa: str | None
     numero_cmp: str | None
@@ -326,6 +328,7 @@ class EmpleadoListItem(BaseModel):
     dni: str
     nombre_completo: str
     cargo_laboral: str | None
+    es_jefe_servicio: bool
     modalidad: str | None
     is_active: bool
     fecha_ingreso: date | None

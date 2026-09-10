@@ -117,6 +117,32 @@
           </div>
 
           <div class="form-group full-width">
+            <label class="form-label">Permisos de accion</label>
+            <div class="check-catalog">
+              <label
+                v-for="p in PERMISOS_ACCION"
+                :key="p.code"
+                class="check-catalog-item"
+                :class="{ 'check-catalog-item--active': form.permisos_accion.includes(p.code) }"
+              >
+                <input type="checkbox" :value="p.code" v-model="form.permisos_accion" />
+                <span>{{ p.name }}</span>
+              </label>
+            </div>
+            <p class="field-hint">Acciones concretas habilitadas dentro de un modulo (ver el modulo no implica poder aprobar en el)</p>
+          </div>
+
+          <div class="form-group full-width">
+            <div class="status-toggle">
+              <span class="toggle-label">Alcance global</span>
+              <button type="button" @click="form.alcance_global = !form.alcance_global" class="toggle-switch" :class="{ 'toggle-active': form.alcance_global }">
+                <span class="toggle-slider" />
+              </button>
+            </div>
+            <p class="field-hint">Si esta apagado, un permiso como "Aprobar roles de turno" solo aplica al empleado marcado como jefe del servicio del rol</p>
+          </div>
+
+          <div class="form-group full-width">
             <div class="status-toggle">
               <span class="toggle-label">Rol Activo</span>
               <button type="button" @click="form.is_active = !form.is_active" class="toggle-switch" :class="{ 'toggle-active': form.is_active }">
@@ -177,6 +203,10 @@ const error = ref('')
 const todosModulos = ref<Modulo[]>([])
 const gruposOcupacionales = ref<GrupoOcupacional[]>([])
 
+const PERMISOS_ACCION = [
+  { code: 'aprobar_roles_turno', name: 'Aprobar roles de turno' },
+]
+
 const form = reactive({
   codigo: '',
   nombre: '',
@@ -186,6 +216,8 @@ const form = reactive({
   is_active: true,
   modulos_permitidos: [] as string[],
   grupos_ocupacionales_permitidos: [] as string[],
+  permisos_accion: [] as string[],
+  alcance_global: false,
 })
 
 const toggleTodosModulos = () => {
@@ -216,6 +248,8 @@ const handleSave = async () => {
         is_active: form.is_active,
         modulos_permitidos: form.modulos_permitidos,
         grupos_ocupacionales_permitidos: form.grupos_ocupacionales_permitidos,
+        permisos_accion: form.permisos_accion,
+        alcance_global: form.alcance_global,
       },
     })
     router.push(`/sigarh/mantenimiento/roles-sistema?tenant=${tenantId.value}`)
@@ -240,6 +274,8 @@ onMounted(async () => {
     form.is_active = data.is_active
     form.modulos_permitidos = data.modulos_permitidos || []
     form.grupos_ocupacionales_permitidos = data.grupos_ocupacionales_permitidos || []
+    form.permisos_accion = data.permisos_accion || []
+    form.alcance_global = !!data.alcance_global
   } catch (e: any) {
     error.value = e?.data?.detail || 'No se pudo cargar el rol'
   } finally {

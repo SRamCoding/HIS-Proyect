@@ -29,7 +29,8 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return payload
+    from app.sigarh.mantenimiento.security import usuario_actual
+    return await usuario_actual(db, payload)
 
 
 async def get_admin_user(

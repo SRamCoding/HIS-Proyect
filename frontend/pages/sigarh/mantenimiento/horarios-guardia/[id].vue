@@ -179,13 +179,14 @@ const handleSave = async () => {
         nombre: form.nombre,
         hora_inicio: form.hora_inicio,
         hora_fin: form.hora_fin,
-        horas_totales: form.horas_totales || null,
+        // El servidor calcula horas_totales/duracion_minutos exactos a partir
+        // de hora_inicio y hora_fin; no se envía el valor redondeado del cliente.
         tipo_guardia_id: form.tipo_guardia_id || null,
         is_active: form.is_active,
       },
     })
     router.push(`/sigarh/mantenimiento/horarios-guardia?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar') }
   finally { saving.value = false }
 }
 

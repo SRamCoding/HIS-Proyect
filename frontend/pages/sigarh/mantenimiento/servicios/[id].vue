@@ -65,6 +65,15 @@
           </div>
 
           <div class="form-group">
+            <label class="form-label">Minutos por paciente (consulta externa)</label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-clock" class="input-icon" />
+              <input v-model.number="form.tiempo_atencion_min" type="number" min="5" max="120" class="input-clinical font-mono-data" placeholder="15" />
+            </div>
+            <p class="field-hint">Define cuántos cupos abre cada bloque de rol aprobado. Vacío = 15 min.</p>
+          </div>
+
+          <div class="form-group">
             <label class="form-label">Estado</label>
             <div class="status-toggle">
               <span class="toggle-label">Servicio Activo</span>
@@ -135,7 +144,7 @@ const saving = ref(false)
 const error = ref('')
 const departamentos = ref<any[]>([])
 const pisos = ref<any[]>([])
-const form = reactive({ nombre: '', codigo: '', descripcion: '', departamento_id: '', piso_id: '', is_active: true })
+const form = reactive({ nombre: '', codigo: '', descripcion: '', departamento_id: '', piso_id: '', tiempo_atencion_min: null as number | null, is_active: true })
 
 const departamentoNombre = computed(() => departamentos.value.find(d => d.id === form.departamento_id)?.nombre || '')
 const pisoNombre = computed(() => pisos.value.find(p => p.id === form.piso_id)?.nombre || '')
@@ -153,6 +162,7 @@ const handleSave = async () => {
         descripcion: form.descripcion || null,
         departamento_id: form.departamento_id || null,
         piso_id: form.piso_id || null,
+        tiempo_atencion_min: form.tiempo_atencion_min || null,
         is_active: form.is_active,
       },
     })
@@ -173,6 +183,7 @@ onMounted(async () => {
     form.descripcion = data.descripcion || ''
     form.departamento_id = data.departamento_id || ''
     form.piso_id = data.piso_id || ''
+    form.tiempo_atencion_min = data.tiempo_atencion_min ?? null
     form.is_active = data.is_active
     departamentos.value = deps
     pisos.value = pisosData

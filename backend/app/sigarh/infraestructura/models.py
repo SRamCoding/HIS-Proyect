@@ -4,6 +4,7 @@ from sqlalchemy import String, Boolean, DateTime, Integer, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
+from app.sigarh.rrhh.models import Especialidad
 
 
 class Catalogo(Base):
@@ -54,7 +55,7 @@ class Consultorio(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    especialidad: Mapped["sigarh_especialidades"] = relationship(
+    especialidad: Mapped["Especialidad"] = relationship(
         "Especialidad",
         foreign_keys=[especialidad_id],
         lazy="select"

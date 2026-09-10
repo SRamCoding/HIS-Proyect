@@ -10,9 +10,16 @@ const tipo = computed(() => route.params.tipo as string)
 const id = computed(() => route.params.id as string)
 
 const rol = ref<any>(null)
+const diag = ref<any[]>([])
 const loading = ref(true)
 const error = ref('')
 const busy = ref(false)
+
+const diagErrores = computed(() => diag.value.filter((d: any) => d.nivel === 'error'))
+const diagAdvertencias = computed(() => diag.value.filter((d: any) => d.nivel === 'advertencia'))
+const cargarDiag = async () => {
+  diag.value = await api<any[]>(`/sigarh/creacion-roles/roles/${id.value}/diagnostico`).catch(() => [])
+}
 
 const personalDisp = ref<any[]>([])
 const actividades = ref<any[]>([])
@@ -60,8 +67,6 @@ const actividadOpciones = (emp: any) => {
     id: a.id, label: a.nombre, sublabel: a.codigo || '', badge: a.requiere_consultorio ? 'Consultorio' : undefined,
   }))
 }
-const diasOcultosTurno = computed(() => categoria.value === 'medicos' && turnoModal.requiereConsultorio)
-
 const cargar = async () => {
   loading.value = true; error.value = ''
   try {
@@ -75,14 +80,15 @@ const cargar = async () => {
     personalDisp.value = pd
     actividades.value = acts.filter((a: any) => a.is_active)
     horarios.value = hors.filter((h: any) => h.is_active)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo cargar el rol' }
+    await cargarDiag()
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo cargar el rol') }
   finally { loading.value = false }
 }
 
 const run = async (fn: () => Promise<any>) => {
   busy.value = true; error.value = ''
-  try { rol.value = await fn() }
-  catch (e: any) { error.value = e?.data?.detail || 'Operación no permitida' }
+  try { rol.value = await fn(); await cargarDiag() }
+  catch (e: any) { error.value = apiErr(e, 'Operación no permitida') }
   finally { busy.value = false }
 }
 
@@ -114,12 +120,13 @@ const guardarTurno = () =>
 const quitarTurno = (tId: string) => run(() => api(`/sigarh/creacion-roles/roles/turnos/${tId}`, { method: 'DELETE' }))
 
 const enviar = async () => {
+  if (diagErrores.value.length) { error.value = 'Corrige los errores del diagnóstico antes de enviar.'; return }
   if (!confirm('¿Enviar el rol a revisión? Ya no podrás editarlo salvo que sea rechazado.')) return
   busy.value = true; error.value = ''
   try {
     await api(`/sigarh/creacion-roles/roles/${id.value}/enviar`, { method: 'POST' })
     router.push(`/sigarh/creacion-roles/${categoria.value}/${tipo.value}?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo enviar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo enviar') }
   finally { busy.value = false }
 }
 
@@ -150,8 +157,8 @@ onMounted(cargar)
       </div>
       <div v-if="rol" class="cr-actions">
         <span class="badge" :class="estadoRol(rol.status).badge">{{ estadoRol(rol.status).label }}</span>
-        <button v-if="editable" class="btn-primary" :disabled="busy || !completo"
-          :title="!completo ? 'Cada empleado necesita al menos una actividad y cada actividad al menos un turno' : ''"
+        <button v-if="editable" class="btn-primary" :disabled="busy || !completo || diagErrores.length > 0"
+          :title="diagErrores.length ? 'Hay errores en el diagnóstico que impiden generar cupos' : (!completo ? 'Cada empleado necesita al menos una actividad y cada actividad al menos un turno' : '')"
           @click="enviar">
           <UIcon name="i-heroicons-paper-airplane" class="w-4 h-4" /> Enviar a revisión
         </button>
@@ -162,6 +169,16 @@ onMounted(cargar)
 
     <template v-else-if="rol">
       <div v-if="error" class="error-banner cr-mb">{{ error }}</div>
+
+      <div v-if="editable && diagErrores.length" class="cr-diag cr-diag--error cr-mb">
+        <div class="cr-diag-head"><UIcon name="i-heroicons-x-circle" class="w-4 h-4 shrink-0" /> {{ diagErrores.length }} problema(s) que impiden generar cupos en App Hospitalario</div>
+        <ul><li v-for="(d, i) in diagErrores" :key="i">{{ d.mensaje }}</li></ul>
+      </div>
+      <div v-if="editable && diagAdvertencias.length" class="cr-diag cr-diag--warn cr-mb">
+        <div class="cr-diag-head"><UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" /> {{ diagAdvertencias.length }} advertencia(s)</div>
+        <ul><li v-for="(d, i) in diagAdvertencias" :key="i">{{ d.mensaje }}</li></ul>
+      </div>
+
       <div v-if="rol.status === 'rejected' && rol.rejection_reason" class="cr-reject">
         <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
         <div><strong>Rol rechazado.</strong> {{ rol.rejection_reason }}</div>
@@ -349,16 +366,13 @@ onMounted(cargar)
         <p class="field-hint">La hora de inicio y término se toman del horario seleccionado</p>
       </div>
 
-      <div v-if="!diasOcultosTurno" class="form-group">
+      <div class="form-group">
         <label class="form-label">Días de atención</label>
         <div class="cr-dias-grid">
           <button v-for="d in DIAS_SEMANA" :key="d.v" type="button"
             class="cr-dia" :class="{ on: turnoModal.dias.includes(d.v) }" @click="toggleDiaTurno(d.v)">{{ d.label }}</button>
         </div>
-      </div>
-      <div v-else class="cr-consultorio-note">
-        <UIcon name="i-heroicons-information-circle" class="w-4 h-4 shrink-0" />
-        Esta actividad requiere consultorio: los días de atención se configuran en el módulo de Consultorios.
+        <p v-if="turnoModal.requiereConsultorio" class="field-hint">Esta actividad requiere consultorio; el consultorio se asigna en la agenda de Consulta Externa.</p>
       </div>
 
       <template #footer>
@@ -384,6 +398,12 @@ onMounted(cargar)
 .cr-title-row p { margin: 0.1rem 0 0; font-size: 0.85rem; color: var(--ink-soft); }
 .cr-actions { display: flex; align-items: center; gap: 0.6rem; }
 .cr-reject { display: flex; gap: 0.6rem; padding: 0.8rem 1rem; border-radius: var(--radius); background: var(--alert-soft); color: var(--alert); font-size: 0.85rem; margin-bottom: 1rem; }
+
+.cr-diag { padding: 0.75rem 1rem; border-radius: var(--radius); font-size: 0.82rem; }
+.cr-diag-head { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
+.cr-diag ul { margin: 0.4rem 0 0; padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.cr-diag--error { background: var(--alert-soft); color: var(--alert); }
+.cr-diag--warn { background: var(--amber-soft); color: var(--amber); }
 
 /* Layout 2 columnas */
 .cr-grid { display: grid; grid-template-columns: 1fr 288px; gap: 1.25rem; align-items: start; }
@@ -470,7 +490,6 @@ onMounted(cargar)
 .cr-dia { padding: 0.5rem 0; border-radius: 8px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-soft); font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all .12s ease; }
 .cr-dia:hover { border-color: var(--navy-soft); }
 .cr-dia.on { background: var(--navy); color: white; border-color: var(--navy); }
-.cr-consultorio-note { display: flex; gap: 0.5rem; padding: 0.7rem 0.85rem; background: var(--teal-soft); color: var(--teal); border-radius: var(--radius); font-size: 0.8rem; }
 
 @media (max-width: 1000px) {
   .cr { padding: 1.25rem; }

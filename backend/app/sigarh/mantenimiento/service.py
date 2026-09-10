@@ -1,364 +1,330 @@
-﻿# backend/app/sigarh/mantenimiento/service.py
+﻿import json
 import uuid
-import json
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from datetime import date
+from decimal import Decimal
+
+import bcrypt
+from fastapi import HTTPException
+from pydantic import ValidationError
+from sqlalchemy import select, func, or_, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
-from app.sigarh.mantenimiento.models import (
-    Departamento, Servicio, Dependencia, TipoTrabajador, TipoGuardia,
-    NivelRemunerativo, HorarioGuardia, GrupoOcupacional,
-    TipoActividad, Actividad, GuardiaValorizada,
-    RolSistema, PerfilUsuario
-)
+from app.core.database import Base
+from app.admin.auditoria.models import AuditLog
+from app.sigarh.mantenimiento import models as m, schemas as s
+from app.sigarh.mantenimiento.security import lista, es_admin_erp
+
+REGISTROS = {
+    "departamentos": (m.Departamento, s.DepartamentoCreate, s.DepartamentoResponse),
+    "servicios": (m.Servicio, s.ServicioCreate, s.ServicioResponse),
+    "dependencias": (m.Dependencia, s.DependenciaCreate, s.DependenciaResponse),
+    "tipos-trabajador": (m.TipoTrabajador, s.TipoTrabajadorCreate, s.TipoTrabajadorResponse),
+    "tipos-guardia": (m.TipoGuardia, s.TipoGuardiaCreate, s.TipoGuardiaResponse),
+    "niveles-remunerativos": (m.NivelRemunerativo, s.NivelRemunerativoCreate, s.NivelRemunerativoResponse),
+    "horarios-guardia": (m.HorarioGuardia, s.HorarioGuardiaCreate, s.HorarioGuardiaResponse),
+    "grupos-ocupacionales": (m.GrupoOcupacional, s.GrupoOcupacionalCreate, s.GrupoOcupacionalResponse),
+    "tipos-actividad": (m.TipoActividad, s.TipoActividadCreate, s.TipoActividadResponse),
+    "actividades": (m.Actividad, s.ActividadCreate, s.ActividadResponse),
+    "guardias-valorizadas": (m.GuardiaValorizada, s.GuardiaValorizadaCreate, s.GuardiaValorizadaResponse),
+    "roles-sistema": (m.RolSistema, s.RolSistemaCreate, s.RolSistemaResponse),
+    "perfiles-usuario": (m.PerfilUsuario, s.PerfilUsuarioCreate, s.PerfilUsuarioResponse),
+    "usuarios": (m.UsuarioSigarh, s.UsuarioSigarhCreate, s.UsuarioSigarhResponse),
+}
+SEGURIDAD = {"usuarios", "perfiles-usuario", "roles-sistema"}
+JSON_FIELDS = {"modulos_permitidos", "grupos_ocupacionales_permitidos", "permisos_accion", "modulos_acceso"}
+RELACIONES = {
+    m.Servicio: ("departamento", "piso"), m.Dependencia: ("departamento", "servicio"),
+    m.HorarioGuardia: ("tipo_guardia",),
+    m.GuardiaValorizada: ("tipo_guardia", "grupo_ocupacional", "nivel_remunerativo"),
+}
 
 
-# ─── Helper genérico CRUD ────────────────────────────────────────────────────
-
-async def listar(db: AsyncSession, modelo, tenant_id: uuid.UUID):
-    result = await db.execute(
-        select(modelo)
-        .where(modelo.tenant_id == tenant_id)
-        .order_by(modelo.created_at.desc())
-    )
-    return result.scalars().all()
-
-
-async def obtener(db: AsyncSession, modelo, id: uuid.UUID, tenant_id: uuid.UUID):
-    result = await db.execute(
-        select(modelo)
-        .where(modelo.id == id, modelo.tenant_id == tenant_id)
-    )
-    return result.scalar_one_or_none()
+def serializar(item):
+    data = {c.name: getattr(item, c.name) for c in item.__table__.columns
+            if c.name not in {"password", "session_version"}}
+    for field in JSON_FIELDS & data.keys():
+        data[field] = lista(data[field])
+    for rel in RELACIONES.get(type(item), ()):
+        target = getattr(item, rel)
+        data[f"{rel}_nombre"] = target.nombre if target else None
+    return data
 
 
-async def eliminar(db: AsyncSession, modelo, id: uuid.UUID, tenant_id: uuid.UUID) -> bool:
-    item = await obtener(db, modelo, id, tenant_id)
-    if not item:
-        return False
-    await db.delete(item)
-    await db.commit()
-    return True
+def snapshot(item):
+    data = {c.name: getattr(item, c.name) for c in item.__table__.columns
+            if c.name not in {"password", "session_version"}}
+    return json.loads(json.dumps(data, default=str))
 
 
-# ─── Departamentos ────────────────────────────────────────────────────────────
+async def obtener(db, modelo, id, tenant_id, bloquear=False):
+    query = select(modelo).where(modelo.id == id, modelo.tenant_id == tenant_id)
+    for relation in RELACIONES.get(modelo, ()):
+        query = query.options(selectinload(getattr(modelo, relation)))
+    if bloquear:
+        query = query.with_for_update()
+    return await db.scalar(query.execution_options(populate_existing=True))
 
-async def crear_departamento(db: AsyncSession, tenant_id: uuid.UUID, data) -> Departamento:
-    item = Departamento(tenant_id=tenant_id, **data.model_dump())
-    db.add(item)
-    await db.commit()
-    await db.refresh(item)
-    return item
+
+async def listar(db, modelo, tenant_id, offset=0, limit=200, q=None, is_active=None):
+    query = select(modelo).where(modelo.tenant_id == tenant_id)
+    for relation in RELACIONES.get(modelo, ()):
+        query = query.options(selectinload(getattr(modelo, relation)))
+    if q:
+        fields = [getattr(modelo, name) for name in ("nombre", "codigo", "username", "email") if hasattr(modelo, name)]
+        if fields:
+            query = query.where(or_(*(field.ilike(f"%{q}%") for field in fields)))
+    if is_active is not None:
+        query = query.where(modelo.is_active == is_active)
+    return (await db.scalars(query.order_by(modelo.created_at.desc(), modelo.id).offset(offset).limit(limit))).all()
 
 
-async def actualizar_departamento(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, data) -> Departamento | None:
-    item = await obtener(db, Departamento, id, tenant_id)
-    if not item:
+async def listar_servicios(db, tenant_id):
+    # Consumidor existente en Movimientos; conserva su contrato.
+    return (await db.scalars(select(m.Servicio).where(m.Servicio.tenant_id == tenant_id).options(
+        selectinload(m.Servicio.departamento), selectinload(m.Servicio.piso),
+    ).order_by(m.Servicio.nombre))).all()
+
+
+async def referencia(db, modelo, id, tenant_id, campo, activo=True):
+    if id is None:
         return None
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(item, field, value)
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-
-# ─── Servicios ────────────────────────────────────────────────────────────────
-
-async def listar_servicios(db: AsyncSession, tenant_id: uuid.UUID) -> list[Servicio]:
-    result = await db.execute(
-        select(Servicio)
-        .where(Servicio.tenant_id == tenant_id)
-        .options(selectinload(Servicio.departamento), selectinload(Servicio.piso))
-        .order_by(Servicio.created_at.desc())
-    )
-    return result.scalars().all()
-
-
-async def obtener_servicio(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID) -> Servicio | None:
-    result = await db.execute(
-        select(Servicio)
-        .where(Servicio.id == id, Servicio.tenant_id == tenant_id)
-        .options(selectinload(Servicio.departamento), selectinload(Servicio.piso))
-    )
-    return result.scalar_one_or_none()
-
-
-async def crear_servicio(db: AsyncSession, tenant_id: uuid.UUID, data) -> Servicio:
-    item = Servicio(tenant_id=tenant_id, **data.model_dump())
-    db.add(item)
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-
-async def actualizar_servicio(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, data) -> Servicio | None:
-    item = await obtener(db, Servicio, id, tenant_id)
+    query = select(modelo).where(modelo.id == id, modelo.tenant_id == tenant_id)
+    if activo and hasattr(modelo, "is_active"):
+        query = query.where(modelo.is_active.is_(True))
+    item = await db.scalar(query)
     if not item:
-        return None
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(item, field, value)
-    await db.commit()
-    await db.refresh(item)
+        raise HTTPException(422, f"{campo}: no existe en este hospital o está inactivo")
     return item
 
 
-# ─── Helper para catálogos simples ────────────────────────────────────────────
-
-async def crud_crear(db: AsyncSession, modelo, tenant_id: uuid.UUID, data) -> any:
-    item = modelo(tenant_id=tenant_id, **data.model_dump())
-    db.add(item)
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-
-async def crud_actualizar(db: AsyncSession, modelo, id: uuid.UUID, tenant_id: uuid.UUID, data) -> any:
-    item = await obtener(db, modelo, id, tenant_id)
-    if not item:
-        return None
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(item, field, value)
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-
-
-
-
-async def listar_horarios_guardia(db: AsyncSession, tenant_id: uuid.UUID):
-    result = await db.execute(
-        select(HorarioGuardia)
-        .where(HorarioGuardia.tenant_id == tenant_id)
-        .options(selectinload(HorarioGuardia.tipo_guardia))
-        .order_by(HorarioGuardia.created_at.desc())
-    )
-    return result.scalars().all()
-
-
-async def obtener_horario_guardia(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID):
-    result = await db.execute(
-        select(HorarioGuardia)
-        .where(HorarioGuardia.id == id, HorarioGuardia.tenant_id == tenant_id)
-        .options(selectinload(HorarioGuardia.tipo_guardia))
-    )
-    return result.scalar_one_or_none()
-
-
-async def crear_horario_guardia(db: AsyncSession, tenant_id: uuid.UUID, data):
-    item = HorarioGuardia(tenant_id=tenant_id, **data.model_dump())
-    db.add(item)
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-
-async def actualizar_horario_guardia(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, data):
-    item = await obtener(db, HorarioGuardia, id, tenant_id)
-    if not item:
-        return None
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(item, field, value)
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-
-async def listar_dependencias(db: AsyncSession, tenant_id: uuid.UUID):
-    result = await db.execute(
-        select(Dependencia)
-        .where(Dependencia.tenant_id == tenant_id)
-        .options(selectinload(Dependencia.departamento), selectinload(Dependencia.servicio))
-        .order_by(Dependencia.created_at.desc())
-    )
-    return result.scalars().all()
-
-
-async def obtener_dependencia(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID):
-    result = await db.execute(
-        select(Dependencia)
-        .where(Dependencia.id == id, Dependencia.tenant_id == tenant_id)
-        .options(selectinload(Dependencia.departamento), selectinload(Dependencia.servicio))
-    )
-    return result.scalar_one_or_none()
-
-
-async def crear_dependencia(db: AsyncSession, tenant_id: uuid.UUID, data):
-    item = Dependencia(tenant_id=tenant_id, **data.model_dump())
-    db.add(item)
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-
-async def actualizar_dependencia(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, data):
-    item = await obtener(db, Dependencia, id, tenant_id)
-    if not item:
-        return None
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(item, field, value)
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-# ─── Rol Sistema (con JSON de modulos y grupos ocupacionales) ─────────────
-
-def _serializar_rol(item: RolSistema) -> dict:
-    """Convierte los campos JSON (guardados como texto) a listas reales."""
-    return {
-        "id": item.id,
-        "tenant_id": item.tenant_id,
-        "codigo": item.codigo,
-        "nombre": item.nombre,
-        "panel": item.panel,
-        "modulo_requerido": item.modulo_requerido,
-        "modulos_permitidos": json.loads(item.modulos_permitidos) if item.modulos_permitidos else [],
-        "grupos_ocupacionales_permitidos": json.loads(item.grupos_ocupacionales_permitidos) if item.grupos_ocupacionales_permitidos else [],
-        "descripcion": item.descripcion,
-        "is_active": item.is_active,
-        "created_at": item.created_at,
-    }
-
-
-async def listar_roles(db: AsyncSession, tenant_id: uuid.UUID) -> list[dict]:
-    items = await listar(db, RolSistema, tenant_id)
-    return [_serializar_rol(i) for i in items]
-
-
-async def obtener_rol(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID) -> dict | None:
-    item = await obtener(db, RolSistema, id, tenant_id)
-    if not item:
-        return None
-    return _serializar_rol(item)
-
-
-async def crear_rol(db: AsyncSession, tenant_id: uuid.UUID, data) -> dict:
-    data_dict = data.model_dump()
-    modulos = data_dict.pop("modulos_permitidos", [])
-    grupos = data_dict.pop("grupos_ocupacionales_permitidos", [])
-    rol = RolSistema(
-        tenant_id=tenant_id,
-        modulos_permitidos=json.dumps(modulos),
-        grupos_ocupacionales_permitidos=json.dumps([str(g) for g in grupos]),
-        **data_dict,
-    )
-    db.add(rol)
-    await db.commit()
-    await db.refresh(rol)
-    return _serializar_rol(rol)
-
-
-async def actualizar_rol(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, data) -> dict | None:
-    item = await obtener(db, RolSistema, id, tenant_id)
-    if not item:
-        return None
-    data_dict = data.model_dump(exclude_unset=True)
-    if "modulos_permitidos" in data_dict:
-        item.modulos_permitidos = json.dumps(data_dict.pop("modulos_permitidos"))
-    if "grupos_ocupacionales_permitidos" in data_dict:
-        item.grupos_ocupacionales_permitidos = json.dumps([str(g) for g in data_dict.pop("grupos_ocupacionales_permitidos")])
-    for field, value in data_dict.items():
-        setattr(item, field, value)
-    await db.commit()
-    await db.refresh(item)
-    return _serializar_rol(item)
-
-
-# ─── Perfil Usuario (con JSON de módulos) ─────────────────────────────────
-
-def _serializar_perfil(item: PerfilUsuario) -> dict:
-    return {
-        "id": item.id,
-        "tenant_id": item.tenant_id,
-        "nombre": item.nombre,
-        "rol_sistema_id": item.rol_sistema_id,
-        "modulos_acceso": json.loads(item.modulos_acceso) if item.modulos_acceso else [],
-        "descripcion": item.descripcion,
-        "is_active": item.is_active,
-        "created_at": item.created_at,
-    }
-
-# ─── Validación de Perfil contra su Rol ────────────────────────────────────
-
-async def _validar_perfil_contra_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_sistema_id, modulos_acceso: list[str]):
-    from sqlalchemy import func
+async def modulos_habilitados(db, tenant_id):
     from app.tenants.hospitales.models import TenantModule
+    from app.tenants.modulos.models import Module
+    return (await db.scalars(select(Module).join(TenantModule, TenantModule.module_code == Module.code).where(
+        TenantModule.tenant_id == tenant_id, TenantModule.is_active.is_(True), Module.is_active.is_(True),
+        Module.code.startswith("sigarh_"),
+    ).order_by(Module.name))).all()
 
-    rol = await obtener(db, RolSistema, rol_sistema_id, tenant_id)
-    if not rol:
-        raise ValueError("El rol seleccionado no existe")
-    if not rol.is_active:
-        raise ValueError("El rol seleccionado está inactivo")
 
-    # El módulo requerido por el rol debe estar activo para este hospital
-    if rol.modulo_requerido:
-        activo = await db.scalar(
-            select(func.count(TenantModule.id)).where(
-                TenantModule.tenant_id == tenant_id,
-                TenantModule.module_code == rol.modulo_requerido,
-                TenantModule.is_active == True,
-            )
+async def usado(db, modelo, id):
+    """Comprueba referencias antes de modificar o borrar; no permite cascadas silenciosas."""
+    for table in Base.metadata.tables.values():
+        for column in table.columns:
+            if any(fk.target_fullname == f"{modelo.__tablename__}.id" for fk in column.foreign_keys):
+                if await db.scalar(select(column).where(column == id).limit(1)):
+                    return True
+    return False
+
+
+async def validar_relaciones(db, modelo, tenant_id, values):
+    from app.sigarh.rrhh.models import Empleado
+    from app.sigarh.infraestructura.models import Catalogo
+    from app.sigarh.infraestructura_hosp.models import Piso
+    targets = {
+        "departamento_id": m.Departamento, "servicio_id": m.Servicio, "piso_id": Piso,
+        "tipo_guardia_id": m.TipoGuardia, "grupo_ocupacional_id": m.GrupoOcupacional,
+        "nivel_remunerativo_id": m.NivelRemunerativo, "tipo_actividad_id": m.TipoActividad,
+        "rol_sistema_id": m.RolSistema, "perfil_id": m.PerfilUsuario, "empleado_id": Empleado,
+        "tipo_grupo_id": Catalogo,
+    }
+    refs = {}
+    for field, target in targets.items():
+        if field in values:
+            refs[field] = await referencia(db, target, values[field], tenant_id, field)
+    if refs.get("tipo_grupo_id") and refs["tipo_grupo_id"].categoria != "tipos_grupo_ocupacional":
+        raise HTTPException(422, "El tipo de grupo debe pertenecer a tipos_grupo_ocupacional")
+    if modelo is m.Dependencia and refs.get("servicio_id"):
+        if not values.get("departamento_id") or refs["servicio_id"].departamento_id != values["departamento_id"]:
+            raise HTTPException(422, "El servicio no pertenece al departamento seleccionado")
+    if modelo is m.RolSistema:
+        habilitados = {module.code for module in await modulos_habilitados(db, tenant_id)}
+        elegidos = set(values["modulos_permitidos"])
+        requerido = values.get("modulo_requerido")
+        if elegidos - habilitados or (requerido and requerido not in habilitados):
+            raise HTTPException(422, "Los módulos deben existir y estar habilitados para SIGARH en este hospital")
+        if requerido and requerido not in elegidos:
+            raise HTTPException(422, "El módulo requerido debe estar incluido entre los permitidos")
+        if values["permisos_accion"] and "sigarh_mantenimiento" not in elegidos and (
+            set(values["permisos_accion"]) & {"administrar_seguridad", "administrar_mantenimiento"}
+        ):
+            raise HTTPException(422, "Administrar requiere el módulo Mantenimiento")
+        if "aprobar_roles_turno" in values["permisos_accion"] and "sigarh_roles_pendientes" not in elegidos:
+            raise HTTPException(422, "Aprobar turnos requiere el módulo Roles Pendientes")
+        for group in values["grupos_ocupacionales_permitidos"]:
+            await referencia(db, m.GrupoOcupacional, group, tenant_id, "grupo ocupacional permitido")
+    if modelo is m.PerfilUsuario:
+        rol = refs["rol_sistema_id"]
+        habilitados = {module.code for module in await modulos_habilitados(db, tenant_id)}
+        if rol.panel != "sigarh" or (rol.modulo_requerido and rol.modulo_requerido not in habilitados):
+            raise HTTPException(422, "El rol no es válido para SIGARH o su módulo requerido está deshabilitado")
+        if set(values["modulos_acceso"]) - (set(lista(rol.modulos_permitidos)) & habilitados):
+            raise HTTPException(422, "Los módulos deben estar permitidos por el rol y habilitados en el hospital")
+    if modelo is m.UsuarioSigarh:
+        perfil = refs["perfil_id"]
+        rol = await referencia(db, m.RolSistema, perfil.rol_sistema_id, tenant_id, "rol del perfil")
+        if not rol or rol.panel != "sigarh":
+            raise HTTPException(422, "El perfil requiere un rol SIGARH activo")
+        grupos = set(lista(rol.grupos_ocupacionales_permitidos))
+        empleado = refs.get("empleado_id")
+        if grupos and (not empleado or str(empleado.grupo_ocupacional_id) not in grupos):
+            raise HTTPException(422, "Seleccione un empleado del grupo ocupacional permitido por el rol")
+
+
+async def validar_unicidad(db, modelo, tenant_id, values, item=None):
+    for field in ("nombre", "codigo", "username", "email"):
+        value = values.get(field)
+        if not value or not hasattr(modelo, field):
+            continue
+        query = select(modelo.id).where(func.lower(func.trim(getattr(modelo, field))) == value.strip().lower())
+        if modelo is not m.UsuarioSigarh:
+            query = query.where(modelo.tenant_id == tenant_id)
+        if item:
+            query = query.where(modelo.id != item.id)
+        if await db.scalar(query.limit(1)):
+            raise HTTPException(409, f"Ya existe un registro con ese {field}")
+    if modelo is m.UsuarioSigarh:
+        # El login comparte correo/usuario; tampoco se permiten colisiones entre columnas.
+        query = select(m.UsuarioSigarh.id).where(or_(
+            func.lower(m.UsuarioSigarh.email) == values["username"],
+            func.lower(m.UsuarioSigarh.username) == values["email"],
+        ))
+        if item:
+            query = query.where(m.UsuarioSigarh.id != item.id)
+        if await db.scalar(query.limit(1)):
+            raise HTTPException(409, "El identificador de acceso ya está ocupado")
+    if modelo is m.GuardiaValorizada and values["is_active"]:
+        query = select(modelo.id).where(modelo.tenant_id == tenant_id, modelo.is_active.is_(True),
+            modelo.tipo_guardia_id == values["tipo_guardia_id"],
+            modelo.grupo_ocupacional_id == values["grupo_ocupacional_id"],
+            modelo.nivel_remunerativo_id == values["nivel_remunerativo_id"],
+            or_(modelo.vigencia_hasta.is_(None), modelo.vigencia_hasta >= values["vigencia_desde"]),
         )
-        if not activo:
-            raise ValueError(
-                f"El rol requiere el módulo '{rol.modulo_requerido}', que no está activo para este hospital"
-            )
-
-    # Los módulos elegidos deben estar dentro de lo permitido por el rol
-    permitidos = json.loads(rol.modulos_permitidos) if rol.modulos_permitidos else []
-    if permitidos:
-        no_permitidos = [m for m in modulos_acceso if m not in permitidos]
-        if no_permitidos:
-            raise ValueError(
-                f"Estos módulos no están permitidos por el rol seleccionado: {', '.join(no_permitidos)}"
-            )
-
-async def crear_perfil(db: AsyncSession, tenant_id: uuid.UUID, data) -> dict:
-    data_dict = data.model_dump()
-    modulos = data_dict.pop('modulos_acceso', [])
-    rol_sistema_id = data_dict.get('rol_sistema_id')
-    if rol_sistema_id:
-        await _validar_perfil_contra_rol(db, tenant_id, rol_sistema_id, modulos)
-    perfil = PerfilUsuario(
-        tenant_id=tenant_id,
-        modulos_acceso=json.dumps(modulos),
-        **data_dict
-    )
-    db.add(perfil)
-    await db.commit()
-    await db.refresh(perfil)
-    return _serializar_perfil(perfil)
-
-async def listar_perfiles_usuario(db: AsyncSession, tenant_id: uuid.UUID) -> list[dict]:
-    items = await listar(db, PerfilUsuario, tenant_id)
-    return [_serializar_perfil(i) for i in items]
+        if values["vigencia_hasta"]:
+            query = query.where(or_(modelo.vigencia_desde.is_(None), modelo.vigencia_desde <= values["vigencia_hasta"]))
+        if item:
+            query = query.where(modelo.id != item.id)
+        if await db.scalar(query.limit(1)):
+            raise HTTPException(409, "Existe una tarifa para esa combinación con vigencia superpuesta")
 
 
-async def obtener_perfil_usuario(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID) -> dict | None:
-    item = await obtener(db, PerfilUsuario, id, tenant_id)
+async def bloquear_escritura(db, tenant_id):
+    # Serializa validación + escritura incluso entre procesos de la API.
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:clave, 0))"), {"clave": "mantenimiento-identidades"})
+
+
+def auditar(db, user, tenant_id, item, action, before=None, ip=None):
+    db.add(AuditLog(user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
+        tenant_id=tenant_id, action=action, model=type(item).__name__, model_id=str(item.id),
+        description=f"Mantenimiento: {action}", old_values=before,
+        new_values=None if action == "deleted" else snapshot(item), ip_address=ip))
+
+
+async def guardar(db, recurso, tenant_id, data, user, id=None, ip=None):
+    modelo, schema, _ = REGISTROS[recurso]
+    await bloquear_escritura(db, tenant_id)
+    item = await obtener(db, modelo, id, tenant_id, bloquear=True) if id else None
+    if id and not item:
+        raise HTTPException(404, "Registro no encontrado")
+    before = snapshot(item) if item else None
+    supplied = data.model_dump(exclude_unset=True)
+    values = {key: getattr(item, key) for key in schema.model_fields if hasattr(item, key)} if item else {}
+    for key in JSON_FIELDS & values.keys():
+        values[key] = lista(values[key])
+    if modelo is m.UsuarioSigarh and item:
+        # El hash nunca pasa por el contrato de una contraseña nueva.
+        values["password"] = "placeholder-seguro-interno"
+        if not supplied.get("password"):
+            supplied.pop("password", None)
+    if modelo is m.HorarioGuardia and item and {"hora_inicio", "hora_fin"} & supplied.keys():
+        values["horas_totales"] = None
+        values["duracion_minutos"] = None
+    values.update(supplied)
+    try:
+        values = schema.model_validate(values).model_dump()
+    except ValidationError as exc:
+        raise HTTPException(422, " · ".join(f"{'.'.join(map(str,e['loc']))}: {e['msg']}" for e in exc.errors(include_input=False)))
+    if modelo is m.UsuarioSigarh and item and "password" not in supplied:
+        values.pop("password", None)
+    changed = {key for key, value in values.items() if not item or (
+        lista(getattr(item, key)) if key in JSON_FIELDS else getattr(item, key)
+    ) != value}
+    if item and not es_admin_erp(user):
+        own = (modelo is m.UsuarioSigarh and str(item.id) == user.get("sub")) or (
+            modelo is m.PerfilUsuario and str(item.id) == user.get("perfil_id"))
+        if modelo is m.RolSistema and user.get("perfil_id"):
+            perfil = await db.scalar(select(m.PerfilUsuario).where(m.PerfilUsuario.id == uuid.UUID(user["perfil_id"])))
+            own = bool(perfil and perfil.rol_sistema_id == item.id)
+        critical = {"is_active", "perfil_id", "rol_sistema_id", "modulos_acceso", "permisos_accion", "modulos_permitidos", "alcance_global", "empleado_id"}
+        if own and changed & critical:
+            raise HTTPException(409, "Otra persona administradora debe modificar sus propias autorizaciones")
+    # Desactivar seguridad siempre debe ser posible aun con referencias antiguas inválidas.
+    solo_baja = item and supplied == {"is_active": False}
+    if not solo_baja:
+        await validar_relaciones(db, modelo, tenant_id, values)
+        await validar_unicidad(db, modelo, tenant_id, values, item)
+    if item and recurso not in SEGURIDAD and changed - {"descripcion"} and await usado(db, modelo, item.id):
+        raise HTTPException(409, "El catálogo ya está utilizado. Conserve el registro y cree una nueva versión")
+    if item and modelo is m.GuardiaValorizada and item.vigencia_desde and item.vigencia_desde <= date.today():
+        if changed - {"vigencia_hasta"}:
+            raise HTTPException(409, "La tarifa ya inició su vigencia; cierre su período y cree una nueva tarifa")
+        if values.get("vigencia_hasta") and values["vigencia_hasta"] < date.today():
+            raise HTTPException(409, "No se puede cerrar una tarifa retroactivamente")
+    if item is None:
+        item = modelo(id=uuid.uuid4(), tenant_id=tenant_id)
+        db.add(item)
+    if "password" in values:
+        values["password"] = bcrypt.hashpw(values["password"].encode(), bcrypt.gensalt()).decode()
+    for key, value in values.items():
+        setattr(item, key, json.dumps(value, default=str) if key in JSON_FIELDS else value)
+    if modelo is m.UsuarioSigarh and id and changed & {"password", "perfil_id", "empleado_id", "is_active", "username", "email"}:
+        item.session_version += 1
+    try:
+        await db.flush()
+        auditar(db, user, tenant_id, item, "updated" if id else "created", before, ip)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "Los datos duplican un registro o tienen una relación inválida")
+    return serializar(await obtener(db, modelo, item.id, tenant_id))
+
+
+async def eliminar(db, recurso, tenant_id, id, user, ip=None):
+    modelo = REGISTROS[recurso][0]
+    await bloquear_escritura(db, tenant_id)
+    item = await obtener(db, modelo, id, tenant_id, bloquear=True)
     if not item:
-        return None
-    return _serializar_perfil(item)
+        raise HTTPException(404, "Registro no encontrado")
+    if recurso in SEGURIDAD:
+        raise HTTPException(409, "Las cuentas y permisos se desactivan; no se eliminan para conservar auditoría")
+    if await usado(db, modelo, id):
+        raise HTTPException(409, "No puede eliminar un catálogo utilizado por otros registros")
+    if modelo is m.GuardiaValorizada and item.vigencia_desde and item.vigencia_desde <= date.today():
+        raise HTTPException(409, "Una tarifa con vigencia iniciada debe conservarse")
+    auditar(db, user, tenant_id, item, "deleted", snapshot(item), ip)
+    await db.delete(item)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "El catálogo está siendo utilizado y no puede eliminarse")
+    return {"ok": True}
 
 
-async def actualizar_perfil_usuario(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, data) -> dict | None:
-    item = await obtener(db, PerfilUsuario, id, tenant_id)
-    if not item:
-        return None
-    data_dict = data.model_dump(exclude_unset=True)
-
-    rol_sistema_id = data_dict.get('rol_sistema_id', item.rol_sistema_id)
-    modulos_acceso = data_dict.get(
-        'modulos_acceso',
-        json.loads(item.modulos_acceso) if item.modulos_acceso else []
-    )
-    if rol_sistema_id:
-        await _validar_perfil_contra_rol(db, tenant_id, rol_sistema_id, modulos_acceso)
-
-    if "modulos_acceso" in data_dict:
-        item.modulos_acceso = json.dumps(data_dict.pop("modulos_acceso"))
-    for field, value in data_dict.items():
-        setattr(item, field, value)
-    await db.commit()
-    await db.refresh(item)
-    return _serializar_perfil(item)
+async def resolver_tarifa(db, tenant_id, tipo_guardia_id, grupo_id, nivel_id, fecha):
+    """Prioridad explícita: grupo+nivel, grupo, nivel, general; nunca usa Float."""
+    rows = (await db.scalars(select(m.GuardiaValorizada).where(
+        m.GuardiaValorizada.tenant_id == tenant_id, m.GuardiaValorizada.is_active.is_(True),
+        m.GuardiaValorizada.tipo_guardia_id == tipo_guardia_id,
+        m.GuardiaValorizada.vigencia_desde <= fecha,
+        or_(m.GuardiaValorizada.vigencia_hasta.is_(None), m.GuardiaValorizada.vigencia_hasta >= fecha),
+        or_(m.GuardiaValorizada.grupo_ocupacional_id.is_(None), m.GuardiaValorizada.grupo_ocupacional_id == grupo_id),
+        or_(m.GuardiaValorizada.nivel_remunerativo_id.is_(None), m.GuardiaValorizada.nivel_remunerativo_id == nivel_id),
+    ))).all()
+    ranked = sorted(rows, key=lambda r: 2 * bool(r.grupo_ocupacional_id) + bool(r.nivel_remunerativo_id), reverse=True)
+    if not ranked:
+        raise HTTPException(404, "No existe tarifa vigente")
+    score = lambda r: 2 * bool(r.grupo_ocupacional_id) + bool(r.nivel_remunerativo_id)
+    if len(ranked) > 1 and score(ranked[0]) == score(ranked[1]):
+        raise HTTPException(409, "Hay tarifas ambiguas; revise las vigencias")
+    return ranked[0]

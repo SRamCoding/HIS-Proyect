@@ -49,7 +49,7 @@ const form = reactive({
   sexo: '', estado_civil: '', grupo_sanguineo: '', celular: '', telefono_fijo: '', correo: '',
   is_active: true,
   tipo_trabajador_id: '', nivel_remunerativo_id: '', grupo_ocupacional_id: '',
-  departamento_id: '', servicio_id: '', cargo_laboral: '', modalidad: '',
+  departamento_id: '', servicio_id: '', cargo_laboral: '', es_jefe_servicio: false, modalidad: '',
   codigo_minsa: '', numero_cmp: '', fecha_ingreso: '', fecha_nombramiento: '', fecha_cese: '',
   resolucion_nombramiento: '', resolucion_cese: '',
   especialidades: [] as any[],
@@ -160,7 +160,7 @@ const handleSave = async () => {
         correo: form.correo || null, is_active: form.is_active,
         tipo_trabajador_id: form.tipo_trabajador_id || null, nivel_remunerativo_id: form.nivel_remunerativo_id || null,
         grupo_ocupacional_id: form.grupo_ocupacional_id || null, departamento_id: form.departamento_id || null,
-        servicio_id: form.servicio_id || null, cargo_laboral: form.cargo_laboral || null, modalidad: form.modalidad || null,
+        servicio_id: form.servicio_id || null, cargo_laboral: form.cargo_laboral || null, es_jefe_servicio: form.es_jefe_servicio, modalidad: form.modalidad || null,
         codigo_minsa: form.codigo_minsa || null, numero_cmp: form.numero_cmp || null,
         fecha_ingreso: form.fecha_ingreso || null, fecha_nombramiento: form.fecha_nombramiento || null, fecha_cese: form.fecha_cese || null,
         resolucion_nombramiento: form.resolucion_nombramiento || null, resolucion_cese: form.resolucion_cese || null,
@@ -200,7 +200,7 @@ onMounted(async () => {
       fecha_nacimiento: data.fecha_nacimiento || '', sexo: data.sexo || '', estado_civil: data.estado_civil || '', grupo_sanguineo: data.grupo_sanguineo || '',
       celular: data.celular || '', telefono_fijo: data.telefono_fijo || '', correo: data.correo || '', is_active: data.is_active,
       tipo_trabajador_id: data.tipo_trabajador_id || '', nivel_remunerativo_id: data.nivel_remunerativo_id || '', grupo_ocupacional_id: data.grupo_ocupacional_id || '',
-      departamento_id: data.departamento_id || '', servicio_id: data.servicio_id || '', cargo_laboral: data.cargo_laboral || '', modalidad: data.modalidad || '',
+      departamento_id: data.departamento_id || '', servicio_id: data.servicio_id || '', cargo_laboral: data.cargo_laboral || '', es_jefe_servicio: !!data.es_jefe_servicio, modalidad: data.modalidad || '',
       codigo_minsa: data.codigo_minsa || '', numero_cmp: data.numero_cmp || '', fecha_ingreso: data.fecha_ingreso || '', fecha_nombramiento: data.fecha_nombramiento || '', fecha_cese: data.fecha_cese || '',
       resolucion_nombramiento: data.resolucion_nombramiento || '', resolucion_cese: data.resolucion_cese || '',
       banco: data.banco || '', ruc: data.ruc || '', numero_cuenta: data.numero_cuenta || '', numero_cci: data.numero_cci || '', tipo_cuenta: data.tipo_cuenta || '',
@@ -347,6 +347,12 @@ onMounted(async () => {
             <div class="input-wrapper"><UIcon name="i-heroicons-folder" class="input-icon" />
               <select v-model="form.servicio_id" class="input-clinical"><option value="">Seleccione</option><option v-for="s in servicios" :key="s.id" :value="s.id">{{ s.nombre }}</option></select>
             </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">&nbsp;</label>
+            <label class="text-xs flex items-center gap-1.5" style="color: var(--ink-soft); padding-top: 0.7rem">
+              <input type="checkbox" v-model="form.es_jefe_servicio" /> Jefe de este servicio (podrá aprobar sus roles de turno)
+            </label>
           </div>
           <div class="form-group">
             <label class="form-label">Cargo Laboral</label>
