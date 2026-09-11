@@ -1,12 +1,15 @@
 import uuid
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.dependencies import get_admin_user
-from app.admin.usuarios.schemas import UserListItem, UserCreate
-from app.admin.usuarios.service import get_all_users, get_users_by_tenant, create_user
+from app.admin.usuarios.schemas import UserListItem, UserCreate, UserUpdate
+from app.admin.usuarios.service import (
+    get_all_users, get_users_by_tenant, create_user,
+    update_user, toggle_user, delete_user,
+)
 
 router = APIRouter()
 
@@ -65,4 +68,42 @@ async def crear_usuario(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
-    return await create_user(db, data)
+    return await create_user(db, data, current_user)
+
+
+@router.patch("/usuarios/{user_id}", response_model=UserListItem, summary="Actualizar usuario")
+async def actualizar_usuario(
+    user_id: uuid.UUID,
+    data: UserUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    user = await update_user(db, user_id, data, current_user)
+    if not user:
+        raise HTTPException(404, detail="Usuario no encontrado")
+    return user
+
+
+@router.patch("/usuarios/{user_id}/toggle", response_model=UserListItem, summary="Activar/desactivar usuario")
+async def toggle_usuario(
+    user_id: uuid.UUID,
+    is_active: bool,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    user = await toggle_user(db, user_id, is_active, current_user)
+    if not user:
+        raise HTTPException(404, detail="Usuario no encontrado")
+    return user
+
+
+@router.delete("/usuarios/{user_id}", summary="Eliminar usuario")
+async def eliminar_usuario(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    ok = await delete_user(db, user_id, current_user)
+    if not ok:
+        raise HTTPException(404, detail="Usuario no encontrado")
+    return {"ok": True}

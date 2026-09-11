@@ -59,7 +59,10 @@ async def crear_admision(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
 ):
-    return await create_admision(db, get_tenant_id(current_user, request), data)
+    try:
+        return await create_admision(db, get_tenant_id(current_user, request), data)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
 
 
 # --- Triaje ---

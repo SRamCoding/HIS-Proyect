@@ -35,7 +35,6 @@
             <UIcon name="i-heroicons-user" class="input-icon" />
             <input v-model="form.username" class="input-clinical" placeholder="Ej: jperez" />
           </div>
-          <p class="field-hint">Se genera automáticamente con el DNI</p>
         </div>
 
         <div class="form-group">
@@ -58,13 +57,24 @@
           <p class="field-hint">El rol y los módulos se toman del perfil seleccionado</p>
         </div>
 
-        <div class="form-group">
-          <label class="form-label">Contraseña</label>
+        <div class="form-group full-width">
+          <label class="form-label">Contraseña <span class="required">*</span></label>
           <div class="input-wrapper">
             <UIcon name="i-heroicons-lock-closed" class="input-icon" />
-            <input v-model="form.password" type="password" class="input-clinical" placeholder="Por defecto: DNI del empleado" />
+            <input v-model="form.password" :type="verPassword ? 'text' : 'password'" class="input-clinical" placeholder="Mínimo 8 caracteres" />
           </div>
-          <p class="field-hint">Si no ingresa, se usará el DNI del empleado</p>
+          <div class="flex items-center gap-3 mt-1.5">
+            <button type="button" class="link-btn" @click="generarPassword">Generar contraseña segura</button>
+            <button type="button" class="link-btn" @click="verPassword = !verPassword">{{ verPassword ? 'Ocultar' : 'Mostrar' }}</button>
+          </div>
+          <ul class="pwd-checklist">
+            <li :class="{ ok: pwdChecks.length }"><UIcon :name="pwdChecks.length ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> 8+ caracteres</li>
+            <li :class="{ ok: pwdChecks.lower }"><UIcon :name="pwdChecks.lower ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Minúscula</li>
+            <li :class="{ ok: pwdChecks.upper }"><UIcon :name="pwdChecks.upper ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Mayúscula</li>
+            <li :class="{ ok: pwdChecks.digit }"><UIcon :name="pwdChecks.digit ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Número</li>
+            <li :class="{ ok: pwdChecks.special }"><UIcon :name="pwdChecks.special ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Carácter especial</li>
+          </ul>
+          <p class="field-hint">No puede ser igual al usuario ni al correo. Compártela con el usuario por un canal seguro; no vuelve a mostrarse.</p>
         </div>
 
         <div class="form-group">
@@ -105,7 +115,7 @@
       <SWidgetInfo :items="[
         'Los usuarios acceden al sistema SIGARH con su login y contraseña',
         'El perfil define los módulos y permisos del usuario',
-        'La contraseña por defecto es el DNI del empleado',
+        'La contraseña es obligatoria y debe tener al menos 12 caracteres',
         'Los usuarios inactivos no pueden iniciar sesión',
       ]" />
 
@@ -125,7 +135,7 @@
         </template>
       </SWidgetSummary>
 
-      <SWidgetTip text="Usa el DNI del empleado como nombre de usuario para facilitar el acceso y la identificación en el sistema." />
+      <SWidgetTip text="Usa 'Generar contraseña segura' para crear una contraseña aleatoria de 16 caracteres y cópiala antes de guardar: no se muestra de nuevo." />
     </template>
   </SFormLayout>
 </template>
@@ -149,28 +159,55 @@ const form = reactive({
   perfil_id: '',
   is_active: true
 })
+const verPassword = ref(false)
 
 const perfilSeleccionado = computed(() =>
   perfiles.value.find(p => p.id === form.perfil_id) || null
 )
 
+const pwdChecks = computed(() => ({
+  length: form.password.length >= 8,
+  lower: /[a-z]/.test(form.password),
+  upper: /[A-Z]/.test(form.password),
+  digit: /\d/.test(form.password),
+  special: /[^\w\s]/.test(form.password),
+}))
+const pwdValida = computed(() => Object.values(pwdChecks.value).every(Boolean))
+
+const generarPassword = () => {
+  const grupos = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789', '!@#$%*?']
+  const bytes = new Uint32Array(16)
+  crypto.getRandomValues(bytes)
+  const chars = Array.from(bytes, b => grupos[b % grupos.length][b % grupos[b % grupos.length].length])
+  // Garantiza al menos un caracter de cada grupo exigido por el backend.
+  grupos.forEach((g, i) => { chars[i] = g[bytes[i] % g.length] })
+  form.password = chars.sort(() => Math.random() - 0.5).join('')
+  verPassword.value = true
+}
+
 const handleCreate = async (createAnother: boolean) => {
   if (!form.username.trim()) { error.value = 'El usuario es requerido'; return }
   if (!form.email.trim()) { error.value = 'El correo es requerido'; return }
+  if (!form.perfil_id) { error.value = 'El perfil es requerido'; return }
+  if (!pwdValida.value) { error.value = 'La contraseña no cumple los requisitos mínimos'; return }
+  if ([form.username.toLowerCase(), form.email.toLowerCase()].includes(form.password.toLowerCase())) {
+    error.value = 'La contraseña no puede ser igual al usuario ni al correo'; return
+  }
   saving.value = true
   error.value = ''
   try {
     await api('/sigarh/mantenimiento/usuarios', {
       method: 'POST',
-      body: { ...form, perfil_id: form.perfil_id || null, password: form.password || form.username }
+      body: { ...form, perfil_id: form.perfil_id || null }
     })
     if (createAnother) {
       Object.assign(form, { username: '', email: '', password: '', perfil_id: '', is_active: true })
+      verPassword.value = false
     } else {
       router.push(`/sigarh/mantenimiento/usuarios?tenant=${tenantId.value}`)
     }
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo crear'
+    error.value = apiErr(e, 'No se pudo crear')
   } finally {
     saving.value = false
   }
@@ -180,3 +217,26 @@ onMounted(async () => {
   perfiles.value = await api<any[]>('/sigarh/mantenimiento/perfiles-usuario')
 })
 </script>
+
+<style scoped>
+.pwd-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.pwd-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  transition: color 0.15s ease;
+}
+.pwd-checklist li.ok {
+  color: var(--green, #16a34a);
+  font-weight: 600;
+}
+</style>

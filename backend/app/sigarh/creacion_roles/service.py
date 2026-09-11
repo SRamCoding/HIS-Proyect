@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.sigarh.creacion_roles.models import (
     Rol, RolEmpleado, RolActividad, RolTurno, SolicitudModificacionRol, MODALIDADES,
 )
-from app.sigarh.mantenimiento.models import Departamento, Servicio, Actividad, HorarioGuardia, PerfilUsuario, RolSistema
+from app.sigarh.mantenimiento.models import Departamento, Servicio, Actividad, HorarioGuardia, PerfilUsuario, RolSistema, TipoTrabajador, GrupoOcupacional
 from app.sigarh.rrhh.models import Empleado, EmpleadoEspecialidad
 
 EDITABLE = ("draft", "rejected")
@@ -583,16 +583,45 @@ async def _empleados_en_otro_rol_ordinario(
     )).scalars().all())
 
 
+async def categorias_de_empleados(db: AsyncSession, empleados: list[Empleado]) -> dict[uuid.UUID, str | None]:
+    """Categoría de rol de turno (medicos/otros_profesionales/residentes/tecnicos/
+    internos) de cada empleado. Manda el tipo de trabajador cuando identifica una
+    etapa de formación (Residentado/Internado Médico); si no, manda el grupo
+    ocupacional (la profesión). None si ninguno de los dos está clasificado."""
+    tt_ids = {e.tipo_trabajador_id for e in empleados if e.tipo_trabajador_id}
+    go_ids = {e.grupo_ocupacional_id for e in empleados if e.grupo_ocupacional_id}
+    tt_cat = dict((await db.execute(
+        select(TipoTrabajador.id, TipoTrabajador.categoria_personal).where(TipoTrabajador.id.in_(tt_ids))
+    )).all()) if tt_ids else {}
+    go_cat = dict((await db.execute(
+        select(GrupoOcupacional.id, GrupoOcupacional.categoria_personal).where(GrupoOcupacional.id.in_(go_ids))
+    )).all()) if go_ids else {}
+    return {
+        e.id: tt_cat.get(e.tipo_trabajador_id) or go_cat.get(e.grupo_ocupacional_id)
+        for e in empleados
+    }
+
+
 async def agregar_personal(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID, empleado_ids: list[uuid.UUID]) -> dict:
     rol = await _rol_editable(db, tenant_id, rol_id)
     existentes = set((await db.execute(
         select(RolEmpleado.empleado_id).where(RolEmpleado.rol_id == rol_id)
     )).scalars().all())
-    validos = set((await db.execute(
-        select(Empleado.id).where(Empleado.tenant_id == tenant_id, Empleado.id.in_(empleado_ids))
-    )).scalars().all())
+    candidatos = (await db.execute(
+        select(Empleado).where(Empleado.tenant_id == tenant_id, Empleado.id.in_(empleado_ids))
+    )).scalars().all()
+    validos = {e.id for e in candidatos}
 
     nuevos = [eid for eid in empleado_ids if eid in validos and eid not in existentes]
+    if nuevos:
+        categorias = await categorias_de_empleados(db, [e for e in candidatos if e.id in nuevos])
+        incompatibles = [e for e in candidatos if e.id in nuevos and categorias.get(e.id) != rol.categoria_personal]
+        if incompatibles:
+            etq = ", ".join(f"{e.apellido_paterno} {e.nombres}".strip() for e in incompatibles)
+            raise ReglaNegocioError(
+                f"No corresponden a la categoría '{rol.categoria_personal}' de este rol: {etq}. "
+                "Revisa su tipo de trabajador o grupo ocupacional en Mantenimiento."
+            )
     chocan = await _empleados_en_otro_rol_ordinario(db, tenant_id, rol, nuevos)
     if chocan:
         nombres = (await db.execute(

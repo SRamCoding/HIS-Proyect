@@ -53,6 +53,18 @@
           </div>
 
           <div class="form-group full-width">
+            <label class="form-label">Categoría de rol de turno</label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-identification" class="input-icon" />
+              <select v-model="form.categoria_personal" class="input-clinical">
+                <option value="">No determina categoría (ej. Nombrado, CAS, Contrato)</option>
+                <option v-for="c in CATEGORIAS" :key="c.value" :value="c.value">{{ c.label }}</option>
+              </select>
+            </div>
+            <p class="field-hint">Marca esto solo si este tipo identifica por sí mismo una etapa de formación (Residentado, Internado). Al crear un rol de esa categoría, solo se podrá agregar personal con este tipo de trabajador.</p>
+          </div>
+
+          <div class="form-group full-width">
             <label class="form-label">Descripcion</label>
             <div class="input-wrapper">
               <UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" />
@@ -103,16 +115,23 @@ const id = computed(() => route.params.id as string)
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
-const form = reactive({ nombre: '', codigo: '', descripcion: '', is_active: true })
+const CATEGORIAS = [
+  { value: 'medicos', label: 'Médicos' },
+  { value: 'otros_profesionales', label: 'Otros profesionales de la salud' },
+  { value: 'residentes', label: 'Residentes' },
+  { value: 'tecnicos', label: 'Técnicos y auxiliares' },
+  { value: 'internos', label: 'Internos' },
+]
+const form = reactive({ nombre: '', codigo: '', descripcion: '', categoria_personal: '', is_active: true })
 
 const handleSave = async () => {
   if (!form.nombre.trim()) { error.value = 'El nombre es requerido'; return }
   saving.value = true
   error.value = ''
   try {
-    await api(`/sigarh/mantenimiento/tipos-trabajador/${id.value}`, { method: 'PATCH', body: { ...form } })
+    await api(`/sigarh/mantenimiento/tipos-trabajador/${id.value}`, { method: 'PATCH', body: { ...form, categoria_personal: form.categoria_personal || null } })
     router.push(`/sigarh/mantenimiento/tipos-trabajador?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar') }
   finally { saving.value = false }
 }
 
@@ -122,8 +141,9 @@ onMounted(async () => {
     form.nombre = data.nombre
     form.codigo = data.codigo || ''
     form.descripcion = data.descripcion || ''
+    form.categoria_personal = data.categoria_personal || ''
     form.is_active = data.is_active
-  } catch (e: any) { error.value = 'No se pudo cargar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo cargar') }
   finally { loading.value = false }
 })
 </script>

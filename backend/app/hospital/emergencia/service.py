@@ -14,7 +14,12 @@ def _generar_numero_cuenta(secuencia: int) -> str:
 
 
 async def create_admision(db: AsyncSession, tenant_id: uuid.UUID, data: AdmisionEmergenciaCreate) -> dict:
-    count = await db.scalar(select(func.count(AdmisionEmergencia.id)))
+    paciente_valido = await db.scalar(
+        select(Patient.id).where(Patient.id == data.patient_id, Patient.tenant_id == tenant_id)
+    )
+    if not paciente_valido:
+        raise ValueError("El paciente no pertenece a este hospital")
+    count = await db.scalar(select(func.count(AdmisionEmergencia.id)).where(AdmisionEmergencia.tenant_id == tenant_id))
     admision = AdmisionEmergencia(tenant_id=tenant_id, numero_cuenta=_generar_numero_cuenta((count or 0) + 1), **data.model_dump())
     db.add(admision)
     await db.commit()
@@ -96,6 +101,14 @@ async def create_atencion_emergencia(db: AsyncSession, tenant_id: uuid.UUID, adm
     existing = await db.execute(select(AtencionEmergencia).where(AtencionEmergencia.admision_id == admision_id))
     if existing.scalar_one_or_none():
         raise ValueError("Esta admisión ya tiene una atención registrada")
+
+    dx_ids = {dx.diagnostico_cie10_id for dx in data.diagnosticos}
+    if dx_ids:
+        validos = set((await db.execute(
+            select(DiagnosticoCIE10.id).where(DiagnosticoCIE10.id.in_(dx_ids), DiagnosticoCIE10.tenant_id == tenant_id)
+        )).scalars().all())
+        if validos != dx_ids:
+            raise ValueError("Uno o más diagnósticos no pertenecen a este hospital")
 
     atencion = AtencionEmergencia(
         tenant_id=tenant_id, admision_id=admision_id,

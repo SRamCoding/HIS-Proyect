@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_admin_user
-from app.admin.niveles_hospitalarios.schemas import HospitalLevelCreate, HospitalLevelResponse
+from app.admin.niveles_hospitalarios.schemas import HospitalLevelCreate, HospitalLevelUpdate, HospitalLevelResponse
 from app.admin.niveles_hospitalarios.service import (
     get_all_hospital_levels, create_hospital_level,
     get_hospital_level_by_code, get_hospital_level_by_id, update_hospital_level,
@@ -27,7 +27,7 @@ async def crear_nivel(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
-    return await create_hospital_level(db, data)
+    return await create_hospital_level(db, data, current_user)
 
 
 @router.get("/niveles-hospitalarios/{code}/modulos", summary="Módulos por defecto de un nivel")
@@ -76,11 +76,11 @@ async def obtener_nivel(
 @router.patch("/niveles-hospitalarios/{nivel_id}", summary="Actualizar nivel")
 async def actualizar_nivel(
     nivel_id: uuid.UUID,
-    data: dict,
+    data: HospitalLevelUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
-    nivel = await update_hospital_level(db, nivel_id, data)
+    nivel = await update_hospital_level(db, nivel_id, data, current_user)
     if not nivel:
         raise HTTPException(404, detail="Nivel no encontrado")
     return {"ok": True}

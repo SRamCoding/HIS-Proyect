@@ -9,10 +9,11 @@ from app.core.database import get_db
 from app.core.redis import get_redis
 from app.core.dependencies import get_admin_user
 from app.tenants.hospitales.models import Tenant
-from app.tenants.hospitales.schemas import TenantCreate, TenantResponse
+from app.tenants.hospitales.schemas import TenantCreate, TenantUpdate, TenantResponse
 from app.tenants.hospitales.service import create_tenant, get_tenant_by_domain, update_tenant_modules
 from app.admin.hospitales.schemas import HospitalListItem, ModuleToggle
 from app.admin.hospitales.service import get_all_hospitals, toggle_tenant_active
+from app.admin.auditoria.service import create_audit_log
 
 router = APIRouter()
 
@@ -42,7 +43,15 @@ async def crear_hospital(
     existing = await get_tenant_by_domain(db, data.domain)
     if existing:
         raise HTTPException(400, detail=f"Ya existe un hospital con el dominio '{data.domain}'")
-    return await create_tenant(db, data)
+    tenant = await create_tenant(db, data)
+    await create_audit_log(
+        db, user_id=current_user.get("sub"), user_name=current_user.get("name") or current_user.get("email"),
+        tenant_id=tenant.id, tenant_name=tenant.name, action="tenant_created",
+        model="Tenant", model_id=str(tenant.id),
+        description=f"Hospital creado: {tenant.name} ({tenant.domain})",
+        new_values=data.model_dump(exclude={"admin_password", "sigarh_password"}),
+    )
+    return tenant
 
 
 @router.get("/hospitales/{tenant_id}", summary="Obtener hospital por ID")
@@ -80,7 +89,7 @@ async def obtener_hospital(
 @router.patch("/hospitales/{tenant_id}", summary="Actualizar hospital")
 async def actualizar_hospital(
     tenant_id: uuid.UUID,
-    data: dict,
+    data: TenantUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
@@ -88,10 +97,22 @@ async def actualizar_hospital(
     tenant = result.scalar_one_or_none()
     if not tenant:
         raise HTTPException(404, detail="Hospital no encontrado")
-    for field, value in data.items():
-        if hasattr(tenant, field):
-            setattr(tenant, field, value)
+    # TenantUpdate es la lista blanca de campos editables (hereda de TenantBase);
+    # antes se aceptaba un dict libre y se aplicaba con setattr a cualquier
+    # atributo del modelo, incluidos campos internos como schema_name/is_active.
+    cambios = data.model_dump(exclude_unset=True, exclude={"active_modules"})
+    anteriores = {campo: getattr(tenant, campo) for campo in cambios}
+    for field, value in cambios.items():
+        setattr(tenant, field, value)
     await db.commit()
+    if cambios:
+        await create_audit_log(
+            db, user_id=current_user.get("sub"), user_name=current_user.get("name") or current_user.get("email"),
+            tenant_id=tenant.id, tenant_name=tenant.name, action="tenant_updated",
+            model="Tenant", model_id=str(tenant.id),
+            description=f"Hospital actualizado: {tenant.name}",
+            old_values=anteriores, new_values=cambios,
+        )
     return {"ok": True}
 
 
@@ -105,6 +126,13 @@ async def toggle_hospital(
     tenant = await toggle_tenant_active(db, tenant_id, is_active)
     if not tenant:
         raise HTTPException(404, detail="Hospital no encontrado")
+    await create_audit_log(
+        db, user_id=current_user.get("sub"), user_name=current_user.get("name") or current_user.get("email"),
+        tenant_id=tenant.id, tenant_name=tenant.name,
+        action="tenant_activated" if is_active else "tenant_deactivated",
+        model="Tenant", model_id=str(tenant.id),
+        description=f"Hospital {'activado' if is_active else 'desactivado'}: {tenant.name}",
+    )
     return {"ok": True, "is_active": tenant.is_active}
 
 
@@ -115,5 +143,14 @@ async def actualizar_modulos(
     redis: Redis = Depends(get_redis),
     current_user: dict = Depends(get_admin_user),
 ):
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == data.tenant_id))
+    anteriores = tenant.active_module_codes if tenant else []
     await update_tenant_modules(db, redis, data.tenant_id, data.module_codes)
+    await create_audit_log(
+        db, user_id=current_user.get("sub"), user_name=current_user.get("name") or current_user.get("email"),
+        tenant_id=data.tenant_id, tenant_name=tenant.name if tenant else None,
+        action="tenant_modules_updated", model="Tenant", model_id=str(data.tenant_id),
+        description=f"Módulos actualizados para {tenant.name if tenant else data.tenant_id}",
+        old_values={"modulos": anteriores}, new_values={"modulos": data.module_codes},
+    )
     return {"ok": True, "message": "Módulos actualizados correctamente"}

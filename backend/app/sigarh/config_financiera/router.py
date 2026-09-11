@@ -63,11 +63,13 @@ async def eliminar_seg(request: Request, id: uuid.UUID, db: AsyncSession = Depen
 
 @router.post("/seguros/{seguro_id}/planes", response_model=PlanSeguroResponse, status_code=201)
 async def agregar_plan_seg(request: Request, seguro_id: uuid.UUID, data: PlanSeguroCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_config_financiera")), current_user: dict = Depends(get_current_user)):
-    return await agregar_plan(db, seguro_id, data)
+    plan = await agregar_plan(db, get_tenant_id(current_user, request), seguro_id, data)
+    if not plan: raise HTTPException(404, detail="Seguro no encontrado")
+    return plan
 
 @router.delete("/seguros/{seguro_id}/planes/{plan_id}")
 async def eliminar_plan_seg(request: Request, seguro_id: uuid.UUID, plan_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_config_financiera")), current_user: dict = Depends(get_current_user)):
-    ok = await eliminar_plan(db, plan_id)
+    ok = await eliminar_plan(db, get_tenant_id(current_user, request), seguro_id, plan_id)
     if not ok: raise HTTPException(404, detail="Plan no encontrado")
     return {"ok": True}
 

@@ -8,9 +8,20 @@ class HospitalLevelCreate(BaseModel):
     name: str
     description: str | None = None
     color: str | None = None
-    default_modules: list[str] = []
-    default_roles: list[str] = []
+    default_modules: dict = {}
+    default_roles: dict = {}
     sort_order: int = 0
+
+
+class HospitalLevelUpdate(BaseModel):
+    code: str | None = None
+    name: str | None = None
+    description: str | None = None
+    color: str | None = None
+    default_modules: dict | None = None
+    default_roles: dict | None = None
+    sort_order: int | None = None
+    is_active: bool | None = None
 
 
 class HospitalLevelResponse(BaseModel):

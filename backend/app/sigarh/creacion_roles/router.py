@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.tenants.entitlements import require_module_jwt
-from app.sigarh.creacion_roles.models import MODALIDADES
+from app.sigarh.creacion_roles.models import MODALIDADES, Rol
 from app.sigarh.rrhh.models import Empleado
 from app.sigarh.creacion_roles.schemas import (
     RolCreate, RolUpdate, RolListItem, RolDetail,
@@ -44,6 +44,7 @@ async def modalidades(tenant=Depends(_MOD), current_user: dict = Depends(get_cur
 async def personal_disponible(
     request: Request,
     servicio_id: uuid.UUID | None = None,
+    rol_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
     tenant=Depends(_MOD),
     current_user: dict = Depends(get_current_user),
@@ -53,6 +54,13 @@ async def personal_disponible(
     if servicio_id:
         stmt = stmt.where(Empleado.servicio_id == servicio_id)
     emps = (await db.execute(stmt.order_by(Empleado.apellido_paterno))).scalars().all()
+
+    if rol_id:
+        categoria = await db.scalar(select(Rol.categoria_personal).where(Rol.id == rol_id, Rol.tenant_id == tid))
+        if categoria:
+            categorias = await svc.categorias_de_empleados(db, emps)
+            emps = [e for e in emps if categorias.get(e.id) == categoria]
+
     return [
         {"id": str(e.id), "nombre_completo": e.nombre_completo, "dni": e.dni, "cargo_laboral": e.cargo_laboral}
         for e in emps

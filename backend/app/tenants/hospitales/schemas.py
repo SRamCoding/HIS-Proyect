@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from app.sigarh.mantenimiento.schemas import validar_password
 
 
 class TenantBase(BaseModel):
@@ -26,6 +28,11 @@ class TenantCreate(TenantBase):
     sigarh_name: str | None = None
     sigarh_email: str | None = None
     sigarh_password: str | None = None
+
+    @field_validator("admin_password", "sigarh_password")
+    @classmethod
+    def _v_password(cls, v):
+        return validar_password(v) if v else v
 
 
 class TenantUpdate(TenantBase):

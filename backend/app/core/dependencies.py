@@ -39,8 +39,14 @@ async def get_admin_user(
     """
     Solo permite acceso al panel Admin ERP.
     Equivalente al middleware EnsureAdministrativoUser de Laravel.
+
+    Antes solo se comprobaba el panel: cualquier cuenta panel="admin",
+    sin importar su rol, pasaba este control. Como además nada impedía que
+    una cuenta admin creara otra cuenta admin, eso permitía escalar
+    privilegios sin límite. Ahora también se exige el rol real de
+    administrador.
     """
-    if current_user.get("panel") != "admin":
+    if current_user.get("panel") != "admin" or current_user.get("role") != "administrador":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acceso restringido al panel de administración"

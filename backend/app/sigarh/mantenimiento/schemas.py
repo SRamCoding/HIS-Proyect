@@ -6,6 +6,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_serializer, field_validator, model_validator
 
+from app.sigarh.creacion_roles.models import CATEGORIAS_PERSONAL
+
 Nombre = Annotated[str, Field(min_length=1, max_length=255)]
 Codigo = Annotated[str, Field(min_length=1, max_length=50)]
 Hora = Annotated[str, Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")]
@@ -57,11 +59,22 @@ class ServicioResponse(CatalogoResponse):
     piso_nombre: str | None = None
     tiempo_atencion_min: int | None = None
 
+def _v_categoria_personal(value):
+    if value is not None and value not in CATEGORIAS_PERSONAL:
+        raise ValueError(f"categoria_personal debe ser una de: {', '.join(CATEGORIAS_PERSONAL)}")
+    return value
+
+
 class TipoTrabajadorCreate(CatalogoBase):
-    pass
+    categoria_personal: str | None = None
+
+    @field_validator("categoria_personal")
+    @classmethod
+    def _v_cat(cls, v):
+        return _v_categoria_personal(v)
 
 class TipoTrabajadorResponse(CatalogoResponse):
-    pass
+    categoria_personal: str | None = None
 
 class TipoGuardiaCreate(CatalogoBase):
     horas: Annotated[int, Field(ge=1, le=24)] | None = None
@@ -133,9 +146,16 @@ class TipoGrupoOcupacionalResponse(CatalogoResponse):
 
 class GrupoOcupacionalCreate(CatalogoBase):
     tipo_grupo_id: uuid.UUID | None = None
+    categoria_personal: str | None = None
+
+    @field_validator("categoria_personal")
+    @classmethod
+    def _v_cat(cls, v):
+        return _v_categoria_personal(v)
 
 class GrupoOcupacionalResponse(CatalogoResponse):
     tipo_grupo_id: uuid.UUID | None = None
+    categoria_personal: str | None = None
 
 class TipoActividadCreate(Entrada):
     nombre: Nombre
@@ -277,8 +297,16 @@ class DependenciaResponse(BaseModel):
 
 
 def validar_password(value: str) -> str:
-    if not 12 <= len(value) or len(value.encode("utf-8")) > 72:
-        raise ValueError("La contraseña debe tener al menos 12 caracteres y como máximo 72 bytes")
+    if not 8 <= len(value) or len(value.encode("utf-8")) > 72:
+        raise ValueError("La contraseña debe tener entre 8 y 72 caracteres")
+    if not re.search(r"[a-z]", value):
+        raise ValueError("La contraseña debe incluir al menos una minúscula")
+    if not re.search(r"[A-Z]", value):
+        raise ValueError("La contraseña debe incluir al menos una mayúscula")
+    if not re.search(r"\d", value):
+        raise ValueError("La contraseña debe incluir al menos un número")
+    if not re.search(r"[^\w\s]", value):
+        raise ValueError("La contraseña debe incluir al menos un carácter especial")
     return value
 
 class UsuarioSigarhCreate(Entrada):

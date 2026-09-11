@@ -74,7 +74,15 @@ async def eliminar_seguro(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID)
 
 # ─── Planes de Seguro ─────────────────────────────────────────────────────────
 
-async def agregar_plan(db: AsyncSession, seguro_id: uuid.UUID, data) -> PlanSeguro:
+async def agregar_plan(db: AsyncSession, tenant_id: uuid.UUID, seguro_id: uuid.UUID, data) -> PlanSeguro | None:
+    """None si el seguro no existe o no pertenece a este hospital.
+
+    PlanSeguro no tiene tenant_id propio: su aislamiento depende por completo
+    de que seguro_id sí sea del hospital que hace la solicitud.
+    """
+    seguro = await obtener_seguro(db, seguro_id, tenant_id)
+    if not seguro:
+        return None
     plan = PlanSeguro(seguro_id=seguro_id, **data.model_dump())
     db.add(plan)
     await db.commit()
@@ -82,8 +90,12 @@ async def agregar_plan(db: AsyncSession, seguro_id: uuid.UUID, data) -> PlanSegu
     return plan
 
 
-async def eliminar_plan(db: AsyncSession, plan_id: uuid.UUID) -> bool:
-    result = await db.execute(select(PlanSeguro).where(PlanSeguro.id == plan_id))
+async def eliminar_plan(db: AsyncSession, tenant_id: uuid.UUID, seguro_id: uuid.UUID, plan_id: uuid.UUID) -> bool:
+    result = await db.execute(
+        select(PlanSeguro)
+        .join(Seguro, Seguro.id == PlanSeguro.seguro_id)
+        .where(PlanSeguro.id == plan_id, PlanSeguro.seguro_id == seguro_id, Seguro.tenant_id == tenant_id)
+    )
     plan = result.scalar_one_or_none()
     if not plan:
         return False

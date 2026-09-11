@@ -60,6 +60,10 @@ class TipoTrabajador(Base):
     nombre: Mapped[str] = mapped_column(String(255))
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Etapa de formación (residentes/internos) que este tipo de trabajador
+    # identifica de forma inequívoca, para validar personal en Creación de Roles.
+    # NULL = no determina por sí solo la categoría del rol (ej. Nombrado, CAS).
+    categoria_personal: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -136,6 +140,10 @@ class GrupoOcupacional(Base):
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     tipo_grupo_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Profesión, a efectos de validar qué personal puede agregarse a cada
+    # categoría de rol de turno (medicos/otros_profesionales/tecnicos).
+    # NULL = personal no clínico, no asignable a ninguna categoría de rol.
+    categoria_personal: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

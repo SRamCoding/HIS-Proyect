@@ -8,7 +8,7 @@ from app.tenants.entitlements import require_module_jwt
 
 router = APIRouter()
 
-MODULO_CODIGO = "telemedicina"
+MODULO_CODIGO = "telesalud"
 
 
 def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:

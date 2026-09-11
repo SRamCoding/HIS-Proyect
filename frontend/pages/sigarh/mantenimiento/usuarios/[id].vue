@@ -68,7 +68,14 @@
               <UIcon name="i-heroicons-lock-closed" class="input-icon" />
               <input v-model="form.password" type="password" class="input-clinical" placeholder="Dejar vacio para no cambiar" />
             </div>
-            <p class="field-hint">Solo completar si desea cambiar la contrasena</p>
+            <ul v-if="form.password" class="pwd-checklist">
+              <li :class="{ ok: pwdChecks.length }"><UIcon :name="pwdChecks.length ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> 8+ caracteres</li>
+              <li :class="{ ok: pwdChecks.lower }"><UIcon :name="pwdChecks.lower ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Minúscula</li>
+              <li :class="{ ok: pwdChecks.upper }"><UIcon :name="pwdChecks.upper ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Mayúscula</li>
+              <li :class="{ ok: pwdChecks.digit }"><UIcon :name="pwdChecks.digit ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Número</li>
+              <li :class="{ ok: pwdChecks.special }"><UIcon :name="pwdChecks.special ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Carácter especial</li>
+            </ul>
+            <p class="field-hint">Solo completar si desea cambiar la contrasena. Minimo 8 caracteres con mayúscula, minúscula, número y carácter especial.</p>
           </div>
 
           <div class="form-group">
@@ -158,9 +165,20 @@ const perfilSeleccionado = computed(() =>
   perfiles.value.find(p => p.id === form.perfil_id) || null
 )
 
+const pwdChecks = computed(() => ({
+  length: form.password.length >= 8,
+  lower: /[a-z]/.test(form.password),
+  upper: /[A-Z]/.test(form.password),
+  digit: /\d/.test(form.password),
+  special: /[^\w\s]/.test(form.password),
+}))
+
 const handleSave = async () => {
   if (!form.username.trim()) { error.value = 'El usuario es requerido'; return }
   if (!form.email.trim()) { error.value = 'El correo es requerido'; return }
+  if (form.password && !Object.values(pwdChecks.value).every(Boolean)) {
+    error.value = 'La contraseña no cumple los requisitos mínimos'; return
+  }
   saving.value = true
   error.value = ''
   try {
@@ -174,7 +192,7 @@ const handleSave = async () => {
     await api(`/sigarh/mantenimiento/usuarios/${id.value}`, { method: 'PATCH', body })
     router.push(`/sigarh/mantenimiento/usuarios?tenant=${tenantId.value}`)
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo guardar'
+    error.value = apiErr(e, 'No se pudo guardar')
   } finally {
     saving.value = false
   }
@@ -192,9 +210,32 @@ onMounted(async () => {
     form.is_active = data.is_active
     perfiles.value = perfilesData
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo cargar'
+    error.value = apiErr(e, 'No se pudo cargar')
   } finally {
     loading.value = false
   }
 })
 </script>
+
+<style scoped>
+.pwd-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.pwd-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  transition: color 0.15s ease;
+}
+.pwd-checklist li.ok {
+  color: var(--green, #16a34a);
+  font-weight: 600;
+}
+</style>

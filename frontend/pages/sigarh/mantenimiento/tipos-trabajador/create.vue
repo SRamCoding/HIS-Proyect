@@ -48,6 +48,18 @@
         </div>
 
         <div class="form-group full-width">
+          <label class="form-label">Categoría de rol de turno</label>
+          <div class="input-wrapper">
+            <UIcon name="i-heroicons-identification" class="input-icon" />
+            <select v-model="form.categoria_personal" class="input-clinical">
+              <option value="">No determina categoría (ej. Nombrado, CAS, Contrato)</option>
+              <option v-for="c in CATEGORIAS" :key="c.value" :value="c.value">{{ c.label }}</option>
+            </select>
+          </div>
+          <p class="field-hint">Marca esto solo si este tipo identifica por sí mismo una etapa de formación (Residentado, Internado). Al crear un rol de esa categoría, solo se podrá agregar personal con este tipo de trabajador.</p>
+        </div>
+
+        <div class="form-group full-width">
           <label class="form-label">Descripcion</label>
           <div class="input-wrapper">
             <UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" />
@@ -95,17 +107,24 @@ const router = useRouter()
 const tenantId = computed(() => route.query.tenant as string || '')
 const saving = ref(false)
 const error = ref('')
-const form = reactive({ nombre: '', codigo: '', descripcion: '', is_active: true })
+const CATEGORIAS = [
+  { value: 'medicos', label: 'Médicos' },
+  { value: 'otros_profesionales', label: 'Otros profesionales de la salud' },
+  { value: 'residentes', label: 'Residentes' },
+  { value: 'tecnicos', label: 'Técnicos y auxiliares' },
+  { value: 'internos', label: 'Internos' },
+]
+const form = reactive({ nombre: '', codigo: '', descripcion: '', categoria_personal: '', is_active: true })
 
 const handleCreate = async (createAnother: boolean) => {
   if (!form.nombre.trim()) { error.value = 'El nombre es requerido'; return }
   saving.value = true
   error.value = ''
   try {
-    await api('/sigarh/mantenimiento/tipos-trabajador', { method: 'POST', body: { ...form } })
-    if (createAnother) { Object.assign(form, { nombre: '', codigo: '', descripcion: '', is_active: true }) }
+    await api('/sigarh/mantenimiento/tipos-trabajador', { method: 'POST', body: { ...form, categoria_personal: form.categoria_personal || null } })
+    if (createAnother) { Object.assign(form, { nombre: '', codigo: '', descripcion: '', categoria_personal: '', is_active: true }) }
     else { router.push(`/sigarh/mantenimiento/tipos-trabajador?tenant=${tenantId.value}`) }
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear') }
   finally { saving.value = false }
 }
 </script>

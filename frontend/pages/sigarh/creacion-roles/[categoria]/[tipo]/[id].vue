@@ -73,7 +73,7 @@ const cargar = async () => {
     const data = await api<any>(`/sigarh/creacion-roles/roles/${id.value}`)
     rol.value = data
     const [pd, acts, hors] = await Promise.all([
-      api<any[]>(`/sigarh/creacion-roles/personal-disponible?servicio_id=${data.servicio_id || ''}`).catch(() => []),
+      api<any[]>(`/sigarh/creacion-roles/personal-disponible?servicio_id=${data.servicio_id || ''}&rol_id=${id.value}`).catch(() => []),
       api<any[]>('/sigarh/mantenimiento/actividades').catch(() => []),
       api<any[]>('/sigarh/mantenimiento/horarios-guardia').catch(() => []),
     ])

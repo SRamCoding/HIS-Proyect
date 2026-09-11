@@ -10,8 +10,14 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.sigarh.rrhh.models import Empleado, RegistroAsistencia, Justificacion
-from app.sigarh.movimientos.models import Vacacion, Licencia, CambioTurno, Papeleta
+from app.sigarh.movimientos.models import CambioTurno, Papeleta
 from app.sigarh.infraestructura_hosp.models import Cama
+
+# Vacaciones y licencias no tienen tabla propia en uso: "Tramitar Licencia" y
+# "Justificación y Vacaciones" (movimientos) escriben en sigarh_justificaciones
+# (rrhh), discriminando por `tipo`. Las clases Vacacion/Licencia de
+# movimientos.models existen pero nunca reciben datos — leerlas aquí hacía que
+# estos KPIs mostraran siempre 0 aunque hubiera vacaciones/licencias reales.
 
 MESES_ES = ["ene", "feb", "mar", "abr", "may", "jun",
             "jul", "ago", "sep", "oct", "nov", "dic"]
@@ -83,12 +89,14 @@ async def get_dashboard(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
     ))
     porcentaje_asistencia = round(asistencia_hoy / empleados_activos * 100, 1) if empleados_activos else 0.0
 
+    def justif(tipo, *extra):
+        return select(func.count(Justificacion.id)).where(
+            Justificacion.tenant_id == tenant_id, Justificacion.tipo == tipo, *extra)
+
     # ── Movimientos del mes ─────────────────────────────────────────────────
     mov_mes = {
-        "vacaciones": await _count(db, select(func.count(Vacacion.id)).where(
-            Vacacion.tenant_id == tenant_id, Vacacion.fecha_inicio >= inicio_mes)),
-        "licencias": await _count(db, select(func.count(Licencia.id)).where(
-            Licencia.tenant_id == tenant_id, Licencia.fecha_tramite >= inicio_mes)),
+        "vacaciones": await _count(db, justif("vacacion", Justificacion.fecha_inicio >= inicio_mes)),
+        "licencias": await _count(db, justif("licencia", Justificacion.fecha_tramite >= inicio_mes)),
         "papeletas": await _count(db, select(func.count(Papeleta.id)).where(
             Papeleta.tenant_id == tenant_id, Papeleta.fecha_tramite >= inicio_mes)),
         "cambios_turno": await _count(db, select(func.count(CambioTurno.id)).where(
@@ -97,10 +105,8 @@ async def get_dashboard(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
 
     # ── Pendientes (alertas) ────────────────────────────────────────────────
     pendientes = {
-        "vacaciones": await _count(db, select(func.count(Vacacion.id)).where(
-            Vacacion.tenant_id == tenant_id, Vacacion.estado == "pendiente")),
-        "licencias": await _count(db, select(func.count(Licencia.id)).where(
-            Licencia.tenant_id == tenant_id, Licencia.estado == "pendiente")),
+        "vacaciones": await _count(db, justif("vacacion", Justificacion.estado == "pendiente")),
+        "licencias": await _count(db, justif("licencia", Justificacion.estado == "pendiente")),
         "papeletas": await _count(db, select(func.count(Papeleta.id)).where(
             Papeleta.tenant_id == tenant_id, Papeleta.estado == "pendiente")),
         "cambios_turno": await _count(db, select(func.count(CambioTurno.id)).where(
@@ -122,17 +128,17 @@ async def get_dashboard(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
     camas_res = await _count(db, cama(Cama.estado == "RESERVADA"))
 
     # ── Empleados por estado (en vacaciones / licencia hoy) ─────────────────
-    en_vacaciones = await _count(db, select(func.count(func.distinct(Vacacion.empleado_id))).where(
-        Vacacion.tenant_id == tenant_id,
-        Vacacion.estado == "aprobado",
-        Vacacion.fecha_inicio <= hoy,
-        Vacacion.fecha_fin >= hoy,
+    en_vacaciones = await _count(db, select(func.count(func.distinct(Justificacion.empleado_id))).where(
+        Justificacion.tenant_id == tenant_id, Justificacion.tipo == "vacacion",
+        Justificacion.estado == "aprobado",
+        Justificacion.fecha_inicio <= hoy,
+        Justificacion.fecha_fin >= hoy,
     ))
-    en_licencia = await _count(db, select(func.count(func.distinct(Licencia.empleado_id))).where(
-        Licencia.tenant_id == tenant_id,
-        Licencia.estado == "aprobado",
-        Licencia.fecha_inicio <= hoy,
-        Licencia.fecha_fin >= hoy,
+    en_licencia = await _count(db, select(func.count(func.distinct(Justificacion.empleado_id))).where(
+        Justificacion.tenant_id == tenant_id, Justificacion.tipo == "licencia",
+        Justificacion.estado == "aprobado",
+        Justificacion.fecha_inicio <= hoy,
+        Justificacion.fecha_fin >= hoy,
     ))
 
     # ── Serie: empleados dados de alta por mes (últimos 6) ──────────────────
@@ -147,10 +153,8 @@ async def get_dashboard(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
     # ── Serie: tendencia de solicitudes por mes (últimos 6) ────────────────
     tendencias_solicitudes = []
     for inicio, fin in _rango_meses(hoy, 6):
-        v = await _count(db, select(func.count(Vacacion.id)).where(
-            Vacacion.tenant_id == tenant_id, Vacacion.fecha_inicio >= inicio, Vacacion.fecha_inicio < fin))
-        l = await _count(db, select(func.count(Licencia.id)).where(
-            Licencia.tenant_id == tenant_id, Licencia.fecha_tramite >= inicio, Licencia.fecha_tramite < fin))
+        v = await _count(db, justif("vacacion", Justificacion.fecha_inicio >= inicio, Justificacion.fecha_inicio < fin))
+        l = await _count(db, justif("licencia", Justificacion.fecha_tramite >= inicio, Justificacion.fecha_tramite < fin))
         p = await _count(db, select(func.count(Papeleta.id)).where(
             Papeleta.tenant_id == tenant_id, Papeleta.fecha_tramite >= inicio, Papeleta.fecha_tramite < fin))
         c = await _count(db, select(func.count(CambioTurno.id)).where(
@@ -181,10 +185,10 @@ async def get_dashboard(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
 
     # ── Actividad reciente ────────────────────────────────────────────────
     res_vac = await db.execute(
-        select(Vacacion, Empleado)
-        .join(Empleado, Empleado.id == Vacacion.empleado_id)
-        .where(Vacacion.tenant_id == tenant_id)
-        .order_by(Vacacion.created_at.desc()).limit(5)
+        select(Justificacion, Empleado)
+        .join(Empleado, Empleado.id == Justificacion.empleado_id)
+        .where(Justificacion.tenant_id == tenant_id, Justificacion.tipo == "vacacion")
+        .order_by(Justificacion.created_at.desc()).limit(5)
     )
     ultimas_vacaciones = [
         {
@@ -199,10 +203,10 @@ async def get_dashboard(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
     ]
 
     res_lic = await db.execute(
-        select(Licencia, Empleado)
-        .join(Empleado, Empleado.id == Licencia.empleado_id)
-        .where(Licencia.tenant_id == tenant_id)
-        .order_by(Licencia.created_at.desc()).limit(5)
+        select(Justificacion, Empleado)
+        .join(Empleado, Empleado.id == Justificacion.empleado_id)
+        .where(Justificacion.tenant_id == tenant_id, Justificacion.tipo == "licencia")
+        .order_by(Justificacion.created_at.desc()).limit(5)
     )
     ultimas_licencias = [
         {
