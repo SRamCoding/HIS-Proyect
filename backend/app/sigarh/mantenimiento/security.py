@@ -59,7 +59,26 @@ async def contexto_sigarh(db, usuario, hospital=None):
         raise HTTPException(403, "El grupo ocupacional no está autorizado por el rol")
     if rol.modulo_requerido and rol.modulo_requerido not in habilitados:
         raise HTTPException(403, "El módulo requerido por el rol no está habilitado")
-    modulos = sorted(set(lista(perfil.modulos_acceso)) & set(lista(rol.modulos_permitidos)) & habilitados)
+    # tenant_modules (habilitados) solo guarda módulos completos: un código de
+    # submódulo (ej. "sigarh_recursos_humanos.empleados") cuenta como habilitado
+    # si el hospital contrató su módulo padre, aunque el string exacto no calce.
+    #
+    # El cruce Perfil×Rol tampoco puede ser una interseccion exacta de strings:
+    # si el Rol tiene un submódulo puntual ("...empleados") y el Perfil tiene
+    # el módulo padre completo ("sigarh_recursos_humanos"), un "&" de sets
+    # entre esos dos códigos distintos da vacío y el permiso desaparece en
+    # silencio. permiso_incluye() ya sabe que el código padre cubre a sus
+    # hijos; se usa para verificar, código por código, que AMBOS lados (rol y
+    # perfil) —cada uno leído como conjunto de wildcards— cubren ese código.
+    from app.tenants.modulos.submodulos import modulo_padre, permiso_incluye
+    concedidos_perfil = set(lista(perfil.modulos_acceso))
+    concedidos_rol = set(lista(rol.modulos_permitidos))
+    candidatos = concedidos_perfil | concedidos_rol
+    modulos = sorted(
+        c for c in candidatos
+        if permiso_incluye(concedidos_rol, c) and permiso_incluye(concedidos_perfil, c)
+        and modulo_padre(c) in habilitados
+    )
     return {
         "sub": str(usuario.id), "email": usuario.email, "name": usuario.username,
         "role": "sigarh", "panel": "sigarh", "tenant_id": str(usuario.tenant_id),

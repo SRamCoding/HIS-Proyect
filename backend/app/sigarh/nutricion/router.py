@@ -14,6 +14,10 @@ from app.sigarh.nutricion.schemas import (
 from app.sigarh.nutricion import service
 
 router = APIRouter()
+_MOD_RACIONES = require_module_jwt("sigarh_nutricion.raciones")
+_MOD_ENTREGA = require_module_jwt("sigarh_nutricion.entrega")
+_MOD_REPORTES = require_module_jwt("sigarh_nutricion.reportes")
+_MOD_CAMBIO_TURNO = require_module_jwt("sigarh_nutricion.cambio_turno")
 
 
 def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
@@ -29,7 +33,7 @@ def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
 async def listar_raciones(
     request: Request, fecha: date | None = None,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_nutricion")),
+    tenant=Depends(_MOD_RACIONES),
     current_user: dict = Depends(get_current_user),
 ):
     return await service.listar_raciones(db, get_tenant_id(current_user, request), fecha)
@@ -39,7 +43,7 @@ async def listar_raciones(
 async def crear_racion(
     request: Request, data: RacionNutricionCreate,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_nutricion")),
+    tenant=Depends(_MOD_RACIONES),
     current_user: dict = Depends(get_current_user),
 ):
     return await service.crear_racion(db, get_tenant_id(current_user, request), data)
@@ -49,7 +53,7 @@ async def crear_racion(
 async def buscar_racion(
     request: Request, data: BuscarRacionRequest,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_nutricion")),
+    tenant=Depends(_MOD_RACIONES),
     current_user: dict = Depends(get_current_user),
 ):
     return await service.buscar_racion_por_dni(db, get_tenant_id(current_user, request), data.dni, data.fecha)
@@ -59,7 +63,7 @@ async def buscar_racion(
 async def actualizar_racion(
     request: Request, id: uuid.UUID, data: RacionNutricionUpdate,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_nutricion")),
+    tenant=Depends(_MOD_RACIONES),
     current_user: dict = Depends(get_current_user),
 ):
     item = await service.actualizar_racion(db, id, get_tenant_id(current_user, request), data)
@@ -72,7 +76,7 @@ async def actualizar_racion(
 async def entregar_racion(
     request: Request, id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_nutricion")),
+    tenant=Depends(_MOD_ENTREGA),
     current_user: dict = Depends(get_current_user),
 ):
     item = await service.entregar_racion(db, id, get_tenant_id(current_user, request))
@@ -85,7 +89,7 @@ async def entregar_racion(
 async def eliminar_racion(
     request: Request, id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_nutricion")),
+    tenant=Depends(_MOD_RACIONES),
     current_user: dict = Depends(get_current_user),
 ):
     ok = await service.eliminar_racion(db, id, get_tenant_id(current_user, request))
@@ -99,7 +103,7 @@ async def eliminar_racion(
 async def reporte_raciones(
     request: Request, fecha: date,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_nutricion")),
+    tenant=Depends(_MOD_REPORTES),
     current_user: dict = Depends(get_current_user),
 ):
     return await service.reporte_por_fecha(db, get_tenant_id(current_user, request), fecha)
@@ -111,7 +115,7 @@ async def reporte_raciones(
 async def listar_cambios_turno(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_nutricion")),
+    tenant=Depends(_MOD_CAMBIO_TURNO),
     current_user: dict = Depends(get_current_user),
 ):
     return await service.listar_cambios_turno(db, get_tenant_id(current_user, request))
@@ -121,7 +125,7 @@ async def listar_cambios_turno(
 async def crear_cambio_turno(
     request: Request, data: CambioTurnoNutricionCreate,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_nutricion")),
+    tenant=Depends(_MOD_CAMBIO_TURNO),
     current_user: dict = Depends(get_current_user),
 ):
     return await service.crear_cambio_turno(db, get_tenant_id(current_user, request), data)
@@ -131,7 +135,7 @@ async def crear_cambio_turno(
 async def eliminar_cambio_turno(
     request: Request, id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_nutricion")),
+    tenant=Depends(_MOD_CAMBIO_TURNO),
     current_user: dict = Depends(get_current_user),
 ):
     ok = await service.eliminar_cambio_turno(db, id, get_tenant_id(current_user, request))

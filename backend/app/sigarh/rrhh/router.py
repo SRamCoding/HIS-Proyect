@@ -19,7 +19,16 @@ from app.sigarh.rrhh.schemas import (
 from app.sigarh.rrhh import service as svc
 
 router = APIRouter()
-_MOD = require_module_jwt("sigarh_recursos_humanos")
+# Un rol con el código completo "sigarh_recursos_humanos" sigue teniendo acceso
+# a todo (ver permiso_incluye en app/tenants/modulos/submodulos.py); un rol más
+# fino puede limitarse a uno solo de estos submódulos.
+_MOD_EMPLEADOS = require_module_jwt("sigarh_recursos_humanos.empleados")
+_MOD_ESPECIALIDADES = require_module_jwt("sigarh_recursos_humanos.especialidades")
+_MOD_FERIADOS = require_module_jwt("sigarh_recursos_humanos.feriados")
+_MOD_MOTIVOS = require_module_jwt("sigarh_recursos_humanos.motivos_justificacion")
+_MOD_TOLERANCIAS = require_module_jwt("sigarh_recursos_humanos.tolerancias")
+_MOD_ASISTENCIA = require_module_jwt("sigarh_recursos_humanos.asistencia")
+_MOD_JUSTIFICACIONES = require_module_jwt("sigarh_recursos_humanos.justificaciones")
 
 
 def _tid(current_user: dict, request: Request) -> uuid.UUID:
@@ -40,12 +49,12 @@ def _rn(e: svc.ReglaNegocioError):
 # ─── Empleados ────────────────────────────────────────────────────────────────
 
 @router.get("/empleados", response_model=list[EmpleadoListItem])
-async def listar(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def listar(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     return await svc.listar_empleados(db, _tid(current_user, request))
 
 
 @router.post("/empleados", response_model=EmpleadoResponse, status_code=201)
-async def crear(request: Request, data: EmpleadoCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def crear(request: Request, data: EmpleadoCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     tid = _tid(current_user, request)
     if await svc.obtener_empleado_por_dni(db, data.dni, tid):
         raise HTTPException(400, detail=f"Ya existe un empleado con DNI {data.dni}")
@@ -56,12 +65,12 @@ async def crear(request: Request, data: EmpleadoCreate, db: AsyncSession = Depen
 
 
 @router.get("/empleados/buscar-dni/{dni}", response_model=EmpleadoResponse | None)
-async def buscar_por_dni(request: Request, dni: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def buscar_por_dni(request: Request, dni: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     return await svc.obtener_empleado_por_dni(db, dni, _tid(current_user, request))
 
 
 @router.get("/dni-lookup/{dni}", summary="Consultar DNI en el servicio externo (autocompletado)")
-async def dni_lookup(dni: str, tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def dni_lookup(dni: str, tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     from app.shared.dni import lookup_dni_externo
     if not dni.isdigit() or len(dni) != 8:
         raise HTTPException(400, detail="El DNI debe tener 8 dígitos numéricos")
@@ -76,25 +85,25 @@ async def dni_lookup(dni: str, tenant=Depends(_MOD), current_user: dict = Depend
 
 
 @router.get("/ubigeo/departamentos", summary="Catálogo ubigeo: departamentos")
-async def ubigeo_departamentos(db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def ubigeo_departamentos(db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     from app.shared.ubigeo.service import get_departamentos
     return [{"id": d.id, "nombre": d.nombre} for d in await get_departamentos(db)]
 
 
 @router.get("/ubigeo/provincias/{departamento_id}", summary="Catálogo ubigeo: provincias de un departamento")
-async def ubigeo_provincias(departamento_id: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def ubigeo_provincias(departamento_id: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     from app.shared.ubigeo.service import get_provincias
     return [{"id": p.id, "nombre": p.nombre} for p in await get_provincias(db, departamento_id)]
 
 
 @router.get("/ubigeo/distritos/{provincia_id}", summary="Catálogo ubigeo: distritos de una provincia")
-async def ubigeo_distritos(provincia_id: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def ubigeo_distritos(provincia_id: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     from app.shared.ubigeo.service import get_distritos
     return [{"id": d.id, "nombre": d.nombre} for d in await get_distritos(db, provincia_id)]
 
 
 @router.get("/empleados/{id}", response_model=EmpleadoResponse)
-async def obtener(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def obtener(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     emp = await svc.obtener_empleado(db, id, _tid(current_user, request))
     if not emp:
         raise HTTPException(404, detail="Empleado no encontrado")
@@ -102,7 +111,7 @@ async def obtener(request: Request, id: uuid.UUID, db: AsyncSession = Depends(ge
 
 
 @router.patch("/empleados/{id}", response_model=EmpleadoResponse)
-async def actualizar(request: Request, id: uuid.UUID, data: EmpleadoUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def actualizar(request: Request, id: uuid.UUID, data: EmpleadoUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     try:
         emp = await svc.actualizar_empleado(db, id, _tid(current_user, request), data)
     except svc.ReglaNegocioError as e:
@@ -113,7 +122,7 @@ async def actualizar(request: Request, id: uuid.UUID, data: EmpleadoUpdate, db: 
 
 
 @router.delete("/empleados/{id}")
-async def eliminar(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def eliminar(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     ok = await svc.eliminar_empleado(db, id, _tid(current_user, request))
     if not ok:
         raise HTTPException(404, detail="Empleado no encontrado")
@@ -123,12 +132,12 @@ async def eliminar(request: Request, id: uuid.UUID, db: AsyncSession = Depends(g
 # ─── Especialidades del empleado ──────────────────────────────────────────────
 
 @router.post("/empleados/{empleado_id}/especialidades", response_model=EmpleadoEspecialidadResponse, status_code=201)
-async def agregar_esp(request: Request, empleado_id: uuid.UUID, data: EmpleadoEspecialidadCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def agregar_esp(request: Request, empleado_id: uuid.UUID, data: EmpleadoEspecialidadCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     return await svc.agregar_especialidad(db, empleado_id, data)
 
 
 @router.delete("/empleados/{empleado_id}/especialidades/{id}")
-async def eliminar_esp(request: Request, empleado_id: uuid.UUID, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def eliminar_esp(request: Request, empleado_id: uuid.UUID, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     if not await svc.eliminar_especialidad(db, id):
         raise HTTPException(404, detail="Especialidad no encontrada")
     return {"ok": True}
@@ -137,17 +146,17 @@ async def eliminar_esp(request: Request, empleado_id: uuid.UUID, id: uuid.UUID, 
 # ─── Catálogo de Especialidades ───────────────────────────────────────────────
 
 @router.get("/especialidades", response_model=list[EspecialidadResponse])
-async def listar_esp(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def listar_esp(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ESPECIALIDADES), current_user: dict = Depends(get_current_user)):
     return await svc.listar_especialidades(db, _tid(current_user, request))
 
 
 @router.post("/especialidades", response_model=EspecialidadResponse, status_code=201)
-async def crear_esp(request: Request, data: EspecialidadCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def crear_esp(request: Request, data: EspecialidadCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ESPECIALIDADES), current_user: dict = Depends(get_current_user)):
     return await svc.crear_especialidad(db, _tid(current_user, request), data)
 
 
 @router.get("/especialidades/{id}", response_model=EspecialidadResponse)
-async def obtener_esp(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def obtener_esp(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ESPECIALIDADES), current_user: dict = Depends(get_current_user)):
     tid = _tid(current_user, request)
     items = await svc.listar_especialidades(db, tid)
     esp = next((e for e in items if str(e["id"]) == str(id)), None)
@@ -157,7 +166,7 @@ async def obtener_esp(request: Request, id: uuid.UUID, db: AsyncSession = Depend
 
 
 @router.patch("/especialidades/{id}", response_model=EspecialidadResponse)
-async def actualizar_esp(request: Request, id: uuid.UUID, data: EspecialidadUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def actualizar_esp(request: Request, id: uuid.UUID, data: EspecialidadUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ESPECIALIDADES), current_user: dict = Depends(get_current_user)):
     esp = await svc.actualizar_especialidad(db, id, _tid(current_user, request), data)
     if not esp:
         raise HTTPException(404, detail="Especialidad no encontrada")
@@ -165,7 +174,7 @@ async def actualizar_esp(request: Request, id: uuid.UUID, data: EspecialidadUpda
 
 
 @router.delete("/especialidades/{id}")
-async def eliminar_esp_cat(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def eliminar_esp_cat(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ESPECIALIDADES), current_user: dict = Depends(get_current_user)):
     try:
         ok = await svc.eliminar_especialidad_catalogo(db, id, _tid(current_user, request))
     except svc.ReglaNegocioError as e:
@@ -178,17 +187,17 @@ async def eliminar_esp_cat(request: Request, id: uuid.UUID, db: AsyncSession = D
 # ─── Días Feriados ────────────────────────────────────────────────────────────
 
 @router.get("/feriados", response_model=list[DiasFeriadoResponse])
-async def listar_fer(request: Request, anio: int | None = None, mes: int | None = None, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def listar_fer(request: Request, anio: int | None = None, mes: int | None = None, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_FERIADOS), current_user: dict = Depends(get_current_user)):
     return await svc.listar_feriados(db, _tid(current_user, request), anio, mes)
 
 
 @router.post("/feriados", response_model=DiasFeriadoResponse, status_code=201)
-async def crear_fer(request: Request, data: DiasFeriadoCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def crear_fer(request: Request, data: DiasFeriadoCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_FERIADOS), current_user: dict = Depends(get_current_user)):
     return await svc.crear_feriado(db, _tid(current_user, request), data)
 
 
 @router.get("/feriados/{id}", response_model=DiasFeriadoResponse)
-async def obtener_fer(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def obtener_fer(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_FERIADOS), current_user: dict = Depends(get_current_user)):
     items = await svc.listar_feriados(db, _tid(current_user, request))
     fer = next((f for f in items if str(f.id) == str(id)), None)
     if not fer:
@@ -197,7 +206,7 @@ async def obtener_fer(request: Request, id: uuid.UUID, db: AsyncSession = Depend
 
 
 @router.patch("/feriados/{id}", response_model=DiasFeriadoResponse)
-async def actualizar_fer(request: Request, id: uuid.UUID, data: DiasFeriadoUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def actualizar_fer(request: Request, id: uuid.UUID, data: DiasFeriadoUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_FERIADOS), current_user: dict = Depends(get_current_user)):
     fer = await svc.actualizar_feriado(db, id, _tid(current_user, request), data)
     if not fer:
         raise HTTPException(404, detail="Feriado no encontrado")
@@ -205,7 +214,7 @@ async def actualizar_fer(request: Request, id: uuid.UUID, data: DiasFeriadoUpdat
 
 
 @router.delete("/feriados/{id}")
-async def eliminar_fer(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def eliminar_fer(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_FERIADOS), current_user: dict = Depends(get_current_user)):
     if not await svc.eliminar_feriado(db, id, _tid(current_user, request)):
         raise HTTPException(404, detail="Feriado no encontrado")
     return {"ok": True}
@@ -214,17 +223,17 @@ async def eliminar_fer(request: Request, id: uuid.UUID, db: AsyncSession = Depen
 # ─── Motivos Justificación ────────────────────────────────────────────────────
 
 @router.get("/motivos-justificacion", response_model=list[MotivoJustificacionResponse])
-async def listar_mot(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def listar_mot(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_MOTIVOS), current_user: dict = Depends(get_current_user)):
     return await svc.listar_motivos(db, _tid(current_user, request))
 
 
 @router.post("/motivos-justificacion", response_model=MotivoJustificacionResponse, status_code=201)
-async def crear_mot(request: Request, data: MotivoJustificacionCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def crear_mot(request: Request, data: MotivoJustificacionCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_MOTIVOS), current_user: dict = Depends(get_current_user)):
     return await svc.crear_motivo(db, _tid(current_user, request), data)
 
 
 @router.get("/motivos-justificacion/{id}", response_model=MotivoJustificacionResponse)
-async def obtener_mot(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def obtener_mot(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_MOTIVOS), current_user: dict = Depends(get_current_user)):
     items = await svc.listar_motivos(db, _tid(current_user, request))
     mot = next((m for m in items if str(m["id"]) == str(id)), None)
     if not mot:
@@ -233,7 +242,7 @@ async def obtener_mot(request: Request, id: uuid.UUID, db: AsyncSession = Depend
 
 
 @router.patch("/motivos-justificacion/{id}", response_model=MotivoJustificacionResponse)
-async def actualizar_mot(request: Request, id: uuid.UUID, data: MotivoJustificacionUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def actualizar_mot(request: Request, id: uuid.UUID, data: MotivoJustificacionUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_MOTIVOS), current_user: dict = Depends(get_current_user)):
     mot = await svc.actualizar_motivo(db, id, _tid(current_user, request), data)
     if not mot:
         raise HTTPException(404, detail="Motivo no encontrado")
@@ -241,7 +250,7 @@ async def actualizar_mot(request: Request, id: uuid.UUID, data: MotivoJustificac
 
 
 @router.delete("/motivos-justificacion/{id}")
-async def eliminar_mot(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def eliminar_mot(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_MOTIVOS), current_user: dict = Depends(get_current_user)):
     try:
         ok = await svc.eliminar_motivo(db, id, _tid(current_user, request))
     except svc.ReglaNegocioError as e:
@@ -254,17 +263,17 @@ async def eliminar_mot(request: Request, id: uuid.UUID, db: AsyncSession = Depen
 # ─── Tolerancias ──────────────────────────────────────────────────────────────
 
 @router.get("/tolerancias", response_model=list[ToleranciaResponse])
-async def listar_tol(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def listar_tol(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_TOLERANCIAS), current_user: dict = Depends(get_current_user)):
     return await svc.listar_tolerancias(db, _tid(current_user, request))
 
 
 @router.post("/tolerancias", response_model=ToleranciaResponse, status_code=201)
-async def crear_tol(request: Request, data: ToleranciaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def crear_tol(request: Request, data: ToleranciaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_TOLERANCIAS), current_user: dict = Depends(get_current_user)):
     return await svc.crear_tolerancia(db, _tid(current_user, request), data)
 
 
 @router.get("/tolerancias/{id}", response_model=ToleranciaResponse)
-async def obtener_tol(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def obtener_tol(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_TOLERANCIAS), current_user: dict = Depends(get_current_user)):
     items = await svc.listar_tolerancias(db, _tid(current_user, request))
     tol = next((t for t in items if str(t["id"]) == str(id)), None)
     if not tol:
@@ -273,7 +282,7 @@ async def obtener_tol(request: Request, id: uuid.UUID, db: AsyncSession = Depend
 
 
 @router.patch("/tolerancias/{id}", response_model=ToleranciaResponse)
-async def actualizar_tol(request: Request, id: uuid.UUID, data: ToleranciaUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def actualizar_tol(request: Request, id: uuid.UUID, data: ToleranciaUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_TOLERANCIAS), current_user: dict = Depends(get_current_user)):
     tol = await svc.actualizar_tolerancia(db, id, _tid(current_user, request), data)
     if not tol:
         raise HTTPException(404, detail="Tolerancia no encontrada")
@@ -281,7 +290,7 @@ async def actualizar_tol(request: Request, id: uuid.UUID, data: ToleranciaUpdate
 
 
 @router.delete("/tolerancias/{id}")
-async def eliminar_tol(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def eliminar_tol(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_TOLERANCIAS), current_user: dict = Depends(get_current_user)):
     if not await svc.eliminar_tolerancia(db, id, _tid(current_user, request)):
         raise HTTPException(404, detail="Tolerancia no encontrada")
     return {"ok": True}
@@ -298,7 +307,7 @@ async def listar_asis(
     desde: date | None = None,
     hasta: date | None = None,
     solo_tardanza: bool = False,
-    db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ASISTENCIA), current_user: dict = Depends(get_current_user),
 ):
     return await svc.listar_asistencia(
         db, _tid(current_user, request), fecha, empleado_id, grupo_ocupacional_id, desde, hasta, solo_tardanza,
@@ -306,12 +315,12 @@ async def listar_asis(
 
 
 @router.post("/asistencia", response_model=RegistroAsistenciaResponse, status_code=201)
-async def crear_asis(request: Request, data: RegistroAsistenciaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def crear_asis(request: Request, data: RegistroAsistenciaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ASISTENCIA), current_user: dict = Depends(get_current_user)):
     return await svc.crear_asistencia(db, _tid(current_user, request), data, _nombre(current_user))
 
 
 @router.get("/asistencia/{id}", response_model=RegistroAsistenciaResponse)
-async def obtener_asis(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def obtener_asis(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ASISTENCIA), current_user: dict = Depends(get_current_user)):
     tid = _tid(current_user, request)
     r = await svc._asis_orm(db, id, tid)
     if not r:
@@ -320,7 +329,7 @@ async def obtener_asis(request: Request, id: uuid.UUID, db: AsyncSession = Depen
 
 
 @router.patch("/asistencia/{id}", response_model=RegistroAsistenciaResponse)
-async def actualizar_asis(request: Request, id: uuid.UUID, data: RegistroAsistenciaUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def actualizar_asis(request: Request, id: uuid.UUID, data: RegistroAsistenciaUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ASISTENCIA), current_user: dict = Depends(get_current_user)):
     r = await svc.actualizar_asistencia(db, id, _tid(current_user, request), data)
     if not r:
         raise HTTPException(404, detail="Registro no encontrado")
@@ -328,7 +337,7 @@ async def actualizar_asis(request: Request, id: uuid.UUID, data: RegistroAsisten
 
 
 @router.delete("/asistencia/{id}")
-async def eliminar_asis(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def eliminar_asis(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ASISTENCIA), current_user: dict = Depends(get_current_user)):
     if not await svc.eliminar_asistencia(db, id, _tid(current_user, request)):
         raise HTTPException(404, detail="Registro no encontrado")
     return {"ok": True}
@@ -345,18 +354,18 @@ async def listar_just(
     tipo: str | None = None,
     desde: date | None = None,
     hasta: date | None = None,
-    db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_JUSTIFICACIONES), current_user: dict = Depends(get_current_user),
 ):
     return await svc.listar_justificaciones(db, _tid(current_user, request), empleado_id, estado, motivo_id, tipo, desde, hasta)
 
 
 @router.post("/justificaciones", response_model=JustificacionResponse, status_code=201)
-async def crear_just(request: Request, data: JustificacionCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def crear_just(request: Request, data: JustificacionCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_JUSTIFICACIONES), current_user: dict = Depends(get_current_user)):
     return await svc.crear_justificacion(db, _tid(current_user, request), data, _nombre(current_user))
 
 
 @router.post("/justificaciones/{id}/aprobar", response_model=JustificacionResponse)
-async def aprobar_just(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def aprobar_just(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_JUSTIFICACIONES), current_user: dict = Depends(get_current_user)):
     try:
         j = await svc.decidir_justificacion(db, id, _tid(current_user, request), True, _nombre(current_user))
     except svc.ReglaNegocioError as e:
@@ -367,7 +376,7 @@ async def aprobar_just(request: Request, id: uuid.UUID, db: AsyncSession = Depen
 
 
 @router.post("/justificaciones/{id}/rechazar", response_model=JustificacionResponse)
-async def rechazar_just(request: Request, id: uuid.UUID, data: JustificacionDecision, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def rechazar_just(request: Request, id: uuid.UUID, data: JustificacionDecision, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_JUSTIFICACIONES), current_user: dict = Depends(get_current_user)):
     try:
         j = await svc.decidir_justificacion(db, id, _tid(current_user, request), False, _nombre(current_user), data.motivo_rechazo)
     except svc.ReglaNegocioError as e:
@@ -378,7 +387,7 @@ async def rechazar_just(request: Request, id: uuid.UUID, data: JustificacionDeci
 
 
 @router.get("/justificaciones/{id}", response_model=JustificacionResponse)
-async def obtener_just(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def obtener_just(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_JUSTIFICACIONES), current_user: dict = Depends(get_current_user)):
     tid = _tid(current_user, request)
     j = await svc._just_orm(db, id, tid)
     if not j:
@@ -387,7 +396,7 @@ async def obtener_just(request: Request, id: uuid.UUID, db: AsyncSession = Depen
 
 
 @router.patch("/justificaciones/{id}", response_model=JustificacionResponse)
-async def actualizar_just(request: Request, id: uuid.UUID, data: JustificacionUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def actualizar_just(request: Request, id: uuid.UUID, data: JustificacionUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_JUSTIFICACIONES), current_user: dict = Depends(get_current_user)):
     j = await svc.actualizar_justificacion(db, id, _tid(current_user, request), data)
     if not j:
         raise HTTPException(404, detail="Justificación no encontrada")
@@ -395,7 +404,7 @@ async def actualizar_just(request: Request, id: uuid.UUID, data: JustificacionUp
 
 
 @router.delete("/justificaciones/{id}")
-async def eliminar_just(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def eliminar_just(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_JUSTIFICACIONES), current_user: dict = Depends(get_current_user)):
     if not await svc.eliminar_justificacion(db, id, _tid(current_user, request)):
         raise HTTPException(404, detail="Justificación no encontrada")
     return {"ok": True}

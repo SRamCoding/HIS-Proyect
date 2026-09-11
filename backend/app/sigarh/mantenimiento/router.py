@@ -26,21 +26,35 @@ def get_tenant_id(user, request):
 
 async def autorizar(request, db, user, recurso, escritura=False):
     tid = get_tenant_id(user, request)
-    hospital = await db.scalar(select(Tenant.id).where(Tenant.id == tid, Tenant.is_active.is_(True)))
-    modulo = await db.scalar(select(TenantModule.id).where(
-        TenantModule.tenant_id == tid, TenantModule.module_code == "sigarh_mantenimiento", TenantModule.is_active.is_(True),
-    ))
+    # Tenant/TenantModule son catálogos centrales; nunca viven en la BD
+    # física del tenant (que es lo que trae `db` para rutas /sigarh/*, ver
+    # core/database.py), así que se consultan en su propia sesión central.
+    from app.core.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as central:
+        hospital = await central.scalar(select(Tenant.id).where(Tenant.id == tid, Tenant.is_active.is_(True)))
+        modulo = await central.scalar(select(TenantModule.id).where(
+            TenantModule.tenant_id == tid, TenantModule.module_code == "sigarh_mantenimiento", TenantModule.is_active.is_(True),
+        ))
     if not hospital or not modulo:
         raise HTTPException(403, "Hospital o módulo Mantenimiento inactivo")
     if not es_admin_erp(user):
         if user.get("panel") != "sigarh" or not user.get("active_modules"):
             raise HTTPException(403, "Acceso restringido a SIGARH")
-        if recurso in svc.SEGURIDAD:
+        # Usuarios/Perfiles/Roles del Sistema: ver la lista solo requiere el
+        # submódulo (como cualquier otro catálogo); crear/editar/eliminar sí
+        # exige el permiso de acción "administrar_seguridad" — antes bloqueaba
+        # incluso la lectura, dejando a un rol con el submódulo pero sin el
+        # permiso de acción sin poder ver nada.
+        if recurso in svc.SEGURIDAD and escritura:
             exigir_permiso(user, "administrar_seguridad")
         elif escritura:
             exigir_permiso(user, "administrar_mantenimiento")
         if escritura or recurso in svc.SEGURIDAD:
-            if "sigarh_mantenimiento" not in user.get("active_modules", []):
+            from app.tenants.modulos.submodulos import modulo_padre
+            tiene_mantenimiento = any(
+                modulo_padre(c) == "sigarh_mantenimiento" for c in user.get("active_modules", [])
+            )
+            if not tiene_mantenimiento:
                 raise HTTPException(403, "Su perfil no permite Mantenimiento")
     return tid
 
@@ -52,9 +66,13 @@ def ip(request):
 # Rutas auxiliares antes de los identificadores dinámicos.
 @router.get("/modulos-catalogo")
 async def modulos(request: Request, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+    from app.tenants.modulos.submodulos import submodulos_de
+
     tid = await autorizar(request, db, user, "roles-sistema")
-    return [{"id": str(m.id), "code": m.code, "name": m.name, "category": m.category, "is_active": m.is_active}
-            for m in await svc.modulos_habilitados(db, tid)]
+    return [{
+        "id": str(m.id), "code": m.code, "name": m.name, "category": m.category, "is_active": m.is_active,
+        "submodulos": submodulos_de(m.code),
+    } for m in await svc.modulos_habilitados(db, tid)]
 
 
 @router.get("/personal-catalogo")

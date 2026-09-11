@@ -26,7 +26,11 @@ class UserCreate(BaseModel):
     email: str
     password: str
     role: str
-    panel: Literal["admin", "app", "sigarh", "portal"]
+    # "sigarh" no se crea aquí: esas cuentas necesitan un perfil/rol (UsuarioSigarh),
+    # que solo se puede asignar desde SIGARH → Mantenimiento → Usuarios. Crear un
+    # User con panel="sigarh" desde Admin deja una cuenta fantasma que nunca
+    # puede iniciar sesión (el login de SIGARH no lee la tabla User).
+    panel: Literal["admin", "app", "portal"]
     tenant_id: uuid.UUID | None = None
 
     @field_validator("name")
@@ -70,7 +74,7 @@ class UserUpdate(BaseModel):
     email: str | None = None
     password: str | None = None
     role: str | None = None
-    panel: Literal["admin", "app", "sigarh", "portal"] | None = None
+    panel: Literal["admin", "app", "portal"] | None = None
     tenant_id: uuid.UUID | None = None
     is_active: bool | None = None
 

@@ -13,6 +13,11 @@ from app.sigarh.general.schemas import (
 from app.sigarh.general import service
 
 router = APIRouter()
+# Un rol con el código completo "sigarh_general" sigue teniendo acceso a todo
+# (ver permiso_incluye en app/tenants/modulos/submodulos.py).
+_MOD_CIE10 = require_module_jwt("sigarh_general.cie10")
+_MOD_PAQUETES = require_module_jwt("sigarh_general.paquetes")
+_MOD_TIEMPOS = require_module_jwt("sigarh_general.tiempos")
 
 
 def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
@@ -28,7 +33,7 @@ def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
 async def listar_cie10(
     request: Request, q: str | None = None,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_CIE10),
     current_user: dict = Depends(get_current_user),
 ):
     return await service.listar_cie10(db, get_tenant_id(current_user, request), q)
@@ -38,7 +43,7 @@ async def listar_cie10(
 async def crear_cie10(
     request: Request, data: DiagnosticoCIE10Create,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_CIE10),
     current_user: dict = Depends(get_current_user),
 ):
     return await service.crear_cie10(db, get_tenant_id(current_user, request), data)
@@ -48,7 +53,7 @@ async def crear_cie10(
 async def obtener_cie10(
     request: Request, id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_CIE10),
     current_user: dict = Depends(get_current_user),
 ):
     item = await service.obtener_cie10(db, id, get_tenant_id(current_user, request))
@@ -61,7 +66,7 @@ async def obtener_cie10(
 async def actualizar_cie10(
     request: Request, id: uuid.UUID, data: DiagnosticoCIE10Update,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_CIE10),
     current_user: dict = Depends(get_current_user),
 ):
     item = await service.actualizar_cie10(db, id, get_tenant_id(current_user, request), data)
@@ -74,7 +79,7 @@ async def actualizar_cie10(
 async def eliminar_cie10(
     request: Request, id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_CIE10),
     current_user: dict = Depends(get_current_user),
 ):
     ok = await service.eliminar_cie10(db, id, get_tenant_id(current_user, request))
@@ -88,7 +93,7 @@ async def eliminar_cie10(
 async def listar_paquetes(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_PAQUETES),
     current_user: dict = Depends(get_current_user),
 ):
     return await service.listar_paquetes(db, get_tenant_id(current_user, request))
@@ -98,7 +103,7 @@ async def listar_paquetes(
 async def crear_paquete(
     request: Request, data: PaqueteCreate,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_PAQUETES),
     current_user: dict = Depends(get_current_user),
 ):
     return await service.crear_paquete(db, get_tenant_id(current_user, request), data)
@@ -108,7 +113,7 @@ async def crear_paquete(
 async def obtener_paquete(
     request: Request, id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_PAQUETES),
     current_user: dict = Depends(get_current_user),
 ):
     item = await service.obtener_paquete(db, id, get_tenant_id(current_user, request))
@@ -121,7 +126,7 @@ async def obtener_paquete(
 async def actualizar_paquete(
     request: Request, id: uuid.UUID, data: PaqueteUpdate,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_PAQUETES),
     current_user: dict = Depends(get_current_user),
 ):
     item = await service.actualizar_paquete(db, id, get_tenant_id(current_user, request), data)
@@ -134,7 +139,7 @@ async def actualizar_paquete(
 async def eliminar_paquete(
     request: Request, id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_PAQUETES),
     current_user: dict = Depends(get_current_user),
 ):
     ok = await service.eliminar_paquete(db, id, get_tenant_id(current_user, request))
@@ -148,7 +153,7 @@ async def eliminar_paquete(
 async def listar_tiempos(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_TIEMPOS),
     current_user: dict = Depends(get_current_user),
 ):
     return await service.listar_tiempos(db, get_tenant_id(current_user, request))
@@ -158,7 +163,7 @@ async def listar_tiempos(
 async def crear_tiempo(
     request: Request, data: TiempoProcedimientoCreate,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_TIEMPOS),
     current_user: dict = Depends(get_current_user),
 ):
     return await service.crear_tiempo(db, get_tenant_id(current_user, request), data)
@@ -168,7 +173,7 @@ async def crear_tiempo(
 async def obtener_tiempo(
     request: Request, id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_TIEMPOS),
     current_user: dict = Depends(get_current_user),
 ):
     item = await service.obtener_tiempo(db, id, get_tenant_id(current_user, request))
@@ -181,7 +186,7 @@ async def obtener_tiempo(
 async def actualizar_tiempo(
     request: Request, id: uuid.UUID, data: TiempoProcedimientoUpdate,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_TIEMPOS),
     current_user: dict = Depends(get_current_user),
 ):
     item = await service.actualizar_tiempo(db, id, get_tenant_id(current_user, request), data)
@@ -194,7 +199,7 @@ async def actualizar_tiempo(
 async def eliminar_tiempo(
     request: Request, id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_general")),
+    tenant=Depends(_MOD_TIEMPOS),
     current_user: dict = Depends(get_current_user),
 ):
     ok = await service.eliminar_tiempo(db, id, get_tenant_id(current_user, request))

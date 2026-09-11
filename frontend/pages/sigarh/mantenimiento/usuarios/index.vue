@@ -11,7 +11,13 @@
           <p class="page-subtitle">Usuarios del sistema SIGARH</p>
         </div>
       </div>
-      <NuxtLink :to="`/sigarh/mantenimiento/usuarios/create?tenant=${tenantId}`" class="btn-primary">
+      <NuxtLink
+        :to="puedeAdministrarSeguridad ? `/sigarh/mantenimiento/usuarios/create?tenant=${tenantId}` : ''"
+        class="btn-primary"
+        :class="{ 'is-disabled': !puedeAdministrarSeguridad }"
+        :title="puedeAdministrarSeguridad ? '' : 'Necesitas el permiso Administrar Seguridad para crear usuarios'"
+        @click="!puedeAdministrarSeguridad && $event.preventDefault()"
+      >
         <UIcon name="i-heroicons-plus" class="w-4 h-4" />
         Nuevo Usuario
       </NuxtLink>
@@ -118,10 +124,20 @@
             </td>
             <td class="text-right">
               <div class="sigarh-actions">
-                <button class="sigarh-action-btn" title="Editar" @click="navigateTo(`/sigarh/mantenimiento/usuarios/${item.id}?tenant=${tenantId}`)">
+                <button
+                  class="sigarh-action-btn"
+                  :disabled="!puedeAdministrarSeguridad"
+                  :title="puedeAdministrarSeguridad ? 'Editar' : 'Necesitas el permiso Administrar Seguridad'"
+                  @click="puedeAdministrarSeguridad && navigateTo(`/sigarh/mantenimiento/usuarios/${item.id}?tenant=${tenantId}`)"
+                >
                   <UIcon name="i-heroicons-pencil-square" class="w-4 h-4" style="color: var(--teal)" />
                 </button>
-                <button class="sigarh-action-btn danger" title="Eliminar" @click="confirmarEliminar(item)">
+                <button
+                  class="sigarh-action-btn danger"
+                  :disabled="!puedeAdministrarSeguridad"
+                  :title="puedeAdministrarSeguridad ? 'Eliminar' : 'Necesitas el permiso Administrar Seguridad'"
+                  @click="puedeAdministrarSeguridad && confirmarEliminar(item)"
+                >
                   <UIcon name="i-heroicons-trash" class="w-4 h-4" style="color: var(--alert)" />
                 </button>
               </div>
@@ -172,6 +188,7 @@ interface Item {
 
 const { api } = useApi()
 const route = useRoute()
+const { puedeAdministrarSeguridad } = useSigarhPermisos()
 const tenantId = computed(() => route.query.tenant as string || '')
 const items = ref<Item[]>([])
 const loading = ref(true)

@@ -14,7 +14,31 @@ from app.sigarh.config_farmacia.schemas import (
 from app.sigarh.config_farmacia import service as svc
 
 router = APIRouter()
-_MOD = require_module_jwt("sigarh_config_farmacia")
+
+
+def _any_mod(*codes: str):
+    """Como require_any_module_jwt, pero sin restringir al panel 'app'."""
+    checks = [require_module_jwt(c) for c in codes]
+
+    async def dependency(request: Request, current_user: dict = Depends(get_current_user)):
+        for check in checks:
+            try:
+                return await check(request=request, current_user=current_user)
+            except HTTPException as exc:
+                if exc.status_code != 403:
+                    raise
+        raise HTTPException(403, detail="Ninguno de los módulos requeridos está activo")
+
+    return dependency
+
+
+# Un rol con el código completo "sigarh_config_farmacia" sigue teniendo acceso
+# a todo (ver permiso_incluye en app/tenants/modulos/submodulos.py).
+_MOD_ALMACENES = require_module_jwt("sigarh_config_farmacia.almacenes")
+_MOD_MEDICAMENTOS = require_module_jwt("sigarh_config_farmacia.medicamentos")
+# Catálogos auxiliares (tipos de producto, proveedores, catálogos genéricos):
+# los usan ambas pantallas, basta con tener acceso a alguna de las dos.
+_MOD_CATALOGOS = _any_mod("sigarh_config_farmacia.almacenes", "sigarh_config_farmacia.medicamentos")
 
 
 def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
@@ -31,7 +55,7 @@ def _rn(e: svc.ReglaNegocioError):
 # ─── Catálogos auxiliares ────────────────────────────────────────────────────
 
 @router.get("/tipos-producto", summary="Catálogo 'tipos_producto' (Infraestructura) para el selector de productos")
-async def tipos_producto(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def tipos_producto(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_CATALOGOS), current_user: dict = Depends(get_current_user)):
     tid = get_tenant_id(current_user, request)
     try:
         from app.sigarh.infraestructura.models import Catalogo
@@ -46,22 +70,22 @@ async def tipos_producto(request: Request, db: AsyncSession = Depends(get_db), t
 
 
 @router.get("/proveedores")
-async def proveedores(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def proveedores(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_CATALOGOS), current_user: dict = Depends(get_current_user)):
     return await svc.listar_proveedores(db, get_tenant_id(current_user, request))
 
 
 @router.post("/proveedores", status_code=201)
-async def nuevo_proveedor(request: Request, data: ProveedorCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def nuevo_proveedor(request: Request, data: ProveedorCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_CATALOGOS), current_user: dict = Depends(get_current_user)):
     return await svc.crear_proveedor(db, get_tenant_id(current_user, request), data)
 
 
 @router.get("/catalogos/{categoria}")
-async def catalogos_farmacia(request: Request, categoria: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def catalogos_farmacia(request: Request, categoria: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_CATALOGOS), current_user: dict = Depends(get_current_user)):
     return await svc.listar_catalogo(db, get_tenant_id(current_user, request), categoria)
 
 
 @router.post("/catalogos", status_code=201)
-async def nuevo_catalogo(request: Request, data: CatalogoFarmaciaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def nuevo_catalogo(request: Request, data: CatalogoFarmaciaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_CATALOGOS), current_user: dict = Depends(get_current_user)):
     return await svc.crear_catalogo(db, get_tenant_id(current_user, request), data)
 
 
@@ -70,13 +94,13 @@ async def nuevo_catalogo(request: Request, data: CatalogoFarmaciaCreate, db: Asy
 @router.get("/almacenes", response_model=list[AlmacenResponse])
 async def listar_alm(
     request: Request, tipo: str | None = None, despacha_recetas: bool | None = None, is_active: bool | None = None,
-    db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ALMACENES), current_user: dict = Depends(get_current_user),
 ):
     return await svc.listar_almacenes(db, get_tenant_id(current_user, request), tipo, despacha_recetas, is_active)
 
 
 @router.post("/almacenes", response_model=AlmacenResponse, status_code=201)
-async def crear_alm(request: Request, data: AlmacenCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def crear_alm(request: Request, data: AlmacenCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ALMACENES), current_user: dict = Depends(get_current_user)):
     try:
         return await svc.crear_almacen(db, get_tenant_id(current_user, request), data)
     except svc.ReglaNegocioError as e:
@@ -84,7 +108,7 @@ async def crear_alm(request: Request, data: AlmacenCreate, db: AsyncSession = De
 
 
 @router.get("/almacenes/{id}", response_model=AlmacenResponse)
-async def obtener_alm(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def obtener_alm(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ALMACENES), current_user: dict = Depends(get_current_user)):
     item = await svc.obtener_almacen(db, id, get_tenant_id(current_user, request))
     if not item:
         raise HTTPException(404, detail="Almacén no encontrado")
@@ -92,7 +116,7 @@ async def obtener_alm(request: Request, id: uuid.UUID, db: AsyncSession = Depend
 
 
 @router.patch("/almacenes/{id}", response_model=AlmacenResponse)
-async def actualizar_alm(request: Request, id: uuid.UUID, data: AlmacenUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def actualizar_alm(request: Request, id: uuid.UUID, data: AlmacenUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ALMACENES), current_user: dict = Depends(get_current_user)):
     try:
         item = await svc.actualizar_almacen(db, id, get_tenant_id(current_user, request), data)
     except svc.ReglaNegocioError as e:
@@ -103,7 +127,7 @@ async def actualizar_alm(request: Request, id: uuid.UUID, data: AlmacenUpdate, d
 
 
 @router.delete("/almacenes/{id}")
-async def eliminar_alm(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def eliminar_alm(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ALMACENES), current_user: dict = Depends(get_current_user)):
     try:
         ok = await svc.eliminar_almacen(db, id, get_tenant_id(current_user, request))
     except svc.ReglaNegocioError as e:
@@ -123,7 +147,7 @@ async def listar_med(
     fiscalizado_digemid: bool | None = None, reporte_sismed: bool | None = None,
     requiere_cadena_frio: bool | None = None, forma_farmaceutica: str | None = None,
     tipo_producto_id: uuid.UUID | None = None,
-    db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_MEDICAMENTOS), current_user: dict = Depends(get_current_user),
 ):
     return await svc.listar_medicamentos(
         db, get_tenant_id(current_user, request), search, is_active,
@@ -133,7 +157,7 @@ async def listar_med(
 
 
 @router.post("/medicamentos", response_model=MedicamentoResponse, status_code=201)
-async def crear_med(request: Request, data: MedicamentoCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def crear_med(request: Request, data: MedicamentoCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_MEDICAMENTOS), current_user: dict = Depends(get_current_user)):
     try:
         return await svc.crear_medicamento(db, get_tenant_id(current_user, request), data)
     except svc.ReglaNegocioError as e:
@@ -141,7 +165,7 @@ async def crear_med(request: Request, data: MedicamentoCreate, db: AsyncSession 
 
 
 @router.get("/medicamentos/{id}", response_model=MedicamentoResponse)
-async def obtener_med(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def obtener_med(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_MEDICAMENTOS), current_user: dict = Depends(get_current_user)):
     item = await svc.obtener_medicamento(db, id, get_tenant_id(current_user, request))
     if not item:
         raise HTTPException(404, detail="Medicamento no encontrado")
@@ -149,7 +173,7 @@ async def obtener_med(request: Request, id: uuid.UUID, db: AsyncSession = Depend
 
 
 @router.patch("/medicamentos/{id}", response_model=MedicamentoResponse)
-async def actualizar_med(request: Request, id: uuid.UUID, data: MedicamentoUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def actualizar_med(request: Request, id: uuid.UUID, data: MedicamentoUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_MEDICAMENTOS), current_user: dict = Depends(get_current_user)):
     try:
         item = await svc.actualizar_medicamento(db, id, get_tenant_id(current_user, request), data)
     except svc.ReglaNegocioError as e:
@@ -160,7 +184,7 @@ async def actualizar_med(request: Request, id: uuid.UUID, data: MedicamentoUpdat
 
 
 @router.delete("/medicamentos/{id}")
-async def eliminar_med(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def eliminar_med(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_MEDICAMENTOS), current_user: dict = Depends(get_current_user)):
     try:
         ok = await svc.eliminar_medicamento(db, id, get_tenant_id(current_user, request))
     except svc.ReglaNegocioError as e:

@@ -12,7 +12,7 @@ from app.sigarh.creacion_roles import service as base_svc
 from app.sigarh.roles_aprobados import service as svc
 
 router = APIRouter()
-_MOD = require_module_jwt("sigarh_roles_aprobados")
+_MOD = require_module_jwt("sigarh_roles_aprobados.roles_aprobados")
 
 
 def _tid(current_user: dict, request: Request) -> uuid.UUID:

@@ -94,7 +94,13 @@ async def create_tenant(
                 nombre="Administrador SIGARH",
                 panel="sigarh",
                 modulos_permitidos=json.dumps(data.active_modules),
-                permisos_accion=json.dumps([]),
+                # El rol Administrador SIGARH debe poder gestionar Mantenimiento,
+                # Seguridad (usuarios/perfiles/roles) y aprobar roles de turno
+                # desde el primer momento; sin esto, la propia cuenta que crea
+                # el hospital queda sin acceso a Mantenimiento → Roles del Sistema.
+                permisos_accion=json.dumps([
+                    "administrar_mantenimiento", "administrar_seguridad", "aprobar_roles_turno",
+                ]),
                 alcance_global=True,
                 is_active=True,
             )

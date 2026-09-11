@@ -310,8 +310,12 @@
   }
 
   const handleLogout = async () => {
+    // Capturar el tenant ANTES de logout(): borra authStore.user, y sin el
+    // tenant en la URL el siguiente login no manda X-Tenant-ID y el backend
+    // cae al fallback por dominio (404 o, peor, el hospital equivocado).
+    const tenantId = route.query.tenant as string || authStore.user?.tenant_id || ''
     await authStore.logout()
-    await navigateTo('/sigarh/login')
+    await navigateTo(tenantId ? `/sigarh/login?tenant=${tenantId}` : '/sigarh/login')
   }
   </script>
 

@@ -223,7 +223,7 @@ const handleLogin = async () => {
 
     router.push(`/app?tenant=${tenantId.value}`)
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Credenciales incorrectas'
+    error.value = apiErr(e, 'Credenciales incorrectas')
   } finally {
     loading.value = false
   }

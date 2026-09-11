@@ -145,6 +145,7 @@ definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
 const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
+const { puedeAdministrarSeguridad } = useSigarhPermisos()
 
 const tenantId = computed(() => route.query.tenant as string || '')
 const id = computed(() => route.params.id as string)
@@ -199,6 +200,10 @@ const handleSave = async () => {
 }
 
 onMounted(async () => {
+  if (!puedeAdministrarSeguridad.value) {
+    router.replace(`/sigarh/mantenimiento/usuarios?tenant=${tenantId.value}`)
+    return
+  }
   try {
     const [data, perfilesData] = await Promise.all([
       api<any>(`/sigarh/mantenimiento/usuarios/${id.value}`),

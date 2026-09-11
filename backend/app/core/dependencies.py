@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 
-from app.core.database import get_db
+from app.core.database import get_db_central
 from app.core.redis import get_redis
 from app.core.security import verify_token
 
@@ -12,7 +12,7 @@ bearer_scheme = HTTPBearer()
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_central),
     redis: Redis = Depends(get_redis),
 ) -> dict:
     """

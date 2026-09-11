@@ -65,38 +65,103 @@ async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     return await db.scalar(select(User).where(User.id == user_id))
 
 
+async def _locate_user(db: AsyncSession, user_id: uuid.UUID):
+    """Busca un User en la BD central; si no está ahí, lo busca en la BD
+    física de cada hospital con base propia (ver create_tenant). Devuelve
+    (user, sesion_de_trabajo, sesion_es_de_tenant, "user"). La sesión de
+    tenant, si se abre, queda a cargo del llamador (cerrarla cuando termine)."""
+    user = await get_user_by_id(db, user_id)
+    if user:
+        return user, db, False, "user"
+
+    from app.tenants.hospitales.models import Tenant
+    from app.core.tenant_db import get_tenant_sessionmaker
+
+    tenants = (await db.scalars(
+        select(Tenant).where(Tenant.database_name.is_not(None), Tenant.is_active.is_(True))
+    )).all()
+    for tenant in tenants:
+        TenantSession = get_tenant_sessionmaker(tenant.database_name)
+        tdb = TenantSession()
+        found = await tdb.scalar(select(User).where(User.id == user_id))
+        if found:
+            return found, tdb, True, "user"
+        await tdb.close()
+    return None, None, False, None
+
+
+async def _locate_cuenta(db: AsyncSession, user_id: uuid.UUID):
+    """Como _locate_user, pero además busca en UsuarioSigarh (central y por
+    hospital) si no se encontró como User. Devuelve (cuenta, sesion, es_tenant, tipo)
+    con tipo en {"user", "sigarh"}."""
+    found, work_db, es_tenant, tipo = await _locate_user(db, user_id)
+    if found:
+        return found, work_db, es_tenant, tipo
+
+    from app.sigarh.mantenimiento.models import UsuarioSigarh
+    from app.tenants.hospitales.models import Tenant
+    from app.core.tenant_db import get_tenant_sessionmaker
+
+    sigarh_user = await db.scalar(select(UsuarioSigarh).where(UsuarioSigarh.id == user_id))
+    if sigarh_user:
+        return sigarh_user, db, False, "sigarh"
+
+    tenants = (await db.scalars(
+        select(Tenant).where(Tenant.database_name.is_not(None), Tenant.is_active.is_(True))
+    )).all()
+    for tenant in tenants:
+        TenantSession = get_tenant_sessionmaker(tenant.database_name)
+        tdb = TenantSession()
+        found_sigarh = await tdb.scalar(select(UsuarioSigarh).where(UsuarioSigarh.id == user_id))
+        if found_sigarh:
+            return found_sigarh, tdb, True, "sigarh"
+        await tdb.close()
+    return None, None, False, None
+
+
 async def update_user(db: AsyncSession, user_id: uuid.UUID, data, actor: dict) -> User | None:
     from app.admin.auditoria.service import create_audit_log
 
-    user = await get_user_by_id(db, user_id)
+    user, work_db, es_tenant, tipo = await _locate_cuenta(db, user_id)
     if not user:
         return None
+    if tipo == "sigarh":
+        if es_tenant:
+            await work_db.close()
+        raise HTTPException(400, detail="Las cuentas SIGARH se editan desde SIGARH → Mantenimiento → Usuarios")
+    try:
+        cambios = data.model_dump(exclude_unset=True, exclude={"password"})
+        if data.email and data.email != user.email:
+            existente = await work_db.scalar(select(User.id).where(User.email == data.email, User.id != user_id))
+            if existente:
+                raise HTTPException(400, detail=f"Ya existe un usuario con el correo {data.email}")
+        if cambios.get("tenant_id"):
+            from app.tenants.hospitales.models import Tenant
+            if not await db.scalar(select(Tenant.id).where(Tenant.id == cambios["tenant_id"])):
+                raise HTTPException(400, detail="El hospital indicado no existe")
 
-    cambios = data.model_dump(exclude_unset=True, exclude={"password"})
-    if data.email and data.email != user.email:
-        existente = await db.scalar(select(User.id).where(User.email == data.email, User.id != user_id))
-        if existente:
-            raise HTTPException(400, detail=f"Ya existe un usuario con el correo {data.email}")
-    if cambios.get("tenant_id"):
-        from app.tenants.hospitales.models import Tenant
-        if not await db.scalar(select(Tenant.id).where(Tenant.id == cambios["tenant_id"])):
-            raise HTTPException(400, detail="El hospital indicado no existe")
+        panel_final = cambios.get("panel", user.panel)
+        role_final = cambios.get("role", user.role)
+        if panel_final == "admin" and role_final != "administrador":
+            raise HTTPException(400, detail="Las cuentas del panel admin deben tener el rol 'administrador'")
 
-    panel_final = cambios.get("panel", user.panel)
-    role_final = cambios.get("role", user.role)
-    if panel_final == "admin" and role_final != "administrador":
-        raise HTTPException(400, detail="Las cuentas del panel admin deben tener el rol 'administrador'")
+        def _serializable(v):
+            return str(v) if isinstance(v, uuid.UUID) else v
 
-    anteriores = {campo: getattr(user, campo) for campo in cambios}
-    for field, value in cambios.items():
-        setattr(user, field, value)
-    if data.password:
-        user.password = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
-        cambios["password"] = "••••••••"
-        anteriores["password"] = "••••••••"
+        anteriores = {campo: _serializable(getattr(user, campo)) for campo in cambios}
+        for field, value in cambios.items():
+            setattr(user, field, value)
+        cambios = {campo: _serializable(valor) for campo, valor in cambios.items()}
+        if data.password:
+            user.password = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+            cambios["password"] = "••••••••"
+            anteriores["password"] = "••••••••"
 
-    await db.commit()
-    await db.refresh(user)
+        await work_db.commit()
+        await work_db.refresh(user)
+    finally:
+        if es_tenant:
+            await work_db.close()
     await create_audit_log(
         db, user_id=actor.get("sub"), user_name=actor.get("name") or actor.get("email"),
         tenant_id=None, tenant_name=None, action="user_updated",
@@ -106,23 +171,31 @@ async def update_user(db: AsyncSession, user_id: uuid.UUID, data, actor: dict) -
     return user
 
 
-async def toggle_user(db: AsyncSession, user_id: uuid.UUID, is_active: bool, actor: dict) -> User | None:
+async def toggle_user(db: AsyncSession, user_id: uuid.UUID, is_active: bool, actor: dict):
     from app.admin.auditoria.service import create_audit_log
 
-    user = await get_user_by_id(db, user_id)
+    user, work_db, es_tenant, tipo = await _locate_cuenta(db, user_id)
     if not user:
         return None
     if str(user.id) == str(actor.get("sub")) and not is_active:
+        if es_tenant:
+            await work_db.close()
         raise HTTPException(400, detail="No puedes desactivar tu propia cuenta")
-    user.is_active = is_active
-    await db.commit()
-    await db.refresh(user)
+    try:
+        user.is_active = is_active
+        await work_db.commit()
+        await work_db.refresh(user)
+    finally:
+        if es_tenant:
+            await work_db.close()
+    modelo = "UsuarioSigarh" if tipo == "sigarh" else "User"
+    email = user.email
     await create_audit_log(
         db, user_id=actor.get("sub"), user_name=actor.get("name") or actor.get("email"),
         tenant_id=None, tenant_name=None,
         action="user_activated" if is_active else "user_deactivated",
-        model="User", model_id=str(user.id),
-        description=f"Usuario {'activado' if is_active else 'desactivado'}: {user.email}",
+        model=modelo, model_id=str(user.id),
+        description=f"Usuario {'activado' if is_active else 'desactivado'}: {email}",
     )
     return user
 
@@ -130,17 +203,25 @@ async def toggle_user(db: AsyncSession, user_id: uuid.UUID, is_active: bool, act
 async def delete_user(db: AsyncSession, user_id: uuid.UUID, actor: dict) -> bool:
     from app.admin.auditoria.service import create_audit_log
 
-    user = await get_user_by_id(db, user_id)
+    user, work_db, es_tenant, tipo = await _locate_cuenta(db, user_id)
     if not user:
         return False
     if str(user.id) == str(actor.get("sub")):
+        if es_tenant:
+            await work_db.close()
         raise HTTPException(400, detail="No puedes eliminar tu propia cuenta")
-    email, panel = user.email, user.panel
-    await db.delete(user)
-    await db.commit()
+    email = user.email
+    panel = "sigarh" if tipo == "sigarh" else user.panel
+    try:
+        await work_db.delete(user)
+        await work_db.commit()
+    finally:
+        if es_tenant:
+            await work_db.close()
+    modelo = "UsuarioSigarh" if tipo == "sigarh" else "User"
     await create_audit_log(
         db, user_id=actor.get("sub"), user_name=actor.get("name") or actor.get("email"),
         tenant_id=None, tenant_name=None, action="user_deleted",
-        model="User", model_id=str(user_id), description=f"Usuario eliminado: {email} ({panel})",
+        model=modelo, model_id=str(user_id), description=f"Usuario eliminado: {email} ({panel})",
     )
     return True

@@ -22,13 +22,26 @@ async def listar_usuarios(
     return await get_all_users(db)
 
 
-@router.get("/usuarios/con-hospital", summary="Usuarios con datos de hospital")
+async def _rol_nombre_sigarh(session, perfil_id) -> str:
+    from app.sigarh.mantenimiento.models import PerfilUsuario, RolSistema
+    if not perfil_id:
+        return "SIGARH"
+    perfil = await session.scalar(select(PerfilUsuario).where(PerfilUsuario.id == perfil_id))
+    if not perfil or not perfil.rol_sistema_id:
+        return "SIGARH"
+    rol = await session.scalar(select(RolSistema).where(RolSistema.id == perfil.rol_sistema_id))
+    return rol.nombre if rol else "SIGARH"
+
+
+@router.get("/usuarios/con-hospital", summary="Usuarios con datos de hospital, de todos los paneles")
 async def usuarios_con_hospital(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
     from app.auth.models import User
+    from app.sigarh.mantenimiento.models import UsuarioSigarh
     from app.tenants.hospitales.models import Tenant
+    from app.core.tenant_db import get_tenant_sessionmaker
 
     result = await db.execute(
         select(User, Tenant.name.label("tenant_name"))
@@ -37,7 +50,7 @@ async def usuarios_con_hospital(
         .order_by(User.created_at.desc())
     )
     rows = result.all()
-    return [
+    items = [
         {
             "id": str(u.id),
             "name": u.name,
@@ -48,9 +61,69 @@ async def usuarios_con_hospital(
             "tenant_name": tenant_name or "—",
             "tenant_id": str(u.tenant_id) if u.tenant_id else None,
             "created_at": u.created_at.strftime("%d/%m/%Y"),
+            "account_type": "user",
         }
         for u, tenant_name in rows
     ]
+
+    # Cuentas SIGARH que viven en la BD central (hospitales sin base física propia).
+    sigarh_central = (await db.scalars(select(UsuarioSigarh))).all()
+    tenants_por_id = {str(t.id): t for t in (await db.scalars(select(Tenant))).all()}
+    for u in sigarh_central:
+        tenant = tenants_por_id.get(str(u.tenant_id))
+        if not tenant or tenant.database_name:
+            continue  # los de hospitales con BD física se leen de ahí, más abajo
+        items.append({
+            "id": str(u.id),
+            "name": u.username,
+            "email": u.email,
+            "role": await _rol_nombre_sigarh(db, u.perfil_id),
+            "panel": "sigarh",
+            "is_active": u.is_active,
+            "tenant_name": tenant.name,
+            "tenant_id": str(tenant.id),
+            "created_at": u.created_at.strftime("%d/%m/%Y"),
+            "account_type": "sigarh",
+        })
+
+    # Hospitales con base de datos física propia: sus usuarios de panel "app"
+    # y sus cuentas SIGARH se crean directamente ahí (ver create_tenant), no en
+    # la BD central, así que hay que ir a buscarlas a cada base.
+    tenants_con_bd = [t for t in tenants_por_id.values() if t.database_name and t.is_active]
+    for tenant in tenants_con_bd:
+        TenantSession = get_tenant_sessionmaker(tenant.database_name)
+        async with TenantSession() as tdb:
+            tenant_users = (await tdb.scalars(select(User))).all()
+            for u in tenant_users:
+                items.append({
+                    "id": str(u.id),
+                    "name": u.name,
+                    "email": u.email,
+                    "role": u.role,
+                    "panel": u.panel,
+                    "is_active": u.is_active,
+                    "tenant_name": tenant.name,
+                    "tenant_id": str(tenant.id),
+                    "created_at": u.created_at.strftime("%d/%m/%Y"),
+                    "account_type": "user",
+                })
+
+            tenant_sigarh_users = (await tdb.scalars(select(UsuarioSigarh))).all()
+            for u in tenant_sigarh_users:
+                items.append({
+                    "id": str(u.id),
+                    "name": u.username,
+                    "email": u.email,
+                    "role": await _rol_nombre_sigarh(tdb, u.perfil_id),
+                    "panel": "sigarh",
+                    "is_active": u.is_active,
+                    "tenant_name": tenant.name,
+                    "tenant_id": str(tenant.id),
+                    "created_at": u.created_at.strftime("%d/%m/%Y"),
+                    "account_type": "sigarh",
+                })
+
+    return items
 
 
 @router.get("/usuarios/hospital/{tenant_id}", response_model=list[UserListItem], summary="Usuarios por hospital")
@@ -84,7 +157,7 @@ async def actualizar_usuario(
     return user
 
 
-@router.patch("/usuarios/{user_id}/toggle", response_model=UserListItem, summary="Activar/desactivar usuario")
+@router.patch("/usuarios/{user_id}/toggle", summary="Activar/desactivar usuario")
 async def toggle_usuario(
     user_id: uuid.UUID,
     is_active: bool,
@@ -94,7 +167,16 @@ async def toggle_usuario(
     user = await toggle_user(db, user_id, is_active, current_user)
     if not user:
         raise HTTPException(404, detail="Usuario no encontrado")
-    return user
+    # UsuarioSigarh no tiene name/role/panel como User; devolvemos la forma
+    # correcta según el tipo de cuenta en vez de forzar un solo response_model.
+    from app.sigarh.mantenimiento.models import UsuarioSigarh
+    if isinstance(user, UsuarioSigarh):
+        return {
+            "id": str(user.id), "name": user.username, "email": user.email,
+            "role": "SIGARH", "panel": "sigarh", "tenant_id": str(user.tenant_id),
+            "is_active": user.is_active, "created_at": user.created_at,
+        }
+    return UserListItem.model_validate(user)
 
 
 @router.delete("/usuarios/{user_id}", summary="Eliminar usuario")

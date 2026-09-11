@@ -94,12 +94,9 @@
           <label class="form-label">Panel <span class="required">*</span></label>
           <div class="input-wrapper">
             <UIcon name="i-heroicons-squares-2x2" class="input-icon" />
-            <select v-model="form.panel" class="input-clinical">
-              <option v-if="isAdminView" value="admin">Admin ERP</option>
-              <option v-else value="app">Panel Hospitalario</option>
-              <option v-if="!isAdminView" value="sigarh">SIGARH</option>
-            </select>
+            <input class="input-clinical" disabled :value="isAdminView ? 'Admin ERP' : 'Panel Hospitalario'" />
           </div>
+          <span class="field-hint" v-if="!isAdminView">Las cuentas de SIGARH se crean desde SIGARH → Mantenimiento → Usuarios, donde se les asigna su perfil y rol.</span>
         </div>
 
         <div v-if="!isAdminView" class="form-group">

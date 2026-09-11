@@ -237,7 +237,7 @@ const handleLogin = async () => {
     const resolvedTenant = tenantId.value || response.user?.tenant_id || ''
     router.push(resolvedTenant ? `/sigarh?tenant=${resolvedTenant}` : '/sigarh')
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Credenciales incorrectas'
+    error.value = apiErr(e, 'Credenciales incorrectas')
   } finally {
     loading.value = false
   }

@@ -277,6 +277,17 @@
   border-color: var(--alert);
 }
 
+.sigarh-action-btn:disabled,
+.btn-primary.is-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: auto;
+}
+.sigarh-action-btn:disabled:hover,
+.btn-primary.is-disabled:hover {
+  border-color: var(--line);
+}
+
 /* Badge */
 .badge {
   display: inline-flex;

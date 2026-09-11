@@ -50,8 +50,11 @@ def require_module_jwt(module_code: str):
     ) -> dict:
         from app.core.database import AsyncSessionLocal
         from sqlalchemy import text
+        from app.tenants.modulos.submodulos import permiso_incluye, modulo_padre
 
-        if current_user.get("panel") == "sigarh" and module_code not in current_user.get("active_modules", []):
+        if current_user.get("panel") == "sigarh" and not permiso_incluye(
+            current_user.get("active_modules", []), module_code
+        ):
             raise HTTPException(403, detail="Su perfil no permite este módulo")
 
         # Obtener tenant_id del JWT o del header X-Tenant-ID
@@ -63,6 +66,11 @@ def require_module_jwt(module_code: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Sin tenant asignado"
             )
+
+        # tenant_modules solo guarda módulos completos (un hospital contrata el
+        # módulo, no cada submódulo por separado): hay que resolver contra el
+        # código del módulo padre aunque module_code venga con submódulo.
+        modulo_contratado = modulo_padre(module_code)
 
         # Verificar que el módulo está activo para ese tenant
         async with AsyncSessionLocal() as db:
@@ -76,7 +84,7 @@ def require_module_jwt(module_code: str):
                     AND tm.is_active = true
                     AND t.is_active = true
                 """),
-                {"tenant_id": tenant_id, "module_code": module_code}
+                {"tenant_id": tenant_id, "module_code": modulo_contratado}
             )
             if not result.first():
                 raise HTTPException(

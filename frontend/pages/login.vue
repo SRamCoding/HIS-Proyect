@@ -18,7 +18,7 @@ async function signIn() {
     await authStore.login({ email: email.value, password: password.value, panel: 'admin' })
     await navigateTo(authStore.panelRoute)
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No pudimos validar tus credenciales. Inténtalo nuevamente.'
+    error.value = apiErr(e, 'No pudimos validar tus credenciales. Inténtalo nuevamente.')
   } finally {
     loading.value = false
   }

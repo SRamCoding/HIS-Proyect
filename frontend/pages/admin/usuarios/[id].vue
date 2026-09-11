@@ -31,6 +31,20 @@
         <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--teal)" />
       </div>
 
+      <div v-else-if="isSigarhAccount" class="form-card">
+        <div class="flex items-start gap-3 p-4" style="background: var(--mist); border-radius: var(--radius)">
+          <UIcon name="i-heroicons-information-circle" class="w-5 h-5 shrink-0" style="color: var(--ink-soft)" />
+          <div>
+            <p style="color: var(--ink); font-weight: 500">Esta es una cuenta SIGARH</p>
+            <p class="field-hint" style="margin-top: 0.25rem">
+              Las cuentas de SIGARH (usuario, rol y permisos) se editan desde
+              SIGARH → Mantenimiento → Usuarios. Desde Admin solo puedes
+              activarla/desactivarla o eliminarla desde el listado.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <template v-else>
         <SFormCard
           title="Datos del Usuario"
@@ -105,12 +119,9 @@
             <label class="form-label">Panel <span class="required">*</span></label>
             <div class="input-wrapper">
               <UIcon name="i-heroicons-squares-2x2" class="input-icon" />
-              <select v-model="form.panel" class="input-clinical">
-                <option v-if="isAdminView" value="admin">Admin ERP</option>
-                <option v-else value="app">Panel Hospitalario</option>
-                <option v-if="!isAdminView" value="sigarh">SIGARH</option>
-              </select>
+              <input class="input-clinical" disabled :value="isAdminView ? 'Admin ERP' : 'Panel Hospitalario'" />
             </div>
+            <span class="field-hint" v-if="!isAdminView">Las cuentas de SIGARH se gestionan desde SIGARH → Mantenimiento → Usuarios.</span>
           </div>
 
           <div v-if="!isAdminView" class="form-group">
@@ -229,6 +240,7 @@ const hospitales = ref<Hospital[]>([])
 const showDeleteModal = ref(false)
 const deleting = ref(false)
 const deleteError = ref('')
+const isSigarhAccount = ref(false)
 
 const form = reactive({
   name: '',
@@ -338,6 +350,7 @@ onMounted(async () => {
     form.panel = user.panel
     form.tenant_id = user.tenant_id || ''
     form.is_active = user.is_active
+    isSigarhAccount.value = user.account_type === 'sigarh'
     hospitales.value = hospitals
   } catch (e: any) {
     saveError.value = apiErr(e, 'No se pudo cargar el usuario')

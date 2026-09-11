@@ -99,12 +99,18 @@ async def referencia(db, modelo, id, tenant_id, campo, activo=True):
 
 
 async def modulos_habilitados(db, tenant_id):
+    # TenantModule/Module son catálogos centrales (contratación de módulos
+    # por hospital); nunca viven en la BD física del tenant, así que esta
+    # consulta va siempre contra la BD central, sin importar qué BD trae la
+    # sesión `db` inyectada (física para /sigarh/*, ver core/database.py).
     from app.tenants.hospitales.models import TenantModule
     from app.tenants.modulos.models import Module
-    return (await db.scalars(select(Module).join(TenantModule, TenantModule.module_code == Module.code).where(
-        TenantModule.tenant_id == tenant_id, TenantModule.is_active.is_(True), Module.is_active.is_(True),
-        Module.code.startswith("sigarh_"),
-    ).order_by(Module.name))).all()
+    from app.core.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as central:
+        return (await central.scalars(select(Module).join(TenantModule, TenantModule.module_code == Module.code).where(
+            TenantModule.tenant_id == tenant_id, TenantModule.is_active.is_(True), Module.is_active.is_(True),
+            Module.code.startswith("sigarh_"),
+        ).order_by(Module.name))).all()
 
 
 async def usado(db, modelo, id):
@@ -138,10 +144,14 @@ async def validar_relaciones(db, modelo, tenant_id, values):
         if not values.get("departamento_id") or refs["servicio_id"].departamento_id != values["departamento_id"]:
             raise HTTPException(422, "El servicio no pertenece al departamento seleccionado")
     if modelo is m.RolSistema:
+        from app.tenants.modulos.submodulos import modulo_padre
         habilitados = {module.code for module in await modulos_habilitados(db, tenant_id)}
         elegidos = set(values["modulos_permitidos"])
         requerido = values.get("modulo_requerido")
-        if elegidos - habilitados or (requerido and requerido not in habilitados):
+        # Un código puede venir con submódulo (ej. "sigarh_recursos_humanos.empleados"):
+        # basta con que el módulo padre esté habilitado para el hospital.
+        no_habilitados = {c for c in elegidos if modulo_padre(c) not in habilitados}
+        if no_habilitados or (requerido and requerido not in habilitados):
             raise HTTPException(422, "Los módulos deben existir y estar habilitados para SIGARH en este hospital")
         if requerido and requerido not in elegidos:
             raise HTTPException(422, "El módulo requerido debe estar incluido entre los permitidos")
@@ -154,11 +164,22 @@ async def validar_relaciones(db, modelo, tenant_id, values):
         for group in values["grupos_ocupacionales_permitidos"]:
             await referencia(db, m.GrupoOcupacional, group, tenant_id, "grupo ocupacional permitido")
     if modelo is m.PerfilUsuario:
+        from app.tenants.modulos.submodulos import modulo_padre, permiso_incluye
         rol = refs["rol_sistema_id"]
         habilitados = {module.code for module in await modulos_habilitados(db, tenant_id)}
         if rol.panel != "sigarh" or (rol.modulo_requerido and rol.modulo_requerido not in habilitados):
             raise HTTPException(422, "El rol no es válido para SIGARH o su módulo requerido está deshabilitado")
-        if set(values["modulos_acceso"]) - (set(lista(rol.modulos_permitidos)) & habilitados):
+        # Un código de modulos_acceso puede venir con submódulo (ej.
+        # "sigarh_recursos_humanos.empleados"): es válido si el rol lo cubre
+        # (código exacto o su módulo padre) y ese módulo padre está habilitado
+        # para el hospital. Antes esto era una resta de sets por código exacto,
+        # que rechazaba cualquier submódulo fino aunque el rol lo permitiera.
+        concedidos_rol = set(lista(rol.modulos_permitidos))
+        no_validos = {
+            c for c in values["modulos_acceso"]
+            if not permiso_incluye(concedidos_rol, c) or modulo_padre(c) not in habilitados
+        }
+        if no_validos:
             raise HTTPException(422, "Los módulos deben estar permitidos por el rol y habilitados en el hospital")
     if modelo is m.UsuarioSigarh:
         perfil = refs["perfil_id"]
@@ -213,11 +234,17 @@ async def bloquear_escritura(db, tenant_id):
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:clave, 0))"), {"clave": "mantenimiento-identidades"})
 
 
-def auditar(db, user, tenant_id, item, action, before=None, ip=None):
-    db.add(AuditLog(user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        tenant_id=tenant_id, action=action, model=type(item).__name__, model_id=str(item.id),
-        description=f"Mantenimiento: {action}", old_values=before,
-        new_values=None if action == "deleted" else snapshot(item), ip_address=ip))
+async def auditar(user, tenant_id, item, action, before=None, ip=None):
+    # AuditLog es una tabla central (la revisa Admin ERP en Auditoría), nunca
+    # vive en la BD física del tenant: se escribe en su propia sesión central,
+    # independiente de `db` (física para /sigarh/*, ver core/database.py).
+    from app.core.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as central:
+        central.add(AuditLog(user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
+            tenant_id=tenant_id, action=action, model=type(item).__name__, model_id=str(item.id),
+            description=f"Mantenimiento: {action}", old_values=before,
+            new_values=None if action == "deleted" else snapshot(item), ip_address=ip))
+        await central.commit()
 
 
 async def guardar(db, recurso, tenant_id, data, user, id=None, ip=None):
@@ -281,11 +308,11 @@ async def guardar(db, recurso, tenant_id, data, user, id=None, ip=None):
         item.session_version += 1
     try:
         await db.flush()
-        auditar(db, user, tenant_id, item, "updated" if id else "created", before, ip)
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(409, "Los datos duplican un registro o tienen una relación inválida")
+    await auditar(user, tenant_id, item, "updated" if id else "created", before, ip)
     return serializar(await obtener(db, modelo, item.id, tenant_id))
 
 
@@ -301,13 +328,14 @@ async def eliminar(db, recurso, tenant_id, id, user, ip=None):
         raise HTTPException(409, "No puede eliminar un catálogo utilizado por otros registros")
     if modelo is m.GuardiaValorizada and item.vigencia_desde and item.vigencia_desde <= date.today():
         raise HTTPException(409, "Una tarifa con vigencia iniciada debe conservarse")
-    auditar(db, user, tenant_id, item, "deleted", snapshot(item), ip)
+    before = snapshot(item)
     await db.delete(item)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(409, "El catálogo está siendo utilizado y no puede eliminarse")
+    await auditar(user, tenant_id, item, "deleted", before, ip)
     return {"ok": True}
 
 

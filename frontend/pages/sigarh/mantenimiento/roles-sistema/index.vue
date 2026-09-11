@@ -11,7 +11,13 @@
           <p class="page-subtitle">Roles y permisos de acceso por panel</p>
         </div>
       </div>
-      <NuxtLink :to="`/sigarh/mantenimiento/roles-sistema/create?tenant=${tenantId}`" class="btn-primary">
+      <NuxtLink
+        :to="puedeAdministrarSeguridad ? `/sigarh/mantenimiento/roles-sistema/create?tenant=${tenantId}` : ''"
+        class="btn-primary"
+        :class="{ 'is-disabled': !puedeAdministrarSeguridad }"
+        :title="puedeAdministrarSeguridad ? '' : 'Necesitas el permiso Administrar Seguridad para crear roles'"
+        @click="!puedeAdministrarSeguridad && $event.preventDefault()"
+      >
         <UIcon name="i-heroicons-plus" class="w-4 h-4" />
         Nuevo Rol
       </NuxtLink>
@@ -136,10 +142,21 @@
               </td>
               <td style="text-align: right">
                 <div class="sigarh-actions">
-                  <NuxtLink :to="`/sigarh/mantenimiento/roles-sistema/${item.id}?tenant=${tenantId}`" class="sigarh-action-btn" title="Editar">
+                  <NuxtLink
+                    :to="puedeAdministrarSeguridad ? `/sigarh/mantenimiento/roles-sistema/${item.id}?tenant=${tenantId}` : ''"
+                    class="sigarh-action-btn"
+                    :class="{ 'is-disabled': !puedeAdministrarSeguridad }"
+                    :title="puedeAdministrarSeguridad ? 'Editar' : 'Necesitas el permiso Administrar Seguridad'"
+                    @click="!puedeAdministrarSeguridad && $event.preventDefault()"
+                  >
                     <UIcon name="i-heroicons-pencil-square" class="w-4 h-4" style="color: var(--teal)" />
                   </NuxtLink>
-                  <button class="sigarh-action-btn danger" title="Eliminar" @click="confirmarEliminar(item)">
+                  <button
+                    class="sigarh-action-btn danger"
+                    :disabled="!puedeAdministrarSeguridad"
+                    :title="puedeAdministrarSeguridad ? 'Eliminar' : 'Necesitas el permiso Administrar Seguridad'"
+                    @click="puedeAdministrarSeguridad && confirmarEliminar(item)"
+                  >
                     <UIcon name="i-heroicons-trash" class="w-4 h-4" style="color: var(--alert)" />
                   </button>
                 </div>
@@ -170,6 +187,7 @@ interface Item {
 
 const { api } = useApi()
 const route = useRoute()
+const { puedeAdministrarSeguridad } = useSigarhPermisos()
 const tenantId = computed(() => route.query.tenant as string || '')
 const items = ref<Item[]>([])
 const loading = ref(true)

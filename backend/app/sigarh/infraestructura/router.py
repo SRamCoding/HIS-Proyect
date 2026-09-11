@@ -19,6 +19,8 @@ from app.sigarh.infraestructura.service import (
 )
 
 router = APIRouter()
+_MOD_CATALOGOS = require_module_jwt("sigarh_infraestructura.catalogos")
+_MOD_CONSULTORIOS = require_module_jwt("sigarh_infraestructura.consultorios")
 
 
 def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
@@ -34,7 +36,7 @@ def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
 
 @router.get("/catalogos/categorias", response_model=CategoriasResponse)
 async def obtener_categorias(
-    tenant=Depends(require_module_jwt("sigarh_infraestructura")),
+    tenant=Depends(_MOD_CATALOGOS),
     current_user: dict = Depends(get_current_user),
 ):
     return {"categorias": CATEGORIAS_CATALOGO}
@@ -47,7 +49,7 @@ async def listar(
     request: Request,
     categoria: str | None = None,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_infraestructura")),
+    tenant=Depends(_MOD_CATALOGOS),
     current_user: dict = Depends(get_current_user),
 ):
     return await listar_catalogos(db, get_tenant_id(current_user, request), categoria)
@@ -58,7 +60,7 @@ async def crear(
     request: Request,
     data: CatalogoCreate,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_infraestructura")),
+    tenant=Depends(_MOD_CATALOGOS),
     current_user: dict = Depends(get_current_user),
 ):
     return await crear_catalogo(db, get_tenant_id(current_user, request), data)
@@ -69,7 +71,7 @@ async def obtener(
     request: Request,
     id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_infraestructura")),
+    tenant=Depends(_MOD_CATALOGOS),
     current_user: dict = Depends(get_current_user),
 ):
     item = await obtener_catalogo(db, id, get_tenant_id(current_user, request))
@@ -84,7 +86,7 @@ async def actualizar(
     id: uuid.UUID,
     data: CatalogoUpdate,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_infraestructura")),
+    tenant=Depends(_MOD_CATALOGOS),
     current_user: dict = Depends(get_current_user),
 ):
     item = await actualizar_catalogo(db, id, get_tenant_id(current_user, request), data)
@@ -98,7 +100,7 @@ async def eliminar(
     request: Request,
     id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_infraestructura")),
+    tenant=Depends(_MOD_CATALOGOS),
     current_user: dict = Depends(get_current_user),
 ):
     ok = await eliminar_catalogo(db, id, get_tenant_id(current_user, request))
@@ -113,7 +115,7 @@ async def eliminar(
 async def listar_cons(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_infraestructura")),
+    tenant=Depends(_MOD_CONSULTORIOS),
     current_user: dict = Depends(get_current_user),
 ):
     return await listar_consultorios(db, get_tenant_id(current_user, request))
@@ -124,7 +126,7 @@ async def crear_cons(
     request: Request,
     data: ConsultorioCreate,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_infraestructura")),
+    tenant=Depends(_MOD_CONSULTORIOS),
     current_user: dict = Depends(get_current_user),
 ):
     return await crear_consultorio(db, get_tenant_id(current_user, request), data)
@@ -135,7 +137,7 @@ async def obtener_cons(
     request: Request,
     id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_infraestructura")),
+    tenant=Depends(_MOD_CONSULTORIOS),
     current_user: dict = Depends(get_current_user),
 ):
     item = await obtener_consultorio(db, id, get_tenant_id(current_user, request))
@@ -150,7 +152,7 @@ async def actualizar_cons(
     id: uuid.UUID,
     data: ConsultorioUpdate,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_infraestructura")),
+    tenant=Depends(_MOD_CONSULTORIOS),
     current_user: dict = Depends(get_current_user),
 ):
     item = await actualizar_consultorio(db, id, get_tenant_id(current_user, request), data)
@@ -164,7 +166,7 @@ async def eliminar_cons(
     request: Request,
     id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt("sigarh_infraestructura")),
+    tenant=Depends(_MOD_CONSULTORIOS),
     current_user: dict = Depends(get_current_user),
 ):
     ok = await eliminar_consultorio(db, id, get_tenant_id(current_user, request))

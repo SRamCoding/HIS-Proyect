@@ -9,6 +9,7 @@ from app.sigarh.imagenologia.schemas import ExamenImagenologiaCreate, ExamenImag
 from app.sigarh.imagenologia import service
 
 router = APIRouter()
+_MOD = require_module_jwt("sigarh_imagenologia.examenes")
 
 
 def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
@@ -21,27 +22,27 @@ def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
 
 
 @router.get("/examenes", response_model=list[ExamenImagenologiaResponse])
-async def listar(request: Request, modalidad: str | None = None, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_imagenologia")), current_user: dict = Depends(get_current_user)):
+async def listar(request: Request, modalidad: str | None = None, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
     return await service.listar(db, get_tenant_id(current_user, request), modalidad)
 
 @router.post("/examenes", response_model=ExamenImagenologiaResponse, status_code=201)
-async def crear(request: Request, data: ExamenImagenologiaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_imagenologia")), current_user: dict = Depends(get_current_user)):
+async def crear(request: Request, data: ExamenImagenologiaCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
     return await service.crear(db, get_tenant_id(current_user, request), data)
 
 @router.get("/examenes/{id}", response_model=ExamenImagenologiaResponse)
-async def obtener(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_imagenologia")), current_user: dict = Depends(get_current_user)):
+async def obtener(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
     item = await service.obtener(db, id, get_tenant_id(current_user, request))
     if not item: raise HTTPException(404, detail="Examen no encontrado")
     return item
 
 @router.patch("/examenes/{id}", response_model=ExamenImagenologiaResponse)
-async def actualizar(request: Request, id: uuid.UUID, data: ExamenImagenologiaUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_imagenologia")), current_user: dict = Depends(get_current_user)):
+async def actualizar(request: Request, id: uuid.UUID, data: ExamenImagenologiaUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
     item = await service.actualizar(db, id, get_tenant_id(current_user, request), data)
     if not item: raise HTTPException(404, detail="Examen no encontrado")
     return item
 
 @router.delete("/examenes/{id}")
-async def eliminar(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(require_module_jwt("sigarh_imagenologia")), current_user: dict = Depends(get_current_user)):
+async def eliminar(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
     ok = await service.eliminar(db, id, get_tenant_id(current_user, request))
     if not ok: raise HTTPException(404, detail="Examen no encontrado")
     return {"ok": True}

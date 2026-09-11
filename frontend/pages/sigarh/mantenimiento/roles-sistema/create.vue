@@ -71,22 +71,49 @@
           <div class="flex items-center justify-between mb-2">
             <label class="form-label" style="margin: 0">Modulos permitidos</label>
             <button type="button" class="link-btn" @click="toggleTodosModulos">
-              {{ form.modulos_permitidos.length === todosModulos.length ? 'Quitar todos' : 'Seleccionar todos' }}
+              {{ todosSeleccionados ? 'Quitar todos' : 'Seleccionar todos' }}
             </button>
           </div>
-          <div class="check-catalog">
+          <div class="module-tree">
             <div v-if="!todosModulos.length" class="check-catalog-empty">No hay modulos disponibles</div>
-            <label
-              v-for="mod in todosModulos"
-              :key="mod.code"
-              class="check-catalog-item"
-              :class="{ 'check-catalog-item--active': form.modulos_permitidos.includes(mod.code) }"
-            >
-              <input type="checkbox" :value="mod.code" v-model="form.modulos_permitidos" />
-              <span>{{ mod.name }}</span>
-            </label>
+            <div v-for="mod in todosModulos" :key="mod.code" class="module-tree-item">
+              <div class="module-tree-row">
+                <button
+                  v-if="mod.submodulos?.length"
+                  type="button"
+                  class="module-tree-expand"
+                  @click="toggleExpand(mod.code)"
+                >
+                  <UIcon :name="expandidos.has(mod.code) ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'" class="w-3.5 h-3.5" />
+                </button>
+                <span v-else class="module-tree-expand-spacer" />
+                <label class="check-catalog-item module-tree-label" :class="{ 'check-catalog-item--active': estadoModulo(mod) !== 'none' }">
+                  <input
+                    type="checkbox"
+                    :checked="estadoModulo(mod) === 'all'"
+                    :indeterminate.prop="estadoModulo(mod) === 'some'"
+                    @change="toggleModulo(mod)"
+                  />
+                  <span>{{ mod.name }}</span>
+                  <span v-if="mod.submodulos?.length" class="module-tree-count">
+                    {{ submodulosSeleccionados(mod).length }}/{{ mod.submodulos.length }}
+                  </span>
+                </label>
+              </div>
+              <div v-if="mod.submodulos?.length && expandidos.has(mod.code)" class="module-tree-children">
+                <label
+                  v-for="sub in mod.submodulos"
+                  :key="sub.code"
+                  class="check-catalog-item"
+                  :class="{ 'check-catalog-item--active': subSeleccionado(mod, sub) }"
+                >
+                  <input type="checkbox" :checked="subSeleccionado(mod, sub)" @change="toggleSub(mod, sub)" />
+                  <span>{{ sub.label }}</span>
+                </label>
+              </div>
+            </div>
           </div>
-          <p class="field-hint">Modulos a los que los usuarios con este rol podran acceder</p>
+          <p class="field-hint">Modulos a los que los usuarios con este rol podran acceder. Puedes limitar el acceso a submodulos especificos dentro de cada modulo.</p>
         </div>
 
         <div class="form-group full-width">
@@ -180,12 +207,14 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
 
-interface Modulo { id: string; code: string; name: string; category: string; is_active: boolean }
+interface Submodulo { code: string; label: string }
+interface Modulo { id: string; code: string; name: string; category: string; is_active: boolean; submodulos?: Submodulo[] }
 interface GrupoOcupacional { id: string; nombre: string }
 
 const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
+const { puedeAdministrarSeguridad } = useSigarhPermisos()
 
 const tenantId = computed(() => route.query.tenant as string || '')
 const saving = ref(false)
@@ -196,6 +225,8 @@ const gruposOcupacionales = ref<GrupoOcupacional[]>([])
 
 const PERMISOS_ACCION = [
   { code: 'aprobar_roles_turno', name: 'Aprobar roles de turno' },
+  { code: 'administrar_mantenimiento', name: 'Administrar Mantenimiento (crear/editar catalogos)' },
+  { code: 'administrar_seguridad', name: 'Administrar Seguridad (crear/editar/eliminar Usuarios, Perfiles y Roles del Sistema; sin esto solo puede verlos)' },
 ]
 
 const form = reactive({
@@ -211,10 +242,78 @@ const form = reactive({
   alcance_global: false,
 })
 
+// --- Arbol de modulos/submodulos permitidos ---
+// form.modulos_permitidos guarda strings sueltos: o el codigo completo del
+// modulo ("sigarh_recursos_humanos" = todos sus submodulos, ver
+// permiso_incluye() en el backend) o codigos puntuales de submodulo
+// ("sigarh_recursos_humanos.empleados").
+const expandidos = ref<Set<string>>(new Set())
+
+const toggleExpand = (code: string) => {
+  expandidos.value.has(code) ? expandidos.value.delete(code) : expandidos.value.add(code)
+  expandidos.value = new Set(expandidos.value)
+}
+
+const subSeleccionado = (mod: Modulo, sub: Submodulo): boolean =>
+  form.modulos_permitidos.includes(mod.code) || form.modulos_permitidos.includes(`${mod.code}.${sub.code}`)
+
+const submodulosSeleccionados = (mod: Modulo): Submodulo[] =>
+  (mod.submodulos || []).filter(s => subSeleccionado(mod, s))
+
+const estadoModulo = (mod: Modulo): 'all' | 'some' | 'none' => {
+  if (!mod.submodulos?.length) {
+    return form.modulos_permitidos.includes(mod.code) ? 'all' : 'none'
+  }
+  const seleccionados = submodulosSeleccionados(mod).length
+  if (seleccionados === 0) return 'none'
+  if (seleccionados === mod.submodulos.length) return 'all'
+  return 'some'
+}
+
+const toggleModulo = (mod: Modulo) => {
+  const codigosSubmodulo = (mod.submodulos || []).map(s => `${mod.code}.${s.code}`)
+  // Sea cual sea el estado actual (todo/parcial/nada), un click en el
+  // checkbox del modulo alterna entre "todo" y "nada" completos. El estado
+  // se debe leer ANTES de vaciar el array: si se lee despues siempre da
+  // "none" y el modulo se vuelve a marcar por completo sin importar la
+  // intencion real del click.
+  const estabaCompleto = estadoModulo(mod) === 'all'
+  form.modulos_permitidos = form.modulos_permitidos.filter(c => c !== mod.code && !codigosSubmodulo.includes(c))
+  if (!estabaCompleto) {
+    form.modulos_permitidos.push(mod.code)
+  }
+}
+
+const toggleSub = (mod: Modulo, sub: Submodulo) => {
+  const codigoSub = `${mod.code}.${sub.code}`
+  const yaSeleccionado = subSeleccionado(mod, sub)
+  let actuales: string[]
+  if (form.modulos_permitidos.includes(mod.code)) {
+    // Estaba con el codigo padre (todos): lo abrimos a la lista explicita
+    // de submodulos y le quitamos el que se esta desmarcando.
+    actuales = form.modulos_permitidos.filter(c => c !== mod.code)
+    const todos = (mod.submodulos || []).map(s => `${mod.code}.${s.code}`)
+    actuales = [...actuales, ...todos.filter(c => c !== codigoSub)]
+  } else {
+    actuales = yaSeleccionado
+      ? form.modulos_permitidos.filter(c => c !== codigoSub)
+      : [...form.modulos_permitidos, codigoSub]
+  }
+  // Si con esto quedaron todos los submodulos del modulo, colapsar al
+  // codigo del modulo completo (mas simple y ya cubre nuevos submodulos futuros).
+  const todosCodigos = (mod.submodulos || []).map(s => `${mod.code}.${s.code}`)
+  const seleccionadosAhora = todosCodigos.filter(c => actuales.includes(c))
+  if (todosCodigos.length && seleccionadosAhora.length === todosCodigos.length) {
+    actuales = actuales.filter(c => !todosCodigos.includes(c))
+    actuales.push(mod.code)
+  }
+  form.modulos_permitidos = actuales
+}
+
+const todosSeleccionados = computed(() => todosModulos.value.every(m => estadoModulo(m) === 'all'))
+
 const toggleTodosModulos = () => {
-  form.modulos_permitidos = form.modulos_permitidos.length === todosModulos.value.length
-    ? []
-    : todosModulos.value.map(m => m.code)
+  form.modulos_permitidos = todosSeleccionados.value ? [] : todosModulos.value.map(m => m.code)
 }
 
 const toggleTodosGrupos = () => {
@@ -259,6 +358,10 @@ const handleCreate = async (createAnother: boolean) => {
 }
 
 onMounted(async () => {
+  if (!puedeAdministrarSeguridad.value) {
+    router.replace(`/sigarh/mantenimiento/roles-sistema?tenant=${tenantId.value}`)
+    return
+  }
   try {
     const [modulos, grupos] = await Promise.all([
       api<Modulo[]>('/sigarh/mantenimiento/modulos-catalogo'),
@@ -283,4 +386,57 @@ onMounted(async () => {
   padding: 0;
 }
 .link-btn:hover { text-decoration: underline; }
+
+.module-tree {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.module-tree-item + .module-tree-item {
+  border-top: 1px solid var(--line);
+  margin-top: 0.25rem;
+  padding-top: 0.25rem;
+}
+.module-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.module-tree-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+.module-tree-expand-spacer {
+  display: inline-block;
+  width: 20px;
+  flex-shrink: 0;
+}
+.module-tree-label {
+  flex: 1;
+  border: none !important;
+  padding: 0.25rem 0.5rem !important;
+}
+.module-tree-count {
+  margin-left: auto;
+  font-size: 0.6875rem;
+  color: var(--ink-soft);
+  font-family: monospace;
+}
+.module-tree-children {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding-left: 1.75rem;
+  margin-top: 0.125rem;
+}
 </style>

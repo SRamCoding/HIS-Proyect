@@ -12,7 +12,8 @@ from app.sigarh.creacion_roles import service as base_svc
 from app.sigarh.roles_pendientes import service as svc
 
 router = APIRouter()
-_MOD = require_module_jwt("sigarh_roles_pendientes")
+_MOD_BANDEJA = require_module_jwt("sigarh_roles_pendientes.bandeja")
+_MOD_SOLICITUDES = require_module_jwt("sigarh_roles_pendientes.solicitudes")
 
 
 def _tid(current_user: dict, request: Request) -> uuid.UUID:
@@ -32,7 +33,7 @@ async def listar(
     anio: int | None = None,
     mes: int | None = None,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(_MOD),
+    tenant=Depends(_MOD_BANDEJA),
     current_user: dict = Depends(get_current_user),
 ):
     return await base_svc.listar_roles(
@@ -42,7 +43,7 @@ async def listar(
 
 
 @router.get("/roles/{rol_id}", response_model=RolDetail)
-async def detalle(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def detalle(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_BANDEJA), current_user: dict = Depends(get_current_user)):
     tid = _tid(current_user, request)
     rol = await base_svc.obtener_rol_orm(db, rol_id, tid)
     if not rol:
@@ -51,7 +52,7 @@ async def detalle(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depend
 
 
 @router.get("/roles/{rol_id}/diagnostico")
-async def diagnostico(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def diagnostico(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_BANDEJA), current_user: dict = Depends(get_current_user)):
     tid = _tid(current_user, request)
     rol = await base_svc.obtener_rol_orm(db, rol_id, tid)
     if not rol:
@@ -60,7 +61,7 @@ async def diagnostico(request: Request, rol_id: uuid.UUID, db: AsyncSession = De
 
 
 @router.post("/roles/{rol_id}/aprobar", response_model=RolDetail)
-async def aprobar(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def aprobar(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_BANDEJA), current_user: dict = Depends(get_current_user)):
     try:
         rol = await svc.aprobar_rol(db, _tid(current_user, request), rol_id, current_user)
     except base_svc.PermisoError as e:
@@ -73,7 +74,7 @@ async def aprobar(request: Request, rol_id: uuid.UUID, db: AsyncSession = Depend
 
 
 @router.post("/roles/{rol_id}/rechazar", response_model=RolDetail)
-async def rechazar(request: Request, rol_id: uuid.UUID, data: RechazoRequest, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def rechazar(request: Request, rol_id: uuid.UUID, data: RechazoRequest, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_BANDEJA), current_user: dict = Depends(get_current_user)):
     try:
         rol = await svc.rechazar_rol(db, _tid(current_user, request), rol_id, data.motivo, current_user)
     except base_svc.PermisoError as e:
@@ -92,14 +93,14 @@ async def listar_solicitudes(
     request: Request,
     status: str | None = None,
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(_MOD),
+    tenant=Depends(_MOD_SOLICITUDES),
     current_user: dict = Depends(get_current_user),
 ):
     return await svc.listar_solicitudes(db, _tid(current_user, request), status)
 
 
 @router.get("/solicitudes-modificacion/{sol_id}", response_model=SolicitudModificacionResponse)
-async def detalle_solicitud(request: Request, sol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def detalle_solicitud(request: Request, sol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_SOLICITUDES), current_user: dict = Depends(get_current_user)):
     sol = await svc.obtener_solicitud(db, _tid(current_user, request), sol_id)
     if not sol:
         raise HTTPException(404, detail="Solicitud no encontrada")
@@ -107,7 +108,7 @@ async def detalle_solicitud(request: Request, sol_id: uuid.UUID, db: AsyncSessio
 
 
 @router.post("/solicitudes-modificacion/{sol_id}/aprobar", response_model=SolicitudModificacionResponse)
-async def aprobar_solicitud(request: Request, sol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def aprobar_solicitud(request: Request, sol_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_SOLICITUDES), current_user: dict = Depends(get_current_user)):
     try:
         sol = await svc.aprobar_solicitud(db, _tid(current_user, request), sol_id, current_user)
     except base_svc.PermisoError as e:
@@ -120,7 +121,7 @@ async def aprobar_solicitud(request: Request, sol_id: uuid.UUID, db: AsyncSessio
 
 
 @router.post("/solicitudes-modificacion/{sol_id}/rechazar", response_model=SolicitudModificacionResponse)
-async def rechazar_solicitud(request: Request, sol_id: uuid.UUID, data: RechazoRequest, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD), current_user: dict = Depends(get_current_user)):
+async def rechazar_solicitud(request: Request, sol_id: uuid.UUID, data: RechazoRequest, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_SOLICITUDES), current_user: dict = Depends(get_current_user)):
     try:
         sol = await svc.rechazar_solicitud(db, _tid(current_user, request), sol_id, data.motivo, current_user)
     except base_svc.PermisoError as e:
