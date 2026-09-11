@@ -222,6 +222,7 @@ const handleLogin = async () => {
   try {
     const response = await api<any>('/auth/login', {
       method: 'POST',
+      tenant: tenantId.value,
       body: {
         email: form.email,
         password: form.password,

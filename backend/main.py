@@ -53,9 +53,9 @@ from app.hospital.telesalud.router import router as hosp_telesalud_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
-    print(f"🏥 {settings.APP_NAME} iniciando en modo {settings.APP_ENV}")
+    print(f" {settings.APP_NAME} iniciando en modo {settings.APP_ENV}")
     yield
-    print("🏥 Cerrando servidor...")
+    print(" Cerrando servidor...")
 
 
 app = FastAPI(

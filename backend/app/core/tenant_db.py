@@ -1,0 +1,76 @@
+"""
+Gestión de conexiones y provisión de bases de datos por hospital (tenant).
+"""
+import re
+import os
+from urllib.parse import urlparse, urlunparse
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy import text
+from alembic.config import Config
+
+from alembic import command
+from app.core.config import settings
+
+# Cache de engines por hospital, para no abrir uno nuevo en cada request
+_tenant_engines: dict[str, "create_async_engine"] = {}
+
+
+def _slugify_db_name(subdomain: str) -> str:
+    """hospital-reque -> his_hospital_reque"""
+    clean = re.sub(r"[^a-z0-9_]", "_", subdomain.lower())
+    return f"his_{clean}"
+
+
+def _build_tenant_url(database_name: str) -> str:
+    """Reemplaza el nombre de BD en el DATABASE_URL central, conservando host/user/password."""
+    parsed = urlparse(settings.DATABASE_URL)
+    new_path = f"/{database_name}"
+    return urlunparse(parsed._replace(path=new_path))
+
+
+async def create_tenant_database(database_name: str) -> None:
+    """Crea la base de datos física en Postgres (requiere conexión con CREATE DATABASE)."""
+    admin_url = _build_tenant_url("postgres")  # conecta a la BD admin para poder crear otras
+    admin_engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT")
+    async with admin_engine.connect() as conn:
+        await conn.execute(text(f'CREATE DATABASE "{database_name}"'))
+    await admin_engine.dispose()
+
+
+def run_tenant_migrations(database_name: str) -> None:
+    """Corre alembic upgrade head contra la BD del tenant nuevo."""
+    tenant_url = _build_tenant_url(database_name)
+    os.environ["TENANT_DATABASE_URL"] = tenant_url
+    try:
+        alembic_cfg = Config("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
+    finally:
+        os.environ.pop("TENANT_DATABASE_URL", None)
+
+
+def get_tenant_engine(database_name: str):
+    """Devuelve (y cachea) el engine async para la BD de un hospital."""
+    if database_name not in _tenant_engines:
+        url = _build_tenant_url(database_name)
+        _tenant_engines[database_name] = create_async_engine(
+            url, pool_size=5, max_overflow=10, pool_pre_ping=True,
+        )
+    return _tenant_engines[database_name]
+
+
+def get_tenant_sessionmaker(database_name: str):
+    engine = get_tenant_engine(database_name)
+    return async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+
+async def get_tenant_by_id(tenant_id):
+    """Busca el Tenant en la BD central por su UUID."""
+    from app.tenants.hospitales.models import Tenant
+    from app.core.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        return await db.get(Tenant, tenant_id)
+
+
+def tenant_session(database_name: str):
+    """Context manager listo para 'async with' sobre la BD de un hospital."""
+    return get_tenant_sessionmaker(database_name)()

@@ -13,14 +13,29 @@ def lista(value):
         return []
 
 
-async def contexto_sigarh(db, usuario):
+async def contexto_sigarh(db, usuario, hospital=None):
     from app.sigarh.mantenimiento.models import PerfilUsuario, RolSistema
     from app.sigarh.rrhh.models import Empleado
     from app.tenants.hospitales.models import Tenant, TenantModule
     from app.tenants.modulos.models import Module
-    hospital = await db.scalar(select(Tenant).where(Tenant.id == usuario.tenant_id, Tenant.is_active.is_(True)))
-    if not usuario.is_active or not hospital:
-        raise HTTPException(401, "Usuario u hospital inactivo")
+    from app.core.database import AsyncSessionLocal as CentralSession
+
+    async with CentralSession() as central_db:
+        if hospital is None:
+            hospital = await central_db.scalar(select(Tenant).where(
+                Tenant.id == usuario.tenant_id, Tenant.is_active.is_(True)
+            ))
+        if not usuario.is_active or not hospital:
+            raise HTTPException(401, "Usuario u hospital inactivo")
+
+        habilitados = set((await central_db.scalars(select(TenantModule.module_code).join(
+            Module, Module.code == TenantModule.module_code,
+        ).where(
+            TenantModule.tenant_id == usuario.tenant_id,
+            TenantModule.is_active.is_(True),
+            Module.is_active.is_(True),
+        ))).all())
+
     perfil = await db.scalar(select(PerfilUsuario).where(
         PerfilUsuario.id == usuario.perfil_id, PerfilUsuario.tenant_id == usuario.tenant_id,
         PerfilUsuario.is_active.is_(True),
@@ -42,9 +57,6 @@ async def contexto_sigarh(db, usuario):
             raise HTTPException(401, "Empleado inactivo o ajeno al hospital")
     if grupos and (not empleado or str(empleado.grupo_ocupacional_id) not in grupos):
         raise HTTPException(403, "El grupo ocupacional no está autorizado por el rol")
-    habilitados = set((await db.scalars(select(TenantModule.module_code).join(
-        Module, Module.code == TenantModule.module_code,
-    ).where(TenantModule.tenant_id == usuario.tenant_id, TenantModule.is_active.is_(True), Module.is_active.is_(True)))).all())
     if rol.modulo_requerido and rol.modulo_requerido not in habilitados:
         raise HTTPException(403, "El módulo requerido por el rol no está habilitado")
     modulos = sorted(set(lista(perfil.modulos_acceso)) & set(lista(rol.modulos_permitidos)) & habilitados)
@@ -61,29 +73,52 @@ async def contexto_sigarh(db, usuario):
 async def usuario_actual(db, payload):
     from app.auth.models import User
     from app.sigarh.mantenimiento.models import UsuarioSigarh
+    from app.tenants.hospitales.models import Tenant
+    from app.core.tenant_db import get_tenant_sessionmaker
+
     try:
         uid = uuid.UUID(str(payload.get("sub")))
     except (ValueError, TypeError):
         raise HTTPException(401, "Sesión inválida")
-    # Tokens anteriores del panel SIGARH se verifican contra la cuenta real.
-    if payload.get("auth_source") == "sigarh" or payload.get("panel") == "sigarh":
-        usuario = await db.scalar(select(UsuarioSigarh).where(UsuarioSigarh.id == uid))
-        if usuario:
+
+    panel = payload.get("panel")
+    tenant_id_str = payload.get("tenant_id")
+
+    # Panel admin: siempre en la BD central, sin hospital asociado.
+    if panel == "admin" or not tenant_id_str:
+        usuario = await db.scalar(select(User).where(User.id == uid, User.is_active.is_(True)))
+        if not usuario or usuario.panel != panel:
+            raise HTTPException(401, "Usuario no encontrado o inactivo")
+        result = dict(payload)
+        result.update(name=usuario.name, email=usuario.email, role=usuario.role, tenant_id=None)
+        return result
+
+    # Resto de paneles (app, sigarh, portal): resolver el hospital y su BD propia.
+    try:
+        tenant_uuid = uuid.UUID(tenant_id_str)
+    except (ValueError, TypeError):
+        raise HTTPException(401, "Sesión inválida")
+
+    hospital = await db.scalar(select(Tenant).where(Tenant.id == tenant_uuid, Tenant.is_active.is_(True)))
+    if not hospital or not hospital.database_name:
+        raise HTTPException(401, "Hospital no encontrado o inactivo")
+
+    TenantSession = get_tenant_sessionmaker(hospital.database_name)
+    async with TenantSession() as tdb:
+        if panel == "sigarh" or payload.get("auth_source") == "sigarh":
+            usuario = await tdb.scalar(select(UsuarioSigarh).where(UsuarioSigarh.id == uid))
+            if not usuario:
+                raise HTTPException(401, "Usuario no encontrado")
             if payload.get("session_version", 0) != usuario.session_version:
                 raise HTTPException(401, "La sesión fue revocada; vuelva a ingresar")
-            return await contexto_sigarh(db, usuario)
-        if payload.get("auth_source") == "sigarh":
-            raise HTTPException(401, "Usuario no encontrado")
-    usuario = await db.scalar(select(User).where(User.id == uid, User.is_active.is_(True)))
-    if not usuario or usuario.panel != payload.get("panel"):
-        raise HTTPException(401, "Usuario no encontrado o inactivo")
-    result = dict(payload)
-    result.update(name=usuario.name, email=usuario.email, role=usuario.role,
-                  tenant_id=str(usuario.tenant_id) if usuario.tenant_id else None)
-    # Las cuentas globales no reciben permisos SIGARH implícitos.
-    if usuario.panel == "sigarh":
-        result.update(active_modules=[], permisos_accion=[], perfil_id=None, empleado_id=None)
-    return result
+            return await contexto_sigarh(tdb, usuario, hospital=hospital)
+
+        usuario = await tdb.scalar(select(User).where(User.id == uid, User.is_active.is_(True)))
+        if not usuario or usuario.panel != panel:
+            raise HTTPException(401, "Usuario no encontrado o inactivo")
+        result = dict(payload)
+        result.update(name=usuario.name, email=usuario.email, role=usuario.role, tenant_id=str(hospital.id))
+        return result
 
 
 def es_admin_erp(user):

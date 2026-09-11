@@ -24,15 +24,27 @@ async def create_tenant(
     db: AsyncSession,
     data: TenantCreate,
 ) -> Tenant:
+    import asyncio
+    import json
     import bcrypt
     from app.auth.models import User
+    from app.sigarh.mantenimiento.models import RolSistema, PerfilUsuario, UsuarioSigarh
+    from app.core.tenant_db import (
+        create_tenant_database,
+        run_tenant_migrations,
+        get_tenant_sessionmaker,
+        _slugify_db_name,
+    )
 
     schema_name = generate_schema_name(data.domain)
+    subdomain = data.domain.split(".")[0]
+    database_name = _slugify_db_name(subdomain)
 
     tenant = Tenant(
         name=data.name,
         domain=data.domain,
         schema_name=schema_name,
+        database_name=database_name,
         ruc=data.ruc,
         address=data.address,
         phone=data.phone,
@@ -44,10 +56,6 @@ async def create_tenant(
     db.add(tenant)
     await db.flush()
 
-    # Crear schema en PostgreSQL
-    await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
-
-    # Activar módulos seleccionados
     for module_code in data.active_modules:
         module = TenantModule(
             tenant_id=tenant.id,
@@ -56,38 +64,67 @@ async def create_tenant(
         )
         db.add(module)
 
-    # Crear usuario Administrador del hospital
-    if data.admin_email and data.admin_password:
-        admin_user = User(
-            name=data.admin_name or "Administrador",
-            email=data.admin_email,
-            password=bcrypt.hashpw(
-                data.admin_password.encode(), bcrypt.gensalt()
-            ).decode(),
-            role="administrador",
-            panel="app",
-            tenant_id=tenant.id,
-            is_active=True,
-        )
-        db.add(admin_user)
-
-    # Crear usuario SIGARH
-    if data.sigarh_email and data.sigarh_password:
-        sigarh_user = User(
-            name=data.sigarh_name or "Usuario SIGARH",
-            email=data.sigarh_email,
-            password=bcrypt.hashpw(
-                data.sigarh_password.encode(), bcrypt.gensalt()
-            ).decode(),
-            role="sigarh",
-            panel="sigarh",
-            tenant_id=tenant.id,
-            is_active=True,
-        )
-        db.add(sigarh_user)
-
     await db.commit()
     await db.refresh(tenant)
+
+    # --- Provisión de la BD física del hospital (100% independiente) ---
+    await create_tenant_database(database_name)
+    await asyncio.to_thread(run_tenant_migrations, database_name)
+
+    # --- Crear usuarios DENTRO de la BD del hospital, no en la central ---
+    TenantSession = get_tenant_sessionmaker(database_name)
+    async with TenantSession() as tenant_db:
+        if data.admin_email and data.admin_password:
+            admin_user = User(
+                name=data.admin_name or "Administrador",
+                email=data.admin_email,
+                password=bcrypt.hashpw(
+                    data.admin_password.encode(), bcrypt.gensalt()
+                ).decode(),
+                role="administrador",
+                panel="app",
+                tenant_id=None,
+                is_active=True,
+            )
+            tenant_db.add(admin_user)
+
+        if data.sigarh_email and data.sigarh_password:
+            rol = RolSistema(
+                tenant_id=tenant.id,
+                nombre="Administrador SIGARH",
+                panel="sigarh",
+                modulos_permitidos=json.dumps(data.active_modules),
+                permisos_accion=json.dumps([]),
+                alcance_global=True,
+                is_active=True,
+            )
+            tenant_db.add(rol)
+            await tenant_db.flush()
+
+            perfil = PerfilUsuario(
+                tenant_id=tenant.id,
+                nombre="Administrador SIGARH",
+                rol_sistema_id=rol.id,
+                modulos_acceso=json.dumps(data.active_modules),
+                is_active=True,
+            )
+            tenant_db.add(perfil)
+            await tenant_db.flush()
+
+            sigarh_user = UsuarioSigarh(
+                tenant_id=tenant.id,
+                perfil_id=perfil.id,
+                username=data.sigarh_email.split("@")[0],
+                email=data.sigarh_email,
+                password=bcrypt.hashpw(
+                    data.sigarh_password.encode(), bcrypt.gensalt()
+                ).decode(),
+                is_active=True,
+            )
+            tenant_db.add(sigarh_user)
+
+        await tenant_db.commit()
+
     return tenant
 
 

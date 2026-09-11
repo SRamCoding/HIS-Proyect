@@ -48,7 +48,9 @@ from app.sigarh.creacion_roles.models import (
 
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+import os
+tenant_db_url = os.environ.get("TENANT_DATABASE_URL")
+config.set_main_option("sqlalchemy.url", tenant_db_url or settings.DATABASE_URL)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -78,7 +80,8 @@ def do_run_migrations(connection):
 
 
 async def run_async_migrations() -> None:
-    engine = create_async_engine(settings.DATABASE_URL, poolclass=pool.NullPool)
+    url = config.get_main_option("sqlalchemy.url")
+    engine = create_async_engine(url, poolclass=pool.NullPool)
     async with engine.begin() as conn:
         await conn.run_sync(do_run_migrations)
     await engine.dispose()

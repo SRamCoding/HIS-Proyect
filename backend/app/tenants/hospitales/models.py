@@ -20,6 +20,7 @@ class Tenant(Base):
     name: Mapped[str] = mapped_column(String(255))           # nombre del hospital
     domain: Mapped[str] = mapped_column(String(255), unique=True)  # hospital-tuman.erp.local
     schema_name: Mapped[str] = mapped_column(String(100), unique=True)  # tenant_hospital_tuman
+    database_name: Mapped[str | None] = mapped_column(String(100), unique=True)  # his_hospital_reque
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Datos del hospital
