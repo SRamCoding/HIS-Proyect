@@ -11,6 +11,7 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css', '~/assets/css/sigarh-form.css', '~/assets/css/sigarh-index.css'],
 app: {
   head: {
+    viewport: 'width=device-width, initial-scale=1',
     link: [
       {
         rel: 'stylesheet',
