@@ -9,7 +9,7 @@
     </h1>
 
     <!-- Selector -->
-    <div class="mb-4 flex items-center gap-3">
+    <div class="mb-4 flex flex-wrap items-center gap-3">
       <label class="text-sm" style="color: var(--ink-soft)">Ver logs de:</label>
       <select v-model="selected" class="input-clinical max-w-xs" @change="onChangeSelected">
         <option value="__global__">— BD Central (administración global) —</option>
@@ -24,73 +24,75 @@
     <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
       <div v-if="loading" class="p-6 text-sm" style="color: var(--ink-soft)">Cargando...</div>
       <div v-else-if="error" class="p-6 text-sm" style="color: var(--alert)">{{ error }}</div>
-      <table v-else class="w-full text-sm">
-        <thead>
-          <tr style="border-bottom: 1px solid var(--line)">
-            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Fecha y Hora</th>
-            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Canal</th>
-            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Evento</th>
-            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Modelo</th>
-            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Usuario</th>
-            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Descripción</th>
-            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Cambios</th>
-          </tr>
-        </thead>
-        <tbody>
-          <template v-for="log in logs" :key="log.id">
+      <div v-else class="overflow-x-auto">
+        <table class="w-full text-sm" style="min-width: 900px">
+          <thead>
             <tr style="border-bottom: 1px solid var(--line)">
-              <td class="px-5 py-3" style="color: var(--ink)">
-                <div>{{ relativeTime(log.created_at) }}</div>
-                <div class="text-xs" style="color: var(--ink-soft)">{{ formatDate(log.created_at) }}</div>
-              </td>
-              <td class="px-5 py-3">
-                <span class="badge badge--neutral">default</span>
-              </td>
-              <td class="px-5 py-3">
-                <span class="badge badge--neutral">{{ log.action }}</span>
-              </td>
-              <td class="px-5 py-3" style="color: var(--ink-soft)">
-                {{ log.model || '—' }}
-                <span v-if="log.model_id" class="text-xs block">ID: {{ log.model_id }}</span>
-              </td>
-              <td class="px-5 py-3 font-medium" style="color: var(--ink)">
-                {{ log.user_name || 'Sistema' }}
-              </td>
-              <td class="px-5 py-3" style="color: var(--ink-soft)">{{ log.description || '—' }}</td>
-              <td class="px-5 py-3">
-                <span v-if="!log.old_values && !log.new_values" style="color: var(--ink-soft)">—</span>
-                <button
-                  v-else
-                  class="text-sm font-medium"
-                  style="color: var(--teal)"
-                  @click="toggleExpand(log.id)"
-                >
-                  {{ expanded === log.id ? 'Ocultar' : 'Ver cambios' }}
-                </button>
+              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Fecha y Hora</th>
+              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Canal</th>
+              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Evento</th>
+              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Modelo</th>
+              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Usuario</th>
+              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Descripción</th>
+              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Cambios</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="log in logs" :key="log.id">
+              <tr style="border-bottom: 1px solid var(--line)">
+                <td class="px-5 py-3" style="color: var(--ink)">
+                  <div>{{ relativeTime(log.created_at) }}</div>
+                  <div class="text-xs" style="color: var(--ink-soft)">{{ formatDate(log.created_at) }}</div>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="badge badge--neutral">default</span>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="badge badge--neutral">{{ log.action }}</span>
+                </td>
+                <td class="px-5 py-3" style="color: var(--ink-soft)">
+                  {{ log.model || '—' }}
+                  <span v-if="log.model_id" class="text-xs block">ID: {{ log.model_id }}</span>
+                </td>
+                <td class="px-5 py-3 font-medium" style="color: var(--ink)">
+                  {{ log.user_name || 'Sistema' }}
+                </td>
+                <td class="px-5 py-3" style="color: var(--ink-soft)">{{ log.description || '—' }}</td>
+                <td class="px-5 py-3">
+                  <span v-if="!log.old_values && !log.new_values" style="color: var(--ink-soft)">—</span>
+                  <button
+                    v-else
+                    class="text-sm font-medium"
+                    style="color: var(--teal)"
+                    @click="toggleExpand(log.id)"
+                  >
+                    {{ expanded === log.id ? 'Ocultar' : 'Ver cambios' }}
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="expanded === log.id" style="border-bottom: 1px solid var(--line); background: var(--mist)">
+                <td colspan="7" class="px-5 py-3">
+                  <div class="grid grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <p class="font-medium mb-1" style="color: var(--ink-soft)">Valores anteriores</p>
+                      <pre class="p-2 rounded" style="background: var(--paper); overflow-x: auto">{{ pretty(log.old_values) }}</pre>
+                    </div>
+                    <div>
+                      <p class="font-medium mb-1" style="color: var(--ink-soft)">Valores nuevos</p>
+                      <pre class="p-2 rounded" style="background: var(--paper); overflow-x: auto">{{ pretty(log.new_values) }}</pre>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
+            <tr v-if="!logs.length">
+              <td colspan="7" class="px-5 py-8 text-center text-sm" style="color: var(--ink-soft)">
+                Sin registros para esta selección.
               </td>
             </tr>
-            <tr v-if="expanded === log.id" style="border-bottom: 1px solid var(--line); background: var(--mist)">
-              <td colspan="7" class="px-5 py-3">
-                <div class="grid grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <p class="font-medium mb-1" style="color: var(--ink-soft)">Valores anteriores</p>
-                    <pre class="p-2 rounded" style="background: var(--paper); overflow-x: auto">{{ pretty(log.old_values) }}</pre>
-                  </div>
-                  <div>
-                    <p class="font-medium mb-1" style="color: var(--ink-soft)">Valores nuevos</p>
-                    <pre class="p-2 rounded" style="background: var(--paper); overflow-x: auto">{{ pretty(log.new_values) }}</pre>
-                  </div>
-                </div>
-              </td>
-            </tr>
-          </template>
-          <tr v-if="!logs.length">
-            <td colspan="7" class="px-5 py-8 text-center text-sm" style="color: var(--ink-soft)">
-              Sin registros para esta selección.
-            </td>
-          </tr>
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </template>

@@ -64,8 +64,8 @@
       <!-- Cobertura de módulos -->
       <div class="mb-6">
         <h2 class="text-sm font-semibold mb-2" style="color: var(--ink)">Cobertura de Módulos (Top 10)</h2>
-        <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-          <table class="w-full text-sm">
+        <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)" class="overflow-x-auto">
+          <table class="w-full text-sm" style="min-width: 480px">
             <thead>
               <tr style="border-bottom: 1px solid var(--line)">
                 <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Módulo</th>
@@ -92,8 +92,8 @@
       <!-- Resumen por hospital -->
       <div class="mb-6">
         <h2 class="text-sm font-semibold mb-2" style="color: var(--ink)">Hospitales — Resumen del Período</h2>
-        <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-          <table class="w-full text-sm">
+        <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)" class="overflow-x-auto">
+          <table class="w-full text-sm" style="min-width: 720px">
             <thead>
               <tr style="border-bottom: 1px solid var(--line)">
                 <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Hospital</th>
@@ -131,8 +131,8 @@
       <!-- Hospitales registrados en el período -->
       <div>
         <h2 class="text-sm font-semibold mb-2" style="color: var(--ink)">Hospitales Registrados en el Período</h2>
-        <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-          <table class="w-full text-sm">
+        <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)" class="overflow-x-auto">
+          <table class="w-full text-sm" style="min-width: 420px">
             <tbody>
               <tr v-for="h in data.hospitales_registrados_periodo" :key="h.domain" style="border-bottom: 1px solid var(--line)">
                 <td class="px-5 py-3 font-medium" style="color: var(--ink)">

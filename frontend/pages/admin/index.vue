@@ -471,65 +471,67 @@
         Cargando…
       </div>
 
-      <table v-else class="w-full text-sm">
-        <thead>
-          <tr style="border-bottom: 1px solid var(--line)">
-            <th class="text-left font-semibold px-5 py-2.5 text-xs tracking-wide uppercase" style="color: var(--ink-soft)">
-              <UIcon name="i-heroicons-building-office-2" class="w-3.5 h-3.5 inline mr-1.5" />
-              Nombre
-            </th>
-            <th class="text-left font-semibold px-5 py-2.5 text-xs tracking-wide uppercase" style="color: var(--ink-soft)">Nivel MINSA</th>
-            <th class="text-left font-semibold px-5 py-2.5 text-xs tracking-wide uppercase" style="color: var(--ink-soft)">Estado</th>
-            <th class="text-left font-semibold px-5 py-2.5 text-xs tracking-wide uppercase" style="color: var(--ink-soft)">
-              <UIcon name="i-heroicons-cube" class="w-3.5 h-3.5 inline mr-1.5" />
-              Módulos
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="h in hospitalesRecientes"
-            :key="h.id"
-            style="border-bottom: 1px solid var(--line)"
-            class="hover:bg-mist/20 transition-colors"
-          >
-            <td class="px-5 py-3">
-              <div class="flex items-center gap-2.5">
-                <div class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style="background: var(--mist)">
-                  <UIcon name="i-heroicons-building-office-2" class="w-3.5 h-3.5" style="color: var(--navy)" />
+      <div v-else class="overflow-x-auto">
+        <table class="w-full text-sm" style="min-width: 480px">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--line)">
+              <th class="text-left font-semibold px-5 py-2.5 text-xs tracking-wide uppercase" style="color: var(--ink-soft)">
+                <UIcon name="i-heroicons-building-office-2" class="w-3.5 h-3.5 inline mr-1.5" />
+                Nombre
+              </th>
+              <th class="text-left font-semibold px-5 py-2.5 text-xs tracking-wide uppercase" style="color: var(--ink-soft)">Nivel MINSA</th>
+              <th class="text-left font-semibold px-5 py-2.5 text-xs tracking-wide uppercase" style="color: var(--ink-soft)">Estado</th>
+              <th class="text-left font-semibold px-5 py-2.5 text-xs tracking-wide uppercase" style="color: var(--ink-soft)">
+                <UIcon name="i-heroicons-cube" class="w-3.5 h-3.5 inline mr-1.5" />
+                Módulos
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="h in hospitalesRecientes"
+              :key="h.id"
+              style="border-bottom: 1px solid var(--line)"
+              class="hover:bg-mist/20 transition-colors"
+            >
+              <td class="px-5 py-3">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style="background: var(--mist)">
+                    <UIcon name="i-heroicons-building-office-2" class="w-3.5 h-3.5" style="color: var(--navy)" />
+                  </div>
+                  <span style="color: var(--ink)">{{ h.name }}</span>
                 </div>
-                <span style="color: var(--ink)">{{ h.name }}</span>
-              </div>
-            </td>
-            <td class="px-5 py-3 font-mono-data" style="color: var(--ink-soft)">{{ h.hospital_level ?? '—' }}</td>
-            <td class="px-5 py-3">
-              <span class="badge" :class="h.is_active ? 'badge--ok' : 'badge--neutral'">
-                {{ h.is_active ? 'Activo' : 'Inactivo' }}
-              </span>
-            </td>
-            <td class="px-5 py-3">
-              <span class="text-xs font-mono-data" style="color: var(--ink-soft)">
-                {{ h.active_modules.length }}
-              </span>
-            </td>
-          </tr>
-          <tr v-if="!hospitalesRecientes.length">
-            <td colspan="4" class="py-10">
-              <div class="flex flex-col items-center gap-3">
-                <div
-                  class="w-56 h-28 bg-no-repeat bg-center bg-contain opacity-90"
-                  style="background-image: url('/hospital-empty.svg')"
-                />
-                <p class="text-sm" style="color: var(--ink-soft)">Sin hospitales registrados todavía.</p>
-                <NuxtLink to="/admin/hospitales/create" class="btn-primary text-sm mt-1">
-                  <UIcon name="i-heroicons-plus" class="w-4 h-4 inline mr-1" />
-                  Crear el primero
-                </NuxtLink>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+              </td>
+              <td class="px-5 py-3 font-mono-data" style="color: var(--ink-soft)">{{ h.hospital_level ?? '—' }}</td>
+              <td class="px-5 py-3">
+                <span class="badge" :class="h.is_active ? 'badge--ok' : 'badge--neutral'">
+                  {{ h.is_active ? 'Activo' : 'Inactivo' }}
+                </span>
+              </td>
+              <td class="px-5 py-3">
+                <span class="text-xs font-mono-data" style="color: var(--ink-soft)">
+                  {{ h.active_modules.length }}
+                </span>
+              </td>
+            </tr>
+            <tr v-if="!hospitalesRecientes.length">
+              <td colspan="4" class="py-10">
+                <div class="flex flex-col items-center gap-3">
+                  <div
+                    class="w-56 h-28 bg-no-repeat bg-center bg-contain opacity-90"
+                    style="background-image: url('/hospital-empty.svg')"
+                  />
+                  <p class="text-sm" style="color: var(--ink-soft)">Sin hospitales registrados todavía.</p>
+                  <NuxtLink to="/admin/hospitales/create" class="btn-primary text-sm mt-1">
+                    <UIcon name="i-heroicons-plus" class="w-4 h-4 inline mr-1" />
+                    Crear el primero
+                  </NuxtLink>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </template>

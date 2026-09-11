@@ -44,43 +44,45 @@
     <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
       <div v-if="loading" class="p-6 text-sm" style="color: var(--ink-soft)">Cargando...</div>
       <div v-else-if="error" class="p-6 text-sm" style="color: var(--alert)">{{ error }}</div>
-      <table v-else class="w-full text-sm">
-        <thead>
-          <tr style="border-bottom: 1px solid var(--line)">
-            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Módulo</th>
-            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Requiere</th>
-            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Obligatorio</th>
-            <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Creado</th>
-            <th class="text-right font-medium px-5 py-3"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="dep in dependencias" :key="dep.id" style="border-bottom: 1px solid var(--line)">
-            <td class="px-5 py-3 font-medium" style="color: var(--ink)">
-              {{ moduleName(dep.module_code) }}
-              <span class="text-xs block" style="color: var(--ink-soft)">{{ dep.module_code }}</span>
-            </td>
-            <td class="px-5 py-3" style="color: var(--ink)">
-              {{ moduleName(dep.depends_on_code) }}
-              <span class="text-xs block" style="color: var(--ink-soft)">{{ dep.depends_on_code }}</span>
-            </td>
-            <td class="px-5 py-3">
-              <span class="badge" :class="dep.is_required ? 'badge--alert' : 'badge--neutral'">
-                {{ dep.is_required ? 'Sí' : 'No' }}
-              </span>
-            </td>
-            <td class="px-5 py-3 text-xs" style="color: var(--ink-soft)">{{ formatDate(dep.created_at) }}</td>
+      <div v-else class="overflow-x-auto">
+        <table class="w-full text-sm" style="min-width: 640px">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--line)">
+              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Módulo</th>
+              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Requiere</th>
+              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Obligatorio</th>
+              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Creado</th>
+              <th class="text-right font-medium px-5 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="dep in dependencias" :key="dep.id" style="border-bottom: 1px solid var(--line)">
+              <td class="px-5 py-3 font-medium" style="color: var(--ink)">
+                {{ moduleName(dep.module_code) }}
+                <span class="text-xs block" style="color: var(--ink-soft)">{{ dep.module_code }}</span>
+              </td>
+              <td class="px-5 py-3" style="color: var(--ink)">
+                {{ moduleName(dep.depends_on_code) }}
+                <span class="text-xs block" style="color: var(--ink-soft)">{{ dep.depends_on_code }}</span>
+              </td>
+              <td class="px-5 py-3">
+                <span class="badge" :class="dep.is_required ? 'badge--alert' : 'badge--neutral'">
+                  {{ dep.is_required ? 'Sí' : 'No' }}
+                </span>
+              </td>
+              <td class="px-5 py-3 text-xs" style="color: var(--ink-soft)">{{ formatDate(dep.created_at) }}</td>
               <td class="px-5 py-3 text-right">
                 <button class="text-sm font-medium" style="color: var(--alert)" @click="abrirConfirmacion(dep)">Eliminar</button>
               </td>
-          </tr>
-          <tr v-if="!dependencias.length">
-            <td colspan="4" class="px-5 py-8 text-center text-sm" style="color: var(--ink-soft)">
-              Sin dependencias registradas.
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            </tr>
+            <tr v-if="!dependencias.length">
+              <td colspan="4" class="px-5 py-8 text-center text-sm" style="color: var(--ink-soft)">
+                Sin dependencias registradas.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
       <!-- Modal de confirmación -->
