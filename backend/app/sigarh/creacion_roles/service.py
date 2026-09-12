@@ -285,6 +285,9 @@ async def diagnosticar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol) -> 
     for re_ in rol.empleados:
         emp = cat["emps"].get(re_.empleado_id)
         nombre_emp = getattr(emp, "nombre_completo", None) or "Empleado sin nombre"
+        if not emp or not emp.is_active:
+            add("error", f"{nombre_emp}: trabajador inactivo o inexistente.", nombre_emp)
+            continue
         if not re_.actividades:
             add("error", f"{nombre_emp}: no tiene actividades asignadas.", nombre_emp)
             continue
@@ -302,6 +305,13 @@ async def diagnosticar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol) -> 
                 continue
 
             for t in a.turnos:
+                from calendar import monthrange
+                from app.sigarh.rrhh.vigencia_laboral import impedimento_programacion
+                fechas_invalidas = [dia for dia in range(1, monthrange(rol.anio, rol.mes)[1] + 1)
+                                    if (date(rol.anio, rol.mes, dia).weekday() + 1) % 7 in _dias_set(t.dias_semana)
+                                    and impedimento_programacion(emp, date(rol.anio, rol.mes, dia))]
+                if fechas_invalidas:
+                    add("error", f"{nombre_emp}: turno fuera de su vigencia laboral los dias {', '.join(map(str, fechas_invalidas))}.", nombre_emp, nombre_act)
                 sin_horario = not t.horario_guardia_id
                 sin_dias = not (t.dias_semana or [])
                 if asistencial and sin_horario:

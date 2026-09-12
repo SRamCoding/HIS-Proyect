@@ -267,6 +267,10 @@ async def sincronizar_programacion_sigarh(
             fecha = date_type(anio, mes, dia_mes)
             if (fecha.weekday() + 1) % 7 not in dias:  # SIGARH usa domingo=0.
                 continue
+            from app.sigarh.rrhh.vigencia_laboral import impedimento_programacion
+            if impedimento_programacion(empleado, fecha):
+                omitidas += 1
+                continue
             if any(
                 ini <= fecha <= fin for ini, fin in rangos
             ):  # médico de licencia/vacaciones.
@@ -340,6 +344,7 @@ async def create_programacion(
     await _validar_servicio_especialidad(
         db, tenant_id, data.servicio_id, data.especialidad_id
     )
+    await _validar_vigencia_medico(db, tenant_id, data.medico_id, data.fecha)
     prog = ProgramacionMedica(tenant_id=tenant_id, **data.model_dump())
     db.add(prog)
     await db.commit()
@@ -447,6 +452,8 @@ async def update_programacion(
         changes.get("servicio_id", prog.servicio_id),
         changes.get("especialidad_id", prog.especialidad_id),
     )
+    if changes.get("estado", prog.estado) == "activo":
+        await _validar_vigencia_medico(db, tenant_id, changes.get("medico_id", prog.medico_id), changes.get("fecha", prog.fecha))
     for field, value in changes.items():
         setattr(prog, field, value)
     await db.commit()
@@ -2177,3 +2184,14 @@ async def get_referencia(
         "estado": ref.estado,
         "created_at": ref.created_at,
     }
+
+
+async def _validar_vigencia_medico(db, tenant_id, medico_id, fecha):
+    from fastapi import HTTPException
+    from app.sigarh.rrhh.vigencia_laboral import impedimento_programacion
+    medico = await db.scalar(select(Empleado).where(Empleado.id == medico_id, Empleado.tenant_id == tenant_id))
+    if fecha is None:
+        raise HTTPException(409, "La programacion requiere una fecha.")
+    error = impedimento_programacion(medico, fecha)
+    if error:
+        raise HTTPException(409, error)

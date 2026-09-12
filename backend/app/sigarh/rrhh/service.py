@@ -88,6 +88,10 @@ async def actualizar_empleado(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.U
     if not empleado:
         return None
     cambios = data.model_dump(exclude_unset=True)
+    from app.sigarh.rrhh.vigencia_laboral import validar_fechas_laborales
+    error_fechas = validar_fechas_laborales(cambios, empleado)
+    if error_fechas:
+        raise ReglaNegocioError(error_fechas)
     await validar_vinculo_laboral(db, cambios)
     await _validar_profesion_empleado(db, tenant_id, cambios, empleado)
     if cambios.get("correo") and await _correo_duplicado(db, tenant_id, cambios["correo"], excluir=id):
