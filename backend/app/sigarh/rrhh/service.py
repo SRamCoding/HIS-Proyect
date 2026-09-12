@@ -51,7 +51,7 @@ async def listar_empleados(db: AsyncSession, tenant_id: uuid.UUID) -> list[Emple
 
 async def obtener_empleado(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID) -> Empleado | None:
     result = await db.execute(
-        select(Empleado).options(*_EMP_OPTS).where(Empleado.id == id, Empleado.tenant_id == tenant_id)
+        select(Empleado).options(*_EMP_OPTS).where(Empleado.id == id, Empleado.tenant_id == tenant_id).execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
 
@@ -79,8 +79,10 @@ async def crear_empleado(db: AsyncSession, tenant_id: uuid.UUID, data) -> Emplea
     await validar_referencias_empleado(db, tenant_id, data.model_dump())
     await validar_tipo_nivel_empleado(db, data.model_dump())
     await _validar_profesion_empleado(db, tenant_id, data.model_dump())
-    empleado = Empleado(tenant_id=tenant_id, **data.model_dump())
+    empleado = Empleado(tenant_id=tenant_id, **data.model_dump(exclude={"especialidades"}))
     db.add(empleado)
+    await db.flush()
+    await sincronizar_especialidades_empleado(db, empleado, data.especialidades)
     await db.commit()
     return await obtener_empleado(db, empleado.id, tenant_id)
 
@@ -90,6 +92,7 @@ async def actualizar_empleado(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.U
     if not empleado:
         return None
     cambios = data.model_dump(exclude_unset=True)
+    especialidades = cambios.pop("especialidades", None)
     from app.sigarh.rrhh.vigencia_laboral import validar_fechas_laborales
     error_fechas = validar_fechas_laborales(cambios, empleado)
     if error_fechas:
@@ -102,6 +105,9 @@ async def actualizar_empleado(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.U
         raise ReglaNegocioError(f"Ya existe un empleado con el correo {cambios['correo']}.")
     for f, v in cambios.items():
         setattr(empleado, f, v)
+    if especialidades is not None:
+        from app.sigarh.rrhh.schemas import EmpleadoEspecialidadCreate
+        await sincronizar_especialidades_empleado(db, empleado, [EmpleadoEspecialidadCreate(**e) for e in especialidades])
     await db.commit()
     return await obtener_empleado(db, id, tenant_id)
 
@@ -143,13 +149,39 @@ async def agregar_especialidad(db: AsyncSession, empleado_id: uuid.UUID, data) -
     return res.scalar_one()
 
 
-async def eliminar_especialidad(db: AsyncSession, id: uuid.UUID) -> bool:
-    esp = await db.scalar(select(EmpleadoEspecialidad).where(EmpleadoEspecialidad.id == id))
+async def eliminar_especialidad(db: AsyncSession, id: uuid.UUID, empleado_id: uuid.UUID, tenant_id: uuid.UUID) -> bool:
+    esp = await db.scalar(select(EmpleadoEspecialidad).join(Empleado).where(
+        EmpleadoEspecialidad.id == id, EmpleadoEspecialidad.empleado_id == empleado_id, Empleado.tenant_id == tenant_id))
     if not esp:
         return False
     await db.delete(esp)
     await db.commit()
     return True
+
+
+async def sincronizar_especialidades_empleado(db, empleado, datos):
+    """Valida el conjunto completo antes de modificarlo; el llamante hace commit."""
+    from app.sigarh.mantenimiento.models import Profesion
+    profesion = await db.get(Profesion, empleado.profesion_id) if empleado.profesion_id else None
+    if datos and (not profesion or profesion.codigo != "MED"):
+        raise ReglaNegocioError("Solo Medico Cirujano puede registrar especialidades CONAREME.")
+    ids = [d.especialidad_id for d in datos]
+    if len(ids) != len(set(ids)):
+        raise ReglaNegocioError("No se puede repetir una especialidad del empleado.")
+    for d in datos:
+        esp = await db.get(Especialidad, d.especialidad_id)
+        if not esp or esp.tenant_id != empleado.tenant_id or not esp.is_active:
+            raise ReglaNegocioError("La especialidad no existe o esta inactiva en este hospital.")
+    existentes = {e.especialidad_id: e for e in (await db.scalars(select(EmpleadoEspecialidad).where(EmpleadoEspecialidad.empleado_id == empleado.id))).all()}
+    for d in datos:
+        item = existentes.pop(d.especialidad_id, None)
+        if item:
+            for key, value in d.model_dump(exclude={"especialidad_id"}).items():
+                setattr(item, key, value)
+        else:
+            db.add(EmpleadoEspecialidad(empleado_id=empleado.id, **d.model_dump()))
+    for item in existentes.values():
+        await db.delete(item)
 
 
 # ─── Catálogo de Especialidades ───────────────────────────────────────────────
@@ -718,6 +750,8 @@ async def _validar_profesion_empleado(db, tenant_id, values, empleado=None):
     profession_id = values.get("profesion_id", getattr(empleado, "profesion_id", None))
     group_id = values.get("grupo_ocupacional_id", getattr(empleado, "grupo_ocupacional_id", None))
     if not profession_id:
+        if values.get("habilitado_colegio", getattr(empleado, "habilitado_colegio", False)) or (empleado and empleado.especialidades):
+            raise ReglaNegocioError("No se puede retirar la profesion mientras existen habilitacion o especialidades registradas.")
         return
     profession = await db.scalar(select(Profesion).where(
         Profesion.id == profession_id, Profesion.tenant_id == tenant_id,

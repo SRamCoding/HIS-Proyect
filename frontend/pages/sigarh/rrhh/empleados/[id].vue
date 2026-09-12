@@ -181,13 +181,15 @@ const eliminarEmpleado = async () => {
 }
 
 const handleSave = async () => {
-  if (!vinculoValido.value) { error.value = 'Selecciona la condici?n del r?gimen laboral elegido.'; return }
+  if (!vinculoValido.value) { error.value = 'Selecciona la condición del régimen laboral elegido.'; return }
   if (!validate()) { error.value = 'Revisa los campos marcados en rojo.'; return }
   saving.value = true; error.value = ''
   try {
     await api(`/sigarh/rrhh/empleados/${id.value}`, {
       method: 'PATCH',
+      tenant: tenantId.value,
       body: {
+        especialidades: form.especialidades.filter(e => e.especialidad_id).map(e => ({ especialidad_id: e.especialidad_id, numero_rne: e.numero_rne || null, validado: e.validado })),
         nombres: form.nombres, apellido_paterno: form.apellido_paterno, apellido_materno: form.apellido_materno,
         fecha_nacimiento: form.fecha_nacimiento || null, sexo: form.sexo || null, estado_civil: form.estado_civil || null,
         grupo_sanguineo: form.grupo_sanguineo || null, celular: form.celular || null, telefono_fijo: form.telefono_fijo || null,
@@ -213,14 +215,6 @@ const handleSave = async () => {
         distrito_ubigeo: form.distrito_ubigeo || null, direccion: form.direccion || null,
       },
     })
-    for (const esp of form.especialidades) {
-      if (esp.nueva && esp.especialidad_id) {
-        await api(`/sigarh/rrhh/empleados/${id.value}/especialidades`, {
-          method: 'POST',
-          body: { especialidad_id: esp.especialidad_id, numero_rne: esp.numero_rne || null, validado: esp.validado },
-        })
-      }
-    }
     router.push(`/sigarh/rrhh/empleados?tenant=${tenantId.value}`)
   } catch (e: any) {
     error.value = formatApiError(e, 'No se pudo guardar el empleado')

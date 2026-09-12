@@ -41,6 +41,14 @@ class EmpleadoEspecialidadCreate(BaseModel):
     certificado_url: str | None = None
     validado: bool = False
 
+    @field_validator("numero_rne")
+    @classmethod
+    def limpiar_rne(cls, v):
+        v = _limpiar(v)
+        if v and len(v) > 20:
+            raise ValueError("El RNE no debe superar 20 caracteres")
+        return v
+
 
 class EmpleadoEspecialidadResponse(EmpleadoEspecialidadCreate):
     id: uuid.UUID
@@ -58,16 +66,16 @@ class _EmpleadoCampos(BaseModel):
     """
     # Datos Personales
     dni: str | None = None
-    nombres: str | None = None
-    apellido_paterno: str | None = None
-    apellido_materno: str | None = None
+    nombres: str | None = Field(None, max_length=150)
+    apellido_paterno: str | None = Field(None, max_length=100)
+    apellido_materno: str | None = Field(None, max_length=100)
     fecha_nacimiento: date | None = None
     sexo: str | None = None
     estado_civil: str | None = None
     grupo_sanguineo: str | None = None
     celular: str | None = None
     telefono_fijo: str | None = None
-    correo: str | None = None
+    correo: str | None = Field(None, max_length=255)
 
     # Datos Laborales
     vinculo_laboral_codigo: str | None = None
@@ -98,16 +106,16 @@ class _EmpleadoCampos(BaseModel):
     resolucion_cese: str | None = None
 
     # Datos Bancarios
-    banco: str | None = None
+    banco: str | None = Field(None, max_length=100)
     ruc: str | None = None
     numero_cuenta: str | None = None
     numero_cci: str | None = None
     tipo_cuenta: str | None = None
 
     # Ubicacion
-    departamento_ubigeo: str | None = None
-    provincia_ubigeo: str | None = None
-    distrito_ubigeo: str | None = None
+    departamento_ubigeo: str | None = Field(None, max_length=2)
+    provincia_ubigeo: str | None = Field(None, max_length=4)
+    distrito_ubigeo: str | None = Field(None, max_length=6)
     direccion: str | None = None
 
     # ── Validaciones de campo ───────────────────────────────────────────────
@@ -205,6 +213,19 @@ class _EmpleadoCampos(BaseModel):
             raise ValueError("La dirección no debe superar 200 caracteres")
         return v
 
+    @field_validator("numero_cci")
+    @classmethod
+    def validar_cci(cls, v):
+        return _solo_digitos(v, 20, "El CCI")
+
+    @field_validator("tipo_cuenta")
+    @classmethod
+    def validar_tipo_cuenta(cls, v):
+        v = _limpiar(v)
+        if v and v.lower() not in {"ahorros", "corriente"}:
+            raise ValueError("El tipo de cuenta debe ser ahorros o corriente")
+        return v.lower() if v else None
+
     @field_validator("correo")
     @classmethod
     def _v_correo(cls, v):
@@ -263,7 +284,8 @@ class _EmpleadoCampos(BaseModel):
         if fn:
             if fn >= hoy:
                 raise ValueError("La fecha de nacimiento debe ser anterior a hoy")
-            if (hoy - fn).days < 18 * 365:
+            edad = hoy.year - fn.year - ((hoy.month, hoy.day) < (fn.month, fn.day))
+            if edad < 18:
                 raise ValueError("El empleado debe ser mayor de edad")
             if (hoy - fn).days > 80 * 366:
                 raise ValueError("La edad no puede superar los 80 años")
@@ -278,14 +300,23 @@ class _EmpleadoCampos(BaseModel):
 
 class EmpleadoCreate(_EmpleadoCampos):
     dni: str
-    nombres: str
-    apellido_paterno: str
-    apellido_materno: str
+    nombres: str = Field(max_length=150)
+    apellido_paterno: str = Field(max_length=100)
+    apellido_materno: str = Field(max_length=100)
     is_active: bool = True
+    especialidades: list[EmpleadoEspecialidadCreate] = Field(default_factory=list)
 
 
 class EmpleadoUpdate(_EmpleadoCampos):
     is_active: bool | None = None
+    especialidades: list[EmpleadoEspecialidadCreate] | None = None
+
+    @field_validator("is_active")
+    @classmethod
+    def estado_no_nulo(cls, v):
+        if v is None:
+            raise ValueError("El estado del empleado no puede ser nulo")
+        return v
 
 
 class EmpleadoResponse(BaseModel):

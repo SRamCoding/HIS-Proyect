@@ -11,7 +11,8 @@ const error = ref('')
 const seleccionado = computed(() => catalogo.value.find(v => v.codigo === codigo.value))
 const regimenes = computed(() => [...new Map(catalogo.value.map(v => [v.regimen_codigo, v.regimen_nombre])).entries()])
 const condiciones = computed(() => catalogo.value.filter(v => v.regimen_codigo === regimen.value))
-watch([regimen, codigo], () => emit('valido', !regimen.value || !!codigo.value), { immediate: true })
+watch([regimen, codigo, seleccionado, loading, error], () => emit('valido', !loading.value && !error.value &&
+  ((!regimen.value && !codigo.value) || seleccionado.value?.regimen_codigo === regimen.value)), { immediate: true })
 watch(seleccionado, v => { if (v) regimen.value = v.regimen_codigo }, { immediate: true })
 function cambiarRegimen() { codigo.value = condiciones.value.length === 1 ? condiciones.value[0]!.codigo : '' }
 async function cargar() {

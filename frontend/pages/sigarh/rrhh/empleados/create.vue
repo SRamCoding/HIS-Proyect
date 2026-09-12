@@ -20,6 +20,8 @@ const dniVerificado = ref(false)
 const dniMsg = ref('')
 const dniError = ref(false)
 let dniTimer: any
+let dniSolicitud = 0
+onBeforeUnmount(() => { clearTimeout(dniTimer); dniSolicitud++ })
 
 const gruposSanguineos = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
 const bancosPeru = [
@@ -131,20 +133,25 @@ const formatApiError = (e: any, fallback: string): string => apiErr(e, fallback)
 const checkDni = async () => {
   if (!/^\d{8}$/.test(form.dni)) { dniExiste.value = false; dniVerificado.value = false; return }
   verificandoDni.value = true
+  const solicitud = ++dniSolicitud
+  const dni = form.dni
   try {
-    const existente = await api<any>(`/sigarh/rrhh/empleados/buscar-dni/${form.dni}`)
+    const existente = await api<any>(`/sigarh/rrhh/empleados/buscar-dni/${dni}`, { tenant: tenantId.value })
+    if (solicitud !== dniSolicitud) return
     dniExiste.value = !!(existente && existente.id)
     if (dniExiste.value) errors.dni = `Ya existe un empleado registrado con el DNI ${form.dni}`
     dniVerificado.value = true
   } catch {
+    if (solicitud !== dniSolicitud) return
     dniExiste.value = false
     dniVerificado.value = false
   } finally {
-    verificandoDni.value = false
+    if (solicitud === dniSolicitud) verificandoDni.value = false
   }
 }
 
 watch(() => form.dni, (v) => {
+  dniSolicitud++
   errors.dni = ''
   dniExiste.value = false
   dniVerificado.value = false
@@ -163,11 +170,14 @@ watch(() => form.dni, (v) => {
 // nombres. Solo disponible cuando NO es registro manual (el casillero de arriba).
 const consultarDni = async () => {
   if (registroManual.value || form.dni.length !== 8) return
+  const dni = form.dni
   consultandoDni.value = true; dniMsg.value = ''; dniError.value = false
   try {
     await checkDni()
+    if (form.dni !== dni) return
     if (dniExiste.value) return  // el error ya se muestra bajo el campo
-    const d = await api<any>(`/sigarh/rrhh/dni-lookup/${form.dni}`)
+    const d = await api<any>(`/sigarh/rrhh/dni-lookup/${dni}`, { tenant: tenantId.value })
+    if (form.dni !== dni || registroManual.value) return
     form.nombres = d.nombres || form.nombres
     form.apellido_paterno = d.apellido_paterno || form.apellido_paterno
     form.apellido_materno = d.apellido_materno || form.apellido_materno
@@ -257,7 +267,7 @@ const nextStep = async () => {
 }
 
 const handleCreate = async () => {
-  if (!vinculoValido.value) { error.value = 'Selecciona la condici?n del r?gimen laboral elegido.'; return }
+  if (!vinculoValido.value) { error.value = 'Selecciona la condición del régimen laboral elegido.'; return }
   clearTimeout(dniTimer)
   await checkDni()
   for (const s of [0, 1]) {
@@ -268,6 +278,7 @@ const handleCreate = async () => {
     const { especialidades: _esp, ...campos } = form
     const payload = {
       ...campos,
+      especialidades: form.especialidades.filter(e => e.especialidad_id).map(e => ({ especialidad_id: e.especialidad_id, numero_rne: e.numero_rne || null, validado: e.validado })),
       profesion_id: form.profesion_id || null,
       numero_colegiatura: form.numero_colegiatura || null,
       numero_legajo: form.numero_legajo || null,
@@ -288,15 +299,7 @@ const handleCreate = async () => {
       fecha_nombramiento: form.fecha_nombramiento || null,
       fecha_cese: form.fecha_cese || null,
     }
-    const created = await api<any>('/sigarh/rrhh/empleados', { method: 'POST', body: payload })
-    for (const esp of form.especialidades) {
-      if (esp.especialidad_id) {
-        await api(`/sigarh/rrhh/empleados/${created.id}/especialidades`, {
-          method: 'POST',
-          body: { especialidad_id: esp.especialidad_id, numero_rne: esp.numero_rne || null, validado: esp.validado },
-        })
-      }
-    }
+    await api<any>('/sigarh/rrhh/empleados', { method: 'POST', tenant: tenantId.value, body: payload })
     router.push(`/sigarh/rrhh/empleados?tenant=${tenantId.value}`)
   } catch (e: any) {
     error.value = formatApiError(e, 'No se pudo crear el empleado')

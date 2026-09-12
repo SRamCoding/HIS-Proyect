@@ -2,6 +2,7 @@ import uuid
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db, get_db_central
 from app.core.dependencies import get_current_user
@@ -44,7 +45,10 @@ async def _referencia_especialidades(request: Request, current_user=Depends(get_
 
 
 def _tid(current_user: dict, request: Request) -> uuid.UUID:
-    tid = current_user.get("tenant_id") or request.headers.get("X-Tenant-ID")
+    from app.sigarh.mantenimiento.security import es_admin_erp
+    tid = current_user.get("tenant_id")
+    if es_admin_erp(current_user):
+        tid = request.headers.get("X-Tenant-ID") or tid
     if not tid:
         raise HTTPException(403, detail="Sin tenant asignado")
     return uuid.UUID(str(tid))
@@ -93,6 +97,9 @@ async def crear(request: Request, data: EmpleadoCreate, db: AsyncSession = Depen
         raise HTTPException(400, detail=f"Ya existe un empleado con DNI {data.dni}")
     try:
         return await svc.crear_empleado(db, tid, data)
+    except IntegrityError as e:
+        await db.rollback()
+        raise HTTPException(409, "El empleado contiene datos duplicados o referencias no válidas") from e
     except svc.ReglaNegocioError as e:
         raise _rn(e) from e
 
@@ -147,6 +154,9 @@ async def obtener(request: Request, id: uuid.UUID, db: AsyncSession = Depends(ge
 async def actualizar(request: Request, id: uuid.UUID, data: EmpleadoUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     try:
         emp = await svc.actualizar_empleado(db, id, _tid(current_user, request), data)
+    except IntegrityError as e:
+        await db.rollback()
+        raise HTTPException(409, "El empleado contiene datos duplicados o referencias no válidas") from e
     except svc.ReglaNegocioError as e:
         raise _rn(e) from e
     if not emp:
@@ -176,7 +186,7 @@ async def agregar_esp(request: Request, empleado_id: uuid.UUID, data: EmpleadoEs
 
 @router.delete("/empleados/{empleado_id}/especialidades/{id}")
 async def eliminar_esp(request: Request, empleado_id: uuid.UUID, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
-    if not await svc.eliminar_especialidad(db, id):
+    if not await svc.eliminar_especialidad(db, id, empleado_id, _tid(current_user, request)):
         raise HTTPException(404, detail="Especialidad no encontrada")
     return {"ok": True}
 
