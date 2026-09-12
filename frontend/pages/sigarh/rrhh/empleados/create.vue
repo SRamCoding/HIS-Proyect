@@ -33,6 +33,7 @@ const ubigeoDists = ref<{ id: string; nombre: string }[]>([])
 
 const tiposTrabajador = ref<any[]>([])
 const nivelesRemunerativos = ref<any[]>([])
+const profesionesCatalogo = ref<any[]>([])
 const gruposOcupacionales = ref<any[]>([])
 const departamentos = ref<any[]>([])
 const servicios = ref<any[]>([])
@@ -66,6 +67,19 @@ const form = reactive({
   banco: '', ruc: '', numero_cuenta: '', numero_cci: '', tipo_cuenta: '',
   departamento_ubigeo: '', provincia_ubigeo: '', distrito_ubigeo: '', direccion: '',
 })
+const tiposCompatibles = computed(() => tiposTrabajador.value.filter(t => !t.vinculos_codigos?.length || !form.vinculo_laboral_codigo || t.vinculos_codigos.includes(form.vinculo_laboral_codigo)))
+const nivelesCompatibles = computed(() => {
+  const codigo = profesionesCatalogo.value.find(p => p.id === form.profesion_id)?.codigo
+  return nivelesRemunerativos.value.filter(n => !n.profesion_codigo || n.profesion_codigo === codigo)
+})
+watch(() => form.profesion_id, () => {
+  if (form.nivel_remunerativo_id && !nivelesCompatibles.value.some(n => n.id === form.nivel_remunerativo_id)) form.nivel_remunerativo_id = ''
+})
+watch(() => form.vinculo_laboral_codigo, () => {
+  if (tiposCompatibles.value.length === 1) form.tipo_trabajador_id = tiposCompatibles.value[0].id
+  else if (!tiposCompatibles.value.some(t => t.id === form.tipo_trabajador_id)) form.tipo_trabajador_id = ''
+})
+
 
 const fullName = computed(() => [form.nombres, form.apellido_paterno, form.apellido_materno].filter(Boolean).join(' '))
 const espCount = computed(() => form.especialidades.filter(e => e.especialidad_id).length)
@@ -284,6 +298,7 @@ const handleCreate = async () => {
 onMounted(async () => {
   try {
     const refs = await api<any>('/sigarh/rrhh/empleados/catalogos', { tenant: tenantId.value })
+    profesionesCatalogo.value = refs.profesiones
     const tt = refs.tipos_trabajador, nr = refs.niveles_remunerativos, go = refs.grupos_ocupacionales, dep = refs.departamentos, ser = refs.servicios
     const esp = await api<any[]>('/sigarh/rrhh/especialidades?active_only=true', { tenant: tenantId.value }).catch(() => [])
     tiposTrabajador.value = tt; nivelesRemunerativos.value = nr; gruposOcupacionales.value = go
@@ -430,14 +445,14 @@ onMounted(async () => {
         <div class="form-group">
           <label class="form-label">Tipo de Trabajador <span class="required">*</span></label>
           <div class="input-wrapper"><UIcon name="i-heroicons-user-group" class="input-icon" />
-            <select v-model="form.tipo_trabajador_id" class="input-clinical" :class="{ 'input-error': errors.tipo_trabajador_id }"><option value="">Seleccione</option><option v-for="t in tiposTrabajador" :key="t.id" :value="t.id">{{ t.nombre }}</option></select>
+            <select v-model="form.tipo_trabajador_id" class="input-clinical" :class="{ 'input-error': errors.tipo_trabajador_id }"><option value="">Seleccione</option><option v-for="t in tiposCompatibles" :key="t.id" :value="t.id">{{ t.nombre }}</option></select>
           </div>
           <span v-if="errors.tipo_trabajador_id" class="error-message">{{ errors.tipo_trabajador_id }}</span>
         </div>
         <div class="form-group">
           <label class="form-label">Nivel Remunerativo <span class="required">*</span></label>
           <div class="input-wrapper"><UIcon name="i-heroicons-currency-dollar" class="input-icon" />
-            <select v-model="form.nivel_remunerativo_id" class="input-clinical" :class="{ 'input-error': errors.nivel_remunerativo_id }"><option value="">Seleccione</option><option v-for="n in nivelesRemunerativos" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
+            <select v-model="form.nivel_remunerativo_id" class="input-clinical" :class="{ 'input-error': errors.nivel_remunerativo_id }"><option value="">Seleccione</option><option v-for="n in nivelesCompatibles" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
           </div>
           <span v-if="errors.nivel_remunerativo_id" class="error-message">{{ errors.nivel_remunerativo_id }}</span>
         </div>

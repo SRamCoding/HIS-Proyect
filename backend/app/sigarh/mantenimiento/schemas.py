@@ -95,6 +95,7 @@ class TipoTrabajadorCreate(CatalogoBase):
 
 
 class TipoTrabajadorResponse(CatalogoResponse):
+    vinculos_codigos: list[str] | None = None
     categoria_personal: str | None = None
 
 
@@ -115,7 +116,8 @@ class NivelRemunerativoCreate(CatalogoBase):
 
 
 class NivelRemunerativoResponse(CatalogoResponse):
-    pass
+    profesion_codigo: str | None = None
+    fuente_url: str | None = None
 
 
 def duracion_minutos(inicio: str, fin: str) -> int:

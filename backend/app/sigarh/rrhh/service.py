@@ -77,6 +77,7 @@ async def crear_empleado(db: AsyncSession, tenant_id: uuid.UUID, data) -> Emplea
         raise ReglaNegocioError(f"Ya existe un empleado con el correo {data.correo}.")
     await validar_vinculo_laboral(db, data.model_dump())
     await validar_referencias_empleado(db, tenant_id, data.model_dump())
+    await validar_tipo_nivel_empleado(db, data.model_dump())
     await _validar_profesion_empleado(db, tenant_id, data.model_dump())
     empleado = Empleado(tenant_id=tenant_id, **data.model_dump())
     db.add(empleado)
@@ -95,6 +96,7 @@ async def actualizar_empleado(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.U
         raise ReglaNegocioError(error_fechas)
     await validar_vinculo_laboral(db, cambios)
     await validar_referencias_empleado(db, tenant_id, cambios, empleado)
+    await validar_tipo_nivel_empleado(db, cambios, empleado)
     await _validar_profesion_empleado(db, tenant_id, cambios, empleado)
     if cambios.get("correo") and await _correo_duplicado(db, tenant_id, cambios["correo"], excluir=id):
         raise ReglaNegocioError(f"Ya existe un empleado con el correo {cambios['correo']}.")
@@ -757,3 +759,17 @@ async def validar_referencias_empleado(db, tenant_id, values, empleado=None):
         servicio = await db.get(Servicio, servicio_id)
         if servicio and servicio.departamento_id and servicio.departamento_id != departamento_id:
             raise ReglaNegocioError("El servicio no pertenece al departamento seleccionado.")
+
+
+async def validar_tipo_nivel_empleado(db, values, empleado=None):
+    from app.sigarh.mantenimiento.models import TipoTrabajador, NivelRemunerativo, Profesion
+    def value(key): return values.get(key, getattr(empleado, key, None))
+    tipo = await db.get(TipoTrabajador, value("tipo_trabajador_id")) if value("tipo_trabajador_id") else None
+    vinculo = value("vinculo_laboral_codigo")
+    if tipo and tipo.vinculos_codigos and vinculo not in tipo.vinculos_codigos:
+        raise ReglaNegocioError("El tipo de trabajador no corresponde al vinculo laboral registrado.")
+    nivel = await db.get(NivelRemunerativo, value("nivel_remunerativo_id")) if value("nivel_remunerativo_id") else None
+    if nivel and nivel.profesion_codigo:
+        profesion = await db.get(Profesion, value("profesion_id")) if value("profesion_id") else None
+        if not profesion or profesion.codigo != nivel.profesion_codigo:
+            raise ReglaNegocioError("El nivel remunerativo no corresponde a la profesion del trabajador.")

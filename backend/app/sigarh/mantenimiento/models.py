@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
 from decimal import Decimal
-from sqlalchemy import String, Boolean, DateTime, Integer, Text, ForeignKey, Float, Numeric, Date
+from sqlalchemy import String, Boolean, DateTime, Integer, Text, ForeignKey, Float, Numeric, Date, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -92,6 +92,7 @@ class TipoTrabajador(Base):
     # Etapa de formación (residentes/internos) que este tipo de trabajador
     # identifica de forma inequívoca, para validar personal en Creación de Roles.
     # NULL = no determina por sí solo la categoría del rol (ej. Nombrado, CAS).
+    vinculos_codigos: Mapped[list | None] = mapped_column(JSON, nullable=True)
     categoria_personal: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -129,6 +130,8 @@ class NivelRemunerativo(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     nombre: Mapped[str] = mapped_column(String(255))
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    profesion_codigo: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    fuente_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
