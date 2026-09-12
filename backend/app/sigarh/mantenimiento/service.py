@@ -746,6 +746,11 @@ async def resolver_tarifa(db, tenant_id, tipo_guardia_id, grupo_id, nivel_id, fe
             )
         )
     ).all()
+    return seleccionar_tarifa(rows)
+
+
+def seleccionar_tarifa(rows):
+    """La consulta llamante debe filtrar hospital, fecha y referencias."""
     ranked = sorted(
         rows,
         key=lambda r: 2 * bool(r.grupo_ocupacional_id) + bool(r.nivel_remunerativo_id),

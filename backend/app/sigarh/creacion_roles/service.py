@@ -249,7 +249,11 @@ async def serializar(db: AsyncSession, tenant_id: uuid.UUID, roles: list[Rol], d
 
 async def serializar_uno(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol, detalle: bool = True) -> dict:
     cat = await _catalogos(db, tenant_id)
-    return _serializa_rol(rol, cat, detalle)
+    result = _serializa_rol(rol, cat, detalle)
+    if detalle:
+        from app.sigarh.creacion_roles.valorizacion import estimar_rol
+        result["valorizacion_guardias"] = await estimar_rol(db, tenant_id, rol, cat)
+    return result
 
 
 # ─── Diagnóstico de completitud (para el consumo de App Hospitalario) ─────────
