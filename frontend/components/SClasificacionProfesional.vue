@@ -17,7 +17,7 @@ function seleccionar(event: Event) {
   if (p) emit('grupo', p.grupo_ocupacional_id)
 }
 onMounted(async () => {
-  try { profesiones.value = await api('/sigarh/mantenimiento/profesiones?limit=500') }
+  try { profesiones.value = (await api('/sigarh/rrhh/empleados/catalogos', { tenant: useRoute().query.tenant })).profesiones }
   catch (e: any) { error.value = apiErr(e, 'No se pudo cargar profesiones') }
 })
 </script>

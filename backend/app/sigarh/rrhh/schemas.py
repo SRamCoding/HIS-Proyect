@@ -2,7 +2,7 @@ import re
 import uuid
 from datetime import datetime, date
 from typing import Literal
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ─── Validadores reutilizables para Empleado ─────────────────────────────────
 
@@ -71,6 +71,13 @@ class _EmpleadoCampos(BaseModel):
 
     # Datos Laborales
     vinculo_laboral_codigo: str | None = None
+    numero_legajo: str | None = Field(None, max_length=50)
+    titulo_profesional: str | None = Field(None, max_length=255)
+    institucion_formacion: str | None = Field(None, max_length=255)
+    documento_vinculo_laboral: str | None = Field(None, max_length=255)
+    contacto_emergencia_nombre: str | None = Field(None, max_length=150)
+    contacto_emergencia_telefono: str | None = Field(None, max_length=20)
+    fecha_titulo: date | None = None
     tipo_trabajador_id: uuid.UUID | None = None
     nivel_remunerativo_id: uuid.UUID | None = None
     grupo_ocupacional_id: uuid.UUID | None = None
@@ -297,6 +304,13 @@ class EmpleadoResponse(BaseModel):
     telefono_fijo: str | None
     correo: str | None
     vinculo_laboral_codigo: str | None = None
+    numero_legajo: str | None = Field(None, max_length=50)
+    titulo_profesional: str | None = Field(None, max_length=255)
+    institucion_formacion: str | None = Field(None, max_length=255)
+    documento_vinculo_laboral: str | None = Field(None, max_length=255)
+    contacto_emergencia_nombre: str | None = Field(None, max_length=150)
+    contacto_emergencia_telefono: str | None = Field(None, max_length=20)
+    fecha_titulo: date | None = None
     tipo_trabajador_id: uuid.UUID | None
     nivel_remunerativo_id: uuid.UUID | None
     grupo_ocupacional_id: uuid.UUID | None

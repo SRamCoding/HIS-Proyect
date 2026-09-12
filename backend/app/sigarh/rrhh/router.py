@@ -60,6 +60,18 @@ def _rn(e: svc.ReglaNegocioError):
 
 # ─── Empleados ────────────────────────────────────────────────────────────────
 
+@router.get("/empleados/catalogos")
+async def catalogos_empleado(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS)):
+    from sqlalchemy import select
+    from app.sigarh.mantenimiento.models import TipoTrabajador, NivelRemunerativo, GrupoOcupacional, Departamento, Servicio, Profesion
+    tid = _tid(tenant, request)
+    result = {}
+    for key, model in (("tipos_trabajador", TipoTrabajador), ("niveles_remunerativos", NivelRemunerativo), ("grupos_ocupacionales", GrupoOcupacional), ("departamentos", Departamento), ("servicios", Servicio), ("profesiones", Profesion)):
+        items = (await db.scalars(select(model).where(model.tenant_id == tid, model.is_active.is_(True)).order_by(model.nombre))).all()
+        result[key] = [svc._cols(i) for i in items]
+    return result
+
+
 @router.get("/vinculos-laborales")
 async def vinculos_laborales(db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS)):
     from sqlalchemy import select

@@ -47,6 +47,14 @@ const errors = reactive<Record<string, string>>({
 })
 
 const form = reactive({
+  numero_legajo: '',
+  titulo_profesional: '',
+  institucion_formacion: '',
+  documento_vinculo_laboral: '',
+  contacto_emergencia_nombre: '',
+  contacto_emergencia_telefono: '',
+  fecha_titulo: '',
+
   vinculo_laboral_codigo: '',
   dni: '', nombres: '', apellido_paterno: '', apellido_materno: '', fecha_nacimiento: '',
   sexo: '', estado_civil: '', grupo_sanguineo: '', celular: '', telefono_fijo: '', correo: '',
@@ -163,6 +171,13 @@ const handleSave = async () => {
         grupo_sanguineo: form.grupo_sanguineo || null, celular: form.celular || null, telefono_fijo: form.telefono_fijo || null,
         correo: form.correo || null, is_active: form.is_active,
         profesion_id: form.profesion_id || null, numero_colegiatura: form.numero_colegiatura || null, habilitado_colegio: form.habilitado_colegio,
+      numero_legajo: form.numero_legajo || null,
+      titulo_profesional: form.titulo_profesional || null,
+      institucion_formacion: form.institucion_formacion || null,
+      documento_vinculo_laboral: form.documento_vinculo_laboral || null,
+      contacto_emergencia_nombre: form.contacto_emergencia_nombre || null,
+      contacto_emergencia_telefono: form.contacto_emergencia_telefono || null,
+      fecha_titulo: form.fecha_titulo || null,
       vinculo_laboral_codigo: form.vinculo_laboral_codigo || null,
         tipo_trabajador_id: form.tipo_trabajador_id || null, nivel_remunerativo_id: form.nivel_remunerativo_id || null,
         grupo_ocupacional_id: form.grupo_ocupacional_id || null, departamento_id: form.departamento_id || null,
@@ -192,16 +207,19 @@ const handleSave = async () => {
 
 onMounted(async () => {
   try {
-    const [data, tt, nr, go, dep, ser, esp] = await Promise.all([
-      api<any>(`/sigarh/rrhh/empleados/${id.value}`),
-      api<any[]>('/sigarh/mantenimiento/tipos-trabajador'),
-      api<any[]>('/sigarh/mantenimiento/niveles-remunerativos'),
-      api<any[]>('/sigarh/mantenimiento/grupos-ocupacionales'),
-      api<any[]>('/sigarh/mantenimiento/departamentos'),
-      api<any[]>('/sigarh/mantenimiento/servicios'),
-      api<any[]>('/sigarh/rrhh/especialidades?active_only=true'),
-    ])
+    const data = await api<any>(`/sigarh/rrhh/empleados/${id.value}`, { tenant: tenantId.value })
+    const refs = await api<any>('/sigarh/rrhh/empleados/catalogos', { tenant: tenantId.value })
+    const tt = refs.tipos_trabajador, nr = refs.niveles_remunerativos, go = refs.grupos_ocupacionales, dep = refs.departamentos, ser = refs.servicios
+    const esp = await api<any[]>('/sigarh/rrhh/especialidades?active_only=true', { tenant: tenantId.value }).catch(() => [])
     Object.assign(form, {
+      numero_legajo: data.numero_legajo || '',
+      titulo_profesional: data.titulo_profesional || '',
+      institucion_formacion: data.institucion_formacion || '',
+      documento_vinculo_laboral: data.documento_vinculo_laboral || '',
+      contacto_emergencia_nombre: data.contacto_emergencia_nombre || '',
+      contacto_emergencia_telefono: data.contacto_emergencia_telefono || '',
+      fecha_titulo: data.fecha_titulo || '',
+
       vinculo_laboral_codigo: data.vinculo_laboral_codigo || '',
       profesion_id: data.profesion_id || '', numero_colegiatura: data.numero_colegiatura || data.numero_cmp || '', habilitado_colegio: !!data.habilitado_colegio,
       dni: data.dni || '', nombres: data.nombres || '', apellido_paterno: data.apellido_paterno || '', apellido_materno: data.apellido_materno || '',
@@ -338,6 +356,7 @@ onMounted(async () => {
               <select v-model="form.nivel_remunerativo_id" class="input-clinical"><option value="">Seleccione</option><option v-for="n in nivelesRemunerativos" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
             </div>
           </div>
+        <SEmpleadoLegajo v-model="form" />
         <SVinculoLaboral v-model="form.vinculo_laboral_codigo" @valido="vinculoValido = $event" />
           <SClasificacionProfesional v-model:profesion-id="form.profesion_id" v-model:numero-colegiatura="form.numero_colegiatura" v-model:habilitado="form.habilitado_colegio" @grupo="form.grupo_ocupacional_id = $event" @medico="esMedico = $event" />
         <div class="form-group">

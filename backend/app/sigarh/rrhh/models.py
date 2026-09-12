@@ -33,6 +33,13 @@ class Empleado(Base):
 
     # ─── Datos Laborales ──────────────────────────────────────────────────────
     vinculo_laboral_codigo: Mapped[str | None] = mapped_column(String(30), ForeignKey("catalogo_vinculos_laborales.codigo", ondelete="RESTRICT"), nullable=True)
+    numero_legajo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    titulo_profesional: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    institucion_formacion: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    documento_vinculo_laboral: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contacto_emergencia_nombre: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    contacto_emergencia_telefono: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    fecha_titulo: Mapped[date | None] = mapped_column(Date, nullable=True)
     tipo_trabajador_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_tipos_trabajador.id", ondelete="SET NULL"), nullable=True)
     nivel_remunerativo_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_niveles_remunerativos.id", ondelete="SET NULL"), nullable=True)
     grupo_ocupacional_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_grupos_ocupacionales.id", ondelete="SET NULL"), nullable=True)

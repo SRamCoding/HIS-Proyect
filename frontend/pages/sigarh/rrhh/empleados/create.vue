@@ -46,6 +46,14 @@ const errors = reactive<Record<string, string>>({
 })
 
 const form = reactive({
+  numero_legajo: '',
+  titulo_profesional: '',
+  institucion_formacion: '',
+  documento_vinculo_laboral: '',
+  contacto_emergencia_nombre: '',
+  contacto_emergencia_telefono: '',
+  fecha_titulo: '',
+
   vinculo_laboral_codigo: '',
   dni: '', nombres: '', apellido_paterno: '', apellido_materno: '', fecha_nacimiento: '',
   sexo: '', estado_civil: '', grupo_sanguineo: '', celular: '', telefono_fijo: '', correo: '',
@@ -191,7 +199,7 @@ const validateStep = (step: number): boolean => {
     errors.apellido_materno = errNombre(form.apellido_materno, 'El apellido materno')
     errors.sexo = !form.sexo ? 'El sexo es requerido' : ''
     errors.estado_civil = !form.estado_civil ? 'El estado civil es requerido' : ''
-    errors.grupo_sanguineo = !form.grupo_sanguineo ? 'El grupo sanguíneo es requerido' : ''
+    errors.grupo_sanguineo = ''
     errors.celular = !form.celular ? 'El celular es requerido' : !/^\d{9}$/.test(form.celular) ? 'El celular debe tener 9 dígitos' : ''
     errors.correo = !form.correo ? 'El correo es requerido' : !RE_CORREO.test(form.correo) ? 'El correo no tiene un formato válido' : ''
     errors.fecha_nacimiento = !form.fecha_nacimiento ? 'La fecha de nacimiento es requerida'
@@ -200,12 +208,12 @@ const validateStep = (step: number): boolean => {
     return !['dni', 'nombres', 'apellido_paterno', 'apellido_materno', 'sexo', 'estado_civil', 'grupo_sanguineo', 'celular', 'correo', 'fecha_nacimiento'].some(k => errors[k])
   }
   if (step === 1) {
-    errors.tipo_trabajador_id = !form.tipo_trabajador_id ? 'El tipo de trabajador es requerido' : ''
-    errors.nivel_remunerativo_id = !form.nivel_remunerativo_id ? 'El nivel remunerativo es requerido' : ''
+    errors.tipo_trabajador_id = ''
+    errors.nivel_remunerativo_id = ''
     errors.grupo_ocupacional_id = !form.grupo_ocupacional_id ? 'El grupo ocupacional es requerido' : ''
     errors.servicio_id = !form.servicio_id ? 'El servicio es requerido' : ''
     errors.cargo_laboral = !form.cargo_laboral ? 'El cargo laboral es requerido' : ''
-    errors.modalidad = !form.modalidad ? 'La modalidad es requerida' : ''
+    errors.modalidad = ''
     errors.fecha_ingreso = !form.fecha_ingreso ? 'La fecha de ingreso es requerida'
       : form.fecha_nacimiento && new Date(form.fecha_ingreso) <= new Date(form.fecha_nacimiento) ? 'Debe ser posterior a la fecha de nacimiento'
       : form.fecha_cese && new Date(form.fecha_cese) < new Date(form.fecha_ingreso) ? 'La fecha de cese es anterior a la de ingreso'
@@ -240,6 +248,13 @@ const handleCreate = async () => {
       ...campos,
       profesion_id: form.profesion_id || null,
       numero_colegiatura: form.numero_colegiatura || null,
+      numero_legajo: form.numero_legajo || null,
+      titulo_profesional: form.titulo_profesional || null,
+      institucion_formacion: form.institucion_formacion || null,
+      documento_vinculo_laboral: form.documento_vinculo_laboral || null,
+      contacto_emergencia_nombre: form.contacto_emergencia_nombre || null,
+      contacto_emergencia_telefono: form.contacto_emergencia_telefono || null,
+      fecha_titulo: form.fecha_titulo || null,
       vinculo_laboral_codigo: form.vinculo_laboral_codigo || null,
       tipo_trabajador_id: form.tipo_trabajador_id || null,
       nivel_remunerativo_id: form.nivel_remunerativo_id || null,
@@ -268,14 +283,9 @@ const handleCreate = async () => {
 
 onMounted(async () => {
   try {
-    const [tt, nr, go, dep, ser, esp] = await Promise.all([
-      api<any[]>('/sigarh/mantenimiento/tipos-trabajador'),
-      api<any[]>('/sigarh/mantenimiento/niveles-remunerativos'),
-      api<any[]>('/sigarh/mantenimiento/grupos-ocupacionales'),
-      api<any[]>('/sigarh/mantenimiento/departamentos'),
-      api<any[]>('/sigarh/mantenimiento/servicios'),
-      api<any[]>('/sigarh/rrhh/especialidades?active_only=true'),
-    ])
+    const refs = await api<any>('/sigarh/rrhh/empleados/catalogos', { tenant: tenantId.value })
+    const tt = refs.tipos_trabajador, nr = refs.niveles_remunerativos, go = refs.grupos_ocupacionales, dep = refs.departamentos, ser = refs.servicios
+    const esp = await api<any[]>('/sigarh/rrhh/especialidades?active_only=true', { tenant: tenantId.value }).catch(() => [])
     tiposTrabajador.value = tt; nivelesRemunerativos.value = nr; gruposOcupacionales.value = go
     departamentos.value = dep; servicios.value = ser; especialidades.value = esp
   } catch (e: any) { error.value = apiErr(e, 'Error al cargar catálogos') }
@@ -431,6 +441,7 @@ onMounted(async () => {
           </div>
           <span v-if="errors.nivel_remunerativo_id" class="error-message">{{ errors.nivel_remunerativo_id }}</span>
         </div>
+        <SEmpleadoLegajo v-model="form" />
         <SVinculoLaboral v-model="form.vinculo_laboral_codigo" @valido="vinculoValido = $event" />
         <SClasificacionProfesional v-model:profesion-id="form.profesion_id" v-model:numero-colegiatura="form.numero_colegiatura" v-model:habilitado="form.habilitado_colegio" @grupo="form.grupo_ocupacional_id = $event" @medico="esMedico = $event" />
         <div class="form-group">

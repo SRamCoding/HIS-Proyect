@@ -76,6 +76,7 @@ async def crear_empleado(db: AsyncSession, tenant_id: uuid.UUID, data) -> Emplea
     if data.correo and await _correo_duplicado(db, tenant_id, data.correo):
         raise ReglaNegocioError(f"Ya existe un empleado con el correo {data.correo}.")
     await validar_vinculo_laboral(db, data.model_dump())
+    await validar_referencias_empleado(db, tenant_id, data.model_dump())
     await _validar_profesion_empleado(db, tenant_id, data.model_dump())
     empleado = Empleado(tenant_id=tenant_id, **data.model_dump())
     db.add(empleado)
@@ -93,6 +94,7 @@ async def actualizar_empleado(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.U
     if error_fechas:
         raise ReglaNegocioError(error_fechas)
     await validar_vinculo_laboral(db, cambios)
+    await validar_referencias_empleado(db, tenant_id, cambios, empleado)
     await _validar_profesion_empleado(db, tenant_id, cambios, empleado)
     if cambios.get("correo") and await _correo_duplicado(db, tenant_id, cambios["correo"], excluir=id):
         raise ReglaNegocioError(f"Ya existe un empleado con el correo {cambios['correo']}.")
@@ -739,3 +741,19 @@ async def validar_vinculo_laboral(db, values):
     vinculo = await db.get(VinculoLaboral, codigo)
     if not vinculo or not vinculo.is_active:
         raise ReglaNegocioError("Seleccione un regimen y condicion laboral vigentes del catalogo.")
+
+
+async def validar_referencias_empleado(db, tenant_id, values, empleado=None):
+    from app.sigarh.mantenimiento.models import TipoTrabajador, NivelRemunerativo, GrupoOcupacional, Departamento, Servicio
+    for field, model in (("tipo_trabajador_id", TipoTrabajador), ("nivel_remunerativo_id", NivelRemunerativo), ("grupo_ocupacional_id", GrupoOcupacional), ("departamento_id", Departamento), ("servicio_id", Servicio)):
+        if field not in values or values[field] is None:
+            continue
+        item = await db.get(model, values[field])
+        if not item or item.tenant_id != tenant_id or not item.is_active:
+            raise ReglaNegocioError(f"El catalogo {field} no existe, esta inactivo o pertenece a otro hospital.")
+    servicio_id = values.get("servicio_id", getattr(empleado, "servicio_id", None))
+    departamento_id = values.get("departamento_id", getattr(empleado, "departamento_id", None))
+    if servicio_id and departamento_id:
+        servicio = await db.get(Servicio, servicio_id)
+        if servicio and servicio.departamento_id and servicio.departamento_id != departamento_id:
+            raise ReglaNegocioError("El servicio no pertenece al departamento seleccionado.")
