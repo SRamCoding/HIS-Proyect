@@ -460,16 +460,16 @@ onMounted(async () => {
           </div>
           <span v-if="errors.tipo_trabajador_id" class="error-message">{{ errors.tipo_trabajador_id }}</span>
         </div>
+        <SClasificacionProfesional v-model:profesion-id="form.profesion_id" v-model:numero-colegiatura="form.numero_colegiatura" v-model:habilitado="form.habilitado_colegio" @grupo="form.grupo_ocupacional_id = $event" @medico="esMedico = $event" />
         <div class="form-group">
-          <label class="form-label">Nivel Remunerativo <span class="required">*</span></label>
+          <label class="form-label">Nivel Remunerativo</label>
           <div class="input-wrapper"><UIcon name="i-heroicons-currency-dollar" class="input-icon" />
-            <select v-model="form.nivel_remunerativo_id" class="input-clinical" :class="{ 'input-error': errors.nivel_remunerativo_id }"><option value="">Seleccione</option><option v-for="n in nivelesCompatibles" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
+            <select :disabled="!form.profesion_id" v-model="form.nivel_remunerativo_id" class="input-clinical" :class="{ 'input-error': errors.nivel_remunerativo_id }"><option value="">{{ form.profesion_id ? 'Seleccione' : 'Seleccione primero la profesión' }}</option><option v-for="n in nivelesCompatibles" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
           </div>
           <span v-if="errors.nivel_remunerativo_id" class="error-message">{{ errors.nivel_remunerativo_id }}</span>
         </div>
         <SEmpleadoLegajo v-model="form" />
         <SVinculoLaboral v-model="form.vinculo_laboral_codigo" @valido="vinculoValido = $event" />
-        <SClasificacionProfesional v-model:profesion-id="form.profesion_id" v-model:numero-colegiatura="form.numero_colegiatura" v-model:habilitado="form.habilitado_colegio" @grupo="form.grupo_ocupacional_id = $event" @medico="esMedico = $event" />
         <div class="form-group">
           <label class="form-label">Grupo Ocupacional <span class="required">*</span></label>
           <div class="input-wrapper"><UIcon name="i-heroicons-chart-bar" class="input-icon" />

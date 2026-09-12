@@ -3,8 +3,8 @@ const form = defineModel<any>({ required: true })
 </script>
 
 <template>
-  <div class="form-group full-width space-y-3">
-    <p class="form-label">Legajo, formación y contacto de emergencia</p>
+  <details class="form-group full-width space-y-3">
+    <summary class="form-label cursor-pointer">Legajo, formación y contacto de emergencia (opcional)</summary>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <label>Número de legajo<input v-model="form.numero_legajo" class="input-clinical" maxlength="50" /></label>
       <label>Documento del vínculo laboral<input v-model="form.documento_vinculo_laboral" class="input-clinical" maxlength="255" placeholder="Contrato o resolución" /></label>
@@ -14,6 +14,6 @@ const form = defineModel<any>({ required: true })
       <label>Contacto de emergencia<input v-model="form.contacto_emergencia_nombre" class="input-clinical" maxlength="150" /></label>
       <label>Teléfono de emergencia<input v-model="form.contacto_emergencia_telefono" class="input-clinical" maxlength="20" type="tel" /></label>
     </div>
-    <p class="field-hint">Completa la formación y los documentos según el puesto. Estos datos no sustituyen los documentos del legajo.</p>
-  </div>
+    <p class="field-hint">Puedes completar estos datos después. El legajo identifica el expediente; el documento registra la referencia del contrato o resolución. La formación y el contacto complementan la ficha y no sustituyen los documentos acreditados.</p>
+  </details>
 </template>

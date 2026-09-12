@@ -367,15 +367,15 @@ onMounted(async () => {
               <select v-model="form.tipo_trabajador_id" class="input-clinical"><option value="">Seleccione</option><option v-for="t in tiposCompatibles" :key="t.id" :value="t.id">{{ t.nombre }}</option></select>
             </div>
           </div>
-          <div class="form-group">
+          <SClasificacionProfesional v-model:profesion-id="form.profesion_id" v-model:numero-colegiatura="form.numero_colegiatura" v-model:habilitado="form.habilitado_colegio" @grupo="form.grupo_ocupacional_id = $event" @medico="esMedico = $event" />
+        <div class="form-group">
             <label class="form-label">Nivel Remunerativo</label>
             <div class="input-wrapper"><UIcon name="i-heroicons-currency-dollar" class="input-icon" />
-              <select v-model="form.nivel_remunerativo_id" class="input-clinical"><option value="">Seleccione</option><option v-for="n in nivelesCompatibles" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
+              <select :disabled="!form.profesion_id" v-model="form.nivel_remunerativo_id" class="input-clinical"><option value="">{{ form.profesion_id ? 'Seleccione' : 'Seleccione primero la profesión' }}</option><option v-for="n in nivelesCompatibles" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
             </div>
           </div>
         <SEmpleadoLegajo v-model="form" />
         <SVinculoLaboral v-model="form.vinculo_laboral_codigo" @valido="vinculoValido = $event" />
-          <SClasificacionProfesional v-model:profesion-id="form.profesion_id" v-model:numero-colegiatura="form.numero_colegiatura" v-model:habilitado="form.habilitado_colegio" @grupo="form.grupo_ocupacional_id = $event" @medico="esMedico = $event" />
         <div class="form-group">
             <label class="form-label">Grupo Ocupacional</label>
             <div class="input-wrapper"><UIcon name="i-heroicons-chart-bar" class="input-icon" />
