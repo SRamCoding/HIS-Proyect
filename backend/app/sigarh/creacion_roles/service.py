@@ -4,7 +4,7 @@ Importado por los routers de creacion_roles, roles_pendientes y roles_aprobados.
 """
 import uuid
 from calendar import monthrange
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -14,7 +14,8 @@ from app.sigarh.creacion_roles.models import (
     Rol, RolEmpleado, RolActividad, RolTurno, SolicitudModificacionRol, MODALIDADES,
 )
 from app.sigarh.mantenimiento.models import Departamento, Servicio, Actividad, HorarioGuardia, PerfilUsuario, RolSistema, TipoTrabajador, GrupoOcupacional
-from app.sigarh.rrhh.models import Empleado, EmpleadoEspecialidad
+from app.sigarh.rrhh.models import Empleado, EmpleadoEspecialidad, Especialidad
+from app.sigarh.mantenimiento.models import ServicioEspecialidad
 
 EDITABLE = ("draft", "rejected")
 
@@ -105,6 +106,12 @@ def _rangos_solapan(r1: tuple[int, int], r2: tuple[int, int]) -> bool:
     return max(r1[0], r2[0]) < min(r1[1], r2[1])
 
 
+def _solape_semanal(d1, r1, d2, r2) -> bool:
+    return any(_rangos_solapan((a * 1440 + r1[0], a * 1440 + r1[1]),
+                               ((b + delta) * 1440 + r2[0], (b + delta) * 1440 + r2[1]))
+               for a in d1 for b in d2 for delta in (-7, 0, 7))
+
+
 def _dias_set(dias) -> set[int]:
     return {int(d) for d in (dias or []) if str(d).lstrip("-").isdigit() and 0 <= int(d) <= 6}
 
@@ -147,7 +154,7 @@ def _rol_stmt():
 
 
 async def obtener_rol_orm(db: AsyncSession, rol_id: uuid.UUID, tenant_id: uuid.UUID) -> Rol | None:
-    res = await db.execute(_rol_stmt().where(Rol.id == rol_id, Rol.tenant_id == tenant_id))
+    res = await db.execute(_rol_stmt().execution_options(populate_existing=True).where(Rol.id == rol_id, Rol.tenant_id == tenant_id))
     return res.scalar_one_or_none()
 
 
@@ -281,7 +288,11 @@ async def diagnosticar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol) -> 
         emp_ids = [re_.empleado_id for re_ in rol.empleados]
         filas = (await db.execute(
             select(EmpleadoEspecialidad.empleado_id, EmpleadoEspecialidad.validado)
-            .where(EmpleadoEspecialidad.empleado_id.in_(emp_ids))
+            .join(Especialidad, Especialidad.id == EmpleadoEspecialidad.especialidad_id)
+            .join(ServicioEspecialidad, ServicioEspecialidad.especialidad_id == Especialidad.id)
+            .where(EmpleadoEspecialidad.empleado_id.in_(emp_ids),
+                   Especialidad.tenant_id == tenant_id, Especialidad.is_active == True,
+                   ServicioEspecialidad.servicio_id == rol.servicio_id)
         )).all()
         for eid, validado in filas:
             esp_por_empleado.setdefault(eid, []).append(bool(validado))
@@ -301,6 +312,8 @@ async def diagnosticar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol) -> 
         for a in re_.actividades:
             act = cat["acts"].get(a.actividad_id)
             nombre_act = getattr(act, "nombre", None) or "Actividad"
+            if not act or not act.is_active:
+                add("error", f"{nombre_emp}: actividad inactiva o inexistente.", nombre_emp, nombre_act)
             asistencial = _es_actividad_asistencial(act)
             tiene_asistencial = tiene_asistencial or asistencial
 
@@ -316,6 +329,9 @@ async def diagnosticar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol) -> 
                                     and impedimento_programacion(emp, date(rol.anio, rol.mes, dia))]
                 if fechas_invalidas:
                     add("error", f"{nombre_emp}: turno fuera de su vigencia laboral los dias {', '.join(map(str, fechas_invalidas))}.", nombre_emp, nombre_act)
+                hor_actual = cat["hors"].get(t.horario_guardia_id)
+                if t.horario_guardia_id and (not hor_actual or not hor_actual.is_active):
+                    add("error", f"{nombre_emp}: horario inactivo o inexistente.", nombre_emp, nombre_act)
                 sin_horario = not t.horario_guardia_id
                 sin_dias = not (t.dias_semana or [])
                 if asistencial and sin_horario:
@@ -336,7 +352,7 @@ async def diagnosticar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol) -> 
             for j in range(i + 1, len(franjas)):
                 n1, d1, r1 = franjas[i]
                 n2, d2, r2 = franjas[j]
-                if (d1 & d2) and _rangos_solapan(r1, r2):
+                if _solape_semanal(d1, r1, d2, r2):
                     detalle = f"'{n1}' y '{n2}'" if n1 != n2 else f"dos turnos de '{n1}'"
                     add("error", f"{nombre_emp}: {detalle} se solapan en día y horario.", nombre_emp)
 
@@ -373,7 +389,7 @@ async def _solapes_entre_roles(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol,
             ProgramacionMedica.tenant_id == tenant_id,
             ProgramacionMedica.medico_id.in_(emp_ids),
             ProgramacionMedica.estado == "activo",
-            ProgramacionMedica.fecha.between(date(rol.anio, rol.mes, 1), date(rol.anio, rol.mes, ultimo)),
+            ProgramacionMedica.fecha.between(date(rol.anio, rol.mes, 1) - timedelta(days=1), date(rol.anio, rol.mes, ultimo) + timedelta(days=1)),
         )
     )).scalars().all()
     ajenas = [p for p in progs if p.origen_sigarh_turno_id not in turno_ids_propios]
@@ -419,7 +435,8 @@ async def _solapes_entre_roles(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol,
             r_exist = _rango_min(p.hora_inicio, p.hora_fin)
             if not r_exist:
                 continue
-            if any(_rangos_solapan(r, r_exist) for r in franjas_por_fecha.get(p.fecha, ())):
+            if any(_rangos_solapan((r[0] + (f - p.fecha).days * 1440, r[1] + (f - p.fecha).days * 1440), r_exist)
+                   for f, rangos in franjas_por_fecha.items() for r in rangos):
                 quien = origen.get(p.origen_sigarh_turno_id, "otro rol aprobado")
                 if quien not in vistos:
                     vistos.add(quien)

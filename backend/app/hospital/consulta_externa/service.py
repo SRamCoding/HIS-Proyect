@@ -138,7 +138,7 @@ async def get_medicos_por_especialidad(
 
 # ─── Programaciones ─────────────────────────────────────────────────────
 async def sincronizar_programacion_sigarh(
-    db: AsyncSession, tenant_id: uuid.UUID, mes: int, anio: int
+    db: AsyncSession, tenant_id: uuid.UUID, mes: int, anio: int, *, commit: bool = True
 ) -> dict:
     """Materializa como agenda diaria las actividades asistenciales de roles aprobados."""
     if mes < 1 or mes > 12:
@@ -169,19 +169,21 @@ async def sincronizar_programacion_sigarh(
     filas = result.all()
 
     empleado_ids = {empleado.id for *_, empleado in filas}
-    especialidad_por_empleado: dict[uuid.UUID, uuid.UUID] = {}
+    especialidad_por_empleado: dict[uuid.UUID, list[uuid.UUID]] = {}
     if empleado_ids:
         especialidades = await db.execute(
             select(
                 EmpleadoEspecialidad.empleado_id, EmpleadoEspecialidad.especialidad_id
             )
-            .where(EmpleadoEspecialidad.empleado_id.in_(empleado_ids))
+            .join(Especialidad, Especialidad.id == EmpleadoEspecialidad.especialidad_id)
+            .where(EmpleadoEspecialidad.empleado_id.in_(empleado_ids),
+                   Especialidad.tenant_id == tenant_id, Especialidad.is_active == True)
             .order_by(
                 EmpleadoEspecialidad.validado.desc(), EmpleadoEspecialidad.created_at
             )
         )
         for empleado_id, especialidad_id in especialidades.all():
-            especialidad_por_empleado.setdefault(empleado_id, especialidad_id)
+            especialidad_por_empleado.setdefault(empleado_id, []).append(especialidad_id)
 
     relaciones_validas = set(
         (
@@ -251,7 +253,9 @@ async def sincronizar_programacion_sigarh(
             for d in (turno.dias_semana or [])
             if str(d).isdigit() and 0 <= int(d) <= 6
         }
-        especialidad_id = especialidad_por_empleado.get(empleado.id)
+        servicio_id = rol.servicio_id or empleado.servicio_id
+        especialidad_id = next((eid for eid in especialidad_por_empleado.get(empleado.id, [])
+                                if (servicio_id, eid) in relaciones_validas), None)
         if not dias or not especialidad_id:
             omitidas += 1
             continue
@@ -326,7 +330,9 @@ async def sincronizar_programacion_sigarh(
             programacion.estado = "inactivo"
             actualizadas += 1
 
-    await db.commit()
+    await db.flush()
+    if commit:
+        await db.commit()
     return {
         "creadas": creadas,
         "actualizadas": actualizadas,
@@ -611,6 +617,10 @@ def _generar_slots(
     fmt = "%H:%M"
     inicio = datetime.strptime(hora_inicio, fmt)
     fin = datetime.strptime(hora_fin, fmt)
+    if minutos <= 0:
+        raise ValueError("El tiempo de atenci\u00f3n debe ser mayor que cero")
+    if fin <= inicio:
+        fin += timedelta(days=1)
     slots = []
     actual = inicio
     while actual + timedelta(minutes=minutos) <= fin:

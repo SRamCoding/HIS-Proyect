@@ -43,8 +43,13 @@ async def aprobar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID,
     rol.reviewed_by = revisor
     rol.reviewed_at = datetime.utcnow()
     rol.rejection_reason = None
-    await db.commit()
-    await sincronizar_programacion_sigarh(db, tenant_id, rol.mes, rol.anio)
+    try:
+        await db.flush()
+        await sincronizar_programacion_sigarh(db, tenant_id, rol.mes, rol.anio, commit=False)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
     return await serializar_uno(db, tenant_id, await obtener_rol_orm(db, rol_id, tenant_id))
 
 
@@ -187,8 +192,13 @@ async def aprobar_solicitud(db: AsyncSession, tenant_id: uuid.UUID, sol_id: uuid
     sol.status = "aprobado"
     sol.reviewed_by = revisor
     sol.reviewed_at = datetime.utcnow()
-    await db.commit()
-    await sincronizar_programacion_sigarh(db, tenant_id, rol.mes, rol.anio)
+    try:
+        await db.flush()
+        await sincronizar_programacion_sigarh(db, tenant_id, rol.mes, rol.anio, commit=False)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
     return await _serializa_solicitud(db, tenant_id, await _sol_orm(db, tenant_id, sol_id))
 
 
