@@ -68,6 +68,14 @@ const form = reactive({
   banco: '', ruc: '', numero_cuenta: '', numero_cci: '', tipo_cuenta: '',
   departamento_ubigeo: '', provincia_ubigeo: '', distrito_ubigeo: '', direccion: '',
 })
+const serviciosCompatibles = computed(() => servicios.value.filter(s => !form.departamento_id || s.departamento_id === form.departamento_id))
+watch(() => form.departamento_id, () => {
+  if (form.servicio_id && !serviciosCompatibles.value.some(s => s.id === form.servicio_id)) form.servicio_id = ''
+})
+watch(() => form.servicio_id, () => {
+  const servicio = servicios.value.find(s => s.id === form.servicio_id)
+  if (servicio?.departamento_id) form.departamento_id = servicio.departamento_id
+})
 const tiposCompatibles = computed(() => tiposTrabajador.value.filter(t => !t.vinculos_codigos?.length || !form.vinculo_laboral_codigo || t.vinculos_codigos.includes(form.vinculo_laboral_codigo)))
 const nivelesCompatibles = computed(() => {
   const codigo = profesionesCatalogo.value.find(p => p.id === form.profesion_id)?.codigo
@@ -389,7 +397,7 @@ onMounted(async () => {
           <div class="form-group">
             <label class="form-label">Servicio / Área</label>
             <div class="input-wrapper"><UIcon name="i-heroicons-folder" class="input-icon" />
-              <select v-model="form.servicio_id" class="input-clinical"><option value="">Seleccione</option><option v-for="s in servicios" :key="s.id" :value="s.id">{{ s.nombre }}</option></select>
+              <select v-model="form.servicio_id" class="input-clinical"><option value="">Seleccione</option><option v-for="s in serviciosCompatibles" :key="s.id" :value="s.id">{{ s.nombre }}</option></select>
             </div>
           </div>
           <div class="form-group">
