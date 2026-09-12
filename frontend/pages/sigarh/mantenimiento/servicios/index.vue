@@ -1,212 +1,25 @@
-<template>
-  <div class="sigarh-index-container">
-
-    <div class="sigarh-page-header">
-      <div class="sigarh-header-left">
-        <div class="sigarh-header-icon" style="background: var(--navy-soft)">
-          <UIcon name="i-heroicons-squares-2x2" class="w-5 h-5" style="color: var(--navy)" />
-        </div>
-        <div>
-          <h1 class="page-title">Servicios</h1>
-          <p class="page-subtitle">Servicios del hospital</p>
-        </div>
-      </div>
-      <NuxtLink :to="`/sigarh/mantenimiento/servicios/create?tenant=${tenantId}`" class="btn-primary">
-        <UIcon name="i-heroicons-plus" class="w-4 h-4" />
-        Nuevo Servicio
-      </NuxtLink>
-    </div>
-
-    <div class="sigarh-stats-grid">
-      <div class="sigarh-stat-card" style="border-left-color: var(--navy)">
-        <div class="sigarh-stat-icon" style="background: var(--navy-soft)">
-          <UIcon name="i-heroicons-squares-2x2" class="w-5 h-5" style="color: var(--navy)" />
-        </div>
-        <div>
-          <div class="sigarh-stat-value">{{ items.length }}</div>
-          <div class="sigarh-stat-label">Total Servicios</div>
-        </div>
-      </div>
-      <div class="sigarh-stat-card" style="border-left-color: var(--green)">
-        <div class="sigarh-stat-icon" style="background: var(--green-soft)">
-          <UIcon name="i-heroicons-check-circle" class="w-5 h-5" style="color: var(--green)" />
-        </div>
-        <div>
-          <div class="sigarh-stat-value">{{ activeCount }}</div>
-          <div class="sigarh-stat-label">Activos</div>
-        </div>
-      </div>
-      <div class="sigarh-stat-card" style="border-left-color: var(--amber)">
-        <div class="sigarh-stat-icon" style="background: var(--amber-soft)">
-          <UIcon name="i-heroicons-x-circle" class="w-5 h-5" style="color: var(--amber)" />
-        </div>
-        <div>
-          <div class="sigarh-stat-value">{{ inactiveCount }}</div>
-          <div class="sigarh-stat-label">Inactivos</div>
-        </div>
-      </div>
-      <div class="sigarh-stat-card" style="border-left-color: var(--purple)">
-        <div class="sigarh-stat-icon" style="background: var(--purple-soft)">
-          <UIcon name="i-heroicons-building-office-2" class="w-5 h-5" style="color: var(--purple)" />
-        </div>
-        <div>
-          <div class="sigarh-stat-value">{{ items.filter(i => i.departamento_id).length }}</div>
-          <div class="sigarh-stat-label">Con Departamento</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="sigarh-table-container">
-      <div class="sigarh-filter-bar">
-        <div class="sigarh-filter-left">
-          <div class="sigarh-search-wrapper">
-            <UIcon name="i-heroicons-magnifying-glass" class="sigarh-search-icon" />
-            <input v-model="search" type="text" placeholder="Buscar servicio por nombre o codigo..." class="sigarh-search-input" />
-          </div>
-          <div class="sigarh-filter-group">
-            <button @click="filtro = 'all'" class="sigarh-filter-btn" :class="{ active: filtro === 'all' }">
-              Todos <span class="sigarh-filter-count">{{ items.length }}</span>
-            </button>
-            <button @click="filtro = 'active'" class="sigarh-filter-btn" :class="{ active: filtro === 'active' }">
-              Activos <span class="sigarh-filter-count">{{ activeCount }}</span>
-            </button>
-            <button @click="filtro = 'inactive'" class="sigarh-filter-btn" :class="{ active: filtro === 'inactive' }">
-              Inactivos <span class="sigarh-filter-count">{{ inactiveCount }}</span>
-            </button>
-          </div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <span class="sigarh-result-count">{{ filteredItems.length }} resultados</span>
-          <button v-if="search || filtro !== 'all'" @click="search = ''; filtro = 'all'" class="sigarh-clear-btn">Limpiar</button>
-        </div>
-      </div>
-
-      <div v-if="loading" class="sigarh-table-state">
-        <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--navy)" />
-        <p style="color: var(--ink-soft)">Cargando servicios...</p>
-      </div>
-      <div v-else-if="error" class="sigarh-table-state">
-        <UIcon name="i-heroicons-exclamation-triangle" class="w-8 h-8" style="color: var(--alert)" />
-        <p style="color: var(--alert)">{{ error }}</p>
-        <button @click="cargar" class="btn-outline">Reintentar</button>
-      </div>
-      <div v-else-if="!filteredItems.length" class="sigarh-table-state">
-        <UIcon name="i-heroicons-squares-2x2" class="w-12 h-12" style="color: var(--ink-soft); opacity: 0.4" />
-        <div>
-          <p style="font-weight: 600; color: var(--ink); margin: 0">Sin servicios registrados</p>
-          <p style="color: var(--ink-soft); font-size: 0.875rem; margin: 0.25rem 0 0 0">Comienza creando un servicio</p>
-        </div>
-        <NuxtLink :to="`/sigarh/mantenimiento/servicios/create?tenant=${tenantId}`" class="btn-primary">
-          <UIcon name="i-heroicons-plus" class="w-4 h-4" /> Nuevo Servicio
-        </NuxtLink>
-      </div>
-
-      <div v-else class="sigarh-table-responsive">
-        <table class="sigarh-table">
-          <thead>
-            <tr>
-              <th style="width: 30%">Nombre</th>
-              <th style="width: 13%">Codigo</th>
-              <th style="width: 22%">Departamento</th>
-              <th style="width: 15%">Piso</th>
-              <th style="width: 10%">Estado</th>
-              <th style="width: 10%; text-align: right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in filteredItems" :key="item.id">
-              <td>
-                <div class="sigarh-item-cell">
-                  <div class="sigarh-item-icon" style="background: var(--navy-soft)">
-                    <UIcon name="i-heroicons-squares-2x2" class="w-4 h-4" style="color: var(--navy)" />
-                  </div>
-                  <span class="sigarh-item-name">{{ item.nombre }}</span>
-                </div>
-              </td>
-              <td>
-                <span v-if="item.codigo" class="sigarh-code-badge">{{ item.codigo }}</span>
-                <span v-else style="color: var(--ink-soft)">-</span>
-              </td>
-              <td style="color: var(--ink-soft); font-size: 0.8125rem">{{ item.departamento_nombre || '-' }}</td>
-              <td style="color: var(--ink-soft); font-size: 0.8125rem">{{ item.piso_nombre || '-' }}</td>
-              <td>
-                <span class="badge" :class="item.is_active ? 'badge--ok' : 'badge--neutral'">
-                  {{ item.is_active ? 'Activo' : 'Inactivo' }}
-                </span>
-              </td>
-              <td style="text-align: right">
-                <div class="sigarh-actions">
-                  <NuxtLink :to="`/sigarh/mantenimiento/servicios/${item.id}?tenant=${tenantId}`" class="sigarh-action-btn" title="Editar">
-                    <UIcon name="i-heroicons-pencil-square" class="w-4 h-4" style="color: var(--teal)" />
-                  </NuxtLink>
-                  <button class="sigarh-action-btn danger" title="Eliminar" @click="confirmarEliminar(item)">
-                    <UIcon name="i-heroicons-trash" class="w-4 h-4" style="color: var(--alert)" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="sigarh-table-footer">
-          Mostrando <strong>{{ filteredItems.length }}</strong> de <strong>{{ items.length }}</strong> servicios
-        </div>
-      </div>
-    </div>
-
-  </div>
-</template>
-
 <script setup lang="ts">
-definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
-
-interface Item {
-  id: string
-  nombre: string
-  codigo: string | null
-  departamento_id: string | null
-  departamento_nombre: string | null
-  piso_nombre: string | null
-  is_active: boolean
-}
-
-const { api } = useApi()
-const route = useRoute()
-const tenantId = computed(() => route.query.tenant as string || '')
-const items = ref<Item[]>([])
-const loading = ref(true)
-const error = ref('')
-const search = ref('')
-const filtro = ref('all')
-
-const activeCount = computed(() => items.value.filter(i => i.is_active).length)
-const inactiveCount = computed(() => items.value.filter(i => !i.is_active).length)
-
-const filteredItems = computed(() => {
-  let r = items.value
-  if (filtro.value === 'active') r = r.filter(i => i.is_active)
-  else if (filtro.value === 'inactive') r = r.filter(i => !i.is_active)
-  if (search.value.trim()) {
-    const q = search.value.toLowerCase()
-    r = r.filter(i => i.nombre.toLowerCase().includes(q) || (i.codigo || '').toLowerCase().includes(q))
-  }
-  return r
-})
-
-const confirmarEliminar = async (item: Item) => {
-  if (!confirm(`Eliminar "${item.nombre}"?`)) return
-  try {
-    await api(`/sigarh/mantenimiento/servicios/${item.id}`, { method: 'DELETE' })
-    items.value = items.value.filter(i => i.id !== item.id)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo eliminar' }
-}
-
-const cargar = async () => {
-  loading.value = true
-  error.value = ''
-  try { items.value = await api<Item[]>('/sigarh/mantenimiento/servicios') }
-  catch (e: any) { error.value = e?.data?.detail || 'Error de conexion' }
-  finally { loading.value = false }
-}
-
-onMounted(cargar)
+definePageMeta({layout:'sigarh',middleware:['auth']})
+const {api}=useApi(),route=useRoute(),tenantId=computed(()=>String(route.query.tenant||''))
+const data=ref<any>({upss:[],servicios_sin_upss:[]}),loading=ref(true),error=ref(''),search=ref(''),filtro=ref('recommended'),savingId=ref(''),expanded=ref(new Set<string>())
+const units=computed(()=>data.value.upss.filter((u:any)=>{if(filtro.value==='active'&&!u.is_active)return false;if(filtro.value==='inactive'&&u.is_active)return false;if(filtro.value==='recommended'&&!u.recomendada_nivel)return false;const q=search.value.trim().toLocaleLowerCase('es');return !q||`${u.nombre} ${u.codigo} ${u.servicios.map((s:any)=>s.nombre+' '+s.especialidades.map((e:any)=>e.nombre).join(' ')).join(' ')}`.toLocaleLowerCase('es').includes(q)}))
+const totalServices=computed(()=>new Set(data.value.upss.flatMap((u:any)=>u.servicios.map((s:any)=>s.id))).size+data.value.servicios_sin_upss.length)
+function opened(id:string){return expanded.value.has(id)||!!search.value.trim()}
+function toggle(id:string){const n=new Set(expanded.value);n.has(id)?n.delete(id):n.add(id);expanded.value=n}
+async function load(){loading.value=true;error.value='';try{data.value=await api('/sigarh/mantenimiento/estructura-asistencial')}catch(e:any){error.value=apiErr(e,'No se pudo cargar la estructura')}finally{loading.value=false}}
+async function changeUnit(unit:any){savingId.value=unit.id;try{Object.assign(unit,await api(`/sigarh/mantenimiento/upss/${unit.id}/estado?is_active=${!unit.is_active}`,{method:'PATCH'}))}catch(e:any){error.value=apiErr(e,'No se pudo actualizar la UPSS')}finally{savingId.value=''}}
+onMounted(load)
 </script>
+<template><div class="sigarh-index-container">
+ <div class="sigarh-page-header"><div class="sigarh-header-left"><div class="sigarh-header-icon" style="background:var(--navy-soft)"><UIcon name="i-heroicons-building-office-2" class="w-5 h-5" style="color:var(--navy)"/></div><div><h1 class="page-title">UPSS y servicios</h1><p class="page-subtitle">Estructura asistencial del hospital según su categoría</p></div></div><NuxtLink :to="`/sigarh/mantenimiento/servicios/create?tenant=${tenantId}`" class="btn-primary"><UIcon name="i-heroicons-plus" class="w-4 h-4"/> Nuevo servicio</NuxtLink></div>
+ <div class="sigarh-stats-grid"><div class="sigarh-stat-card" style="border-left-color:var(--navy)"><div><div class="sigarh-stat-value">{{data.upss.length}}</div><div class="sigarh-stat-label">UPSS oficiales</div></div></div><div class="sigarh-stat-card" style="border-left-color:var(--green)"><div><div class="sigarh-stat-value">{{data.upss.filter((u:any)=>u.is_active).length}}</div><div class="sigarh-stat-label">UPSS habilitadas</div></div></div><div class="sigarh-stat-card" style="border-left-color:var(--purple)"><div><div class="sigarh-stat-value">{{totalServices}}</div><div class="sigarh-stat-label">Servicios</div></div></div><div class="sigarh-stat-card" style="border-left-color:var(--amber)"><div><div class="sigarh-stat-value">{{data.upss.reduce((n:number,u:any)=>n+u.servicios.reduce((m:number,s:any)=>m+s.especialidades.length,0),0)}}</div><div class="sigarh-stat-label">Vínculos con especialidades</div></div></div></div>
+ <div class="mb-4 rounded-xl border p-4 text-sm" style="background:#eff6ff;border-color:#bfdbfe;color:#1e3a5f"><strong>Jerarquía operativa:</strong> abre una UPSS para ver sus servicios y, dentro de cada servicio, las especialidades que SIGARH comparte con programación y atención hospitalaria.</div>
+ <div class="sigarh-table-container"><div class="sigarh-filter-bar"><div class="sigarh-filter-left"><div class="sigarh-search-wrapper"><UIcon name="i-heroicons-magnifying-glass" class="sigarh-search-icon"/><input v-model="search" class="sigarh-search-input" placeholder="Buscar UPSS, servicio o especialidad..."/></div><div class="sigarh-filter-group"><button v-for="o in [{k:'all',n:'Todas'},{k:'recommended',n:'Según nivel'},{k:'active',n:'Habilitadas'},{k:'inactive',n:'No activas'}]" :key="o.k" class="sigarh-filter-btn" :class="{active:filtro===o.k}" @click="filtro=o.k">{{o.n}}</button></div></div><span class="sigarh-result-count">{{units.length}} UPSS</span></div>
+  <div v-if="loading" class="sigarh-table-state"><UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin"/><p>Cargando estructura...</p></div><div v-else-if="error" class="sigarh-table-state"><p style="color:var(--alert)">{{error}}</p><button class="btn-outline" @click="load">Reintentar</button></div><div v-else-if="!units.length" class="sigarh-table-state"><p>No hay resultados.</p></div>
+  <div v-else class="divide-y"><section v-for="unit in units" :key="unit.id" class="p-4"><div class="flex items-center gap-4"><button class="w-9 h-9 rounded-lg border flex items-center justify-center" @click="toggle(unit.id)"><UIcon :name="opened(unit.id)?'i-heroicons-chevron-down':'i-heroicons-chevron-right'" class="w-4 h-4"/></button><div class="sigarh-item-icon" :style="{background:unit.tipo_atencion==='atencion_directa'?'var(--purple-soft)':'var(--navy-soft)'}"><UIcon name="i-heroicons-building-office-2" class="w-4 h-4"/></div><button class="flex-1 text-left" @click="toggle(unit.id)"><div class="flex gap-2 items-center flex-wrap"><strong>{{unit.nombre}}</strong><span class="badge badge--neutral">{{unit.tipo_atencion==='atencion_directa'?'Atención directa':'Soporte'}}</span><span v-if="unit.recomendada_nivel" class="badge badge--info">Corresponde al nivel</span></div><div class="text-xs mt-1" style="color:var(--ink-soft)">{{unit.codigo}} · {{unit.servicios.length}} servicios</div></button><div class="text-right"><button class="toggle-switch" :class="{'toggle-active':unit.is_active}" :disabled="savingId===unit.id" @click="changeUnit(unit)"><span class="toggle-slider"/></button><div class="text-xs mt-1">{{unit.is_active?'Habilitada':'No activa'}}</div></div></div>
+   <div v-if="opened(unit.id)" class="mt-4 ml-12 rounded-xl border overflow-hidden"><div v-if="!unit.servicios.length" class="p-4 text-sm" style="color:var(--ink-soft)">No hay servicios vinculados.</div><div v-for="service in unit.servicios" :key="service.id" class="p-4 border-t first:border-t-0"><div class="flex items-center gap-3"><UIcon name="i-heroicons-squares-2x2" class="w-4 h-4" style="color:var(--teal)"/><NuxtLink :to="`/sigarh/mantenimiento/servicios/${service.id}?tenant=${tenantId}`" class="font-semibold hover:underline">{{service.nombre}}</NuxtLink><span class="badge" :class="service.is_active?'badge--ok':'badge--neutral'">{{service.is_active?'Activo':'Inactivo'}}</span></div><div class="mt-3 flex flex-wrap gap-2"><span v-for="specialty in service.especialidades" :key="specialty.id" class="badge" :class="specialty.is_active?'badge--info':'badge--neutral'">{{specialty.nombre}}</span><span v-if="!service.especialidades.length" class="text-xs" style="color:var(--ink-soft)">Sin especialidades vinculadas</span></div></div></div>
+  </section></div>
+  <div v-if="data.servicios_sin_upss.length" class="p-4 border-t"><strong>Servicios pendientes de vincular</strong><div class="flex flex-wrap gap-2 mt-3"><NuxtLink v-for="s in data.servicios_sin_upss" :key="s.id" :to="`/sigarh/mantenimiento/servicios/${s.id}?tenant=${tenantId}`" class="badge badge--neutral hover:underline">{{s.nombre}}</NuxtLink></div></div>
+  <div class="sigarh-table-footer">Fuente normativa: <strong>NTS 021-MINSA/DGSP-V.03, Anexo 03</strong>. La cartera debe reflejar la capacidad real de la IPRESS.</div>
+ </div>
+</div></template>

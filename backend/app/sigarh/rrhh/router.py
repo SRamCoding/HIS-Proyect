@@ -3,7 +3,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import get_db, get_db_central
 from app.core.dependencies import get_current_user
 from app.tenants.entitlements import require_module_jwt
 from app.sigarh.rrhh.schemas import (
@@ -29,6 +29,18 @@ _MOD_MOTIVOS = require_module_jwt("sigarh_recursos_humanos.motivos_justificacion
 _MOD_TOLERANCIAS = require_module_jwt("sigarh_recursos_humanos.tolerancias")
 _MOD_ASISTENCIA = require_module_jwt("sigarh_recursos_humanos.asistencia")
 _MOD_JUSTIFICACIONES = require_module_jwt("sigarh_recursos_humanos.justificaciones")
+
+
+async def _referencia_especialidades(request: Request, current_user=Depends(get_current_user)):
+    codes = ("sigarh_recursos_humanos.especialidades", "sigarh_recursos_humanos.empleados",
+             "sigarh_mantenimiento.servicios", "sigarh_infraestructura.consultorios")
+    for code in codes:
+        try:
+            return await require_module_jwt(code)(request=request, current_user=current_user)
+        except HTTPException as error:
+            if error.status_code != 403:
+                raise
+    raise HTTPException(403, "Su perfil no permite consultar especialidades")
 
 
 def _tid(current_user: dict, request: Request) -> uuid.UUID:
@@ -85,19 +97,19 @@ async def dni_lookup(dni: str, tenant=Depends(_MOD_EMPLEADOS), current_user: dic
 
 
 @router.get("/ubigeo/departamentos", summary="Catálogo ubigeo: departamentos")
-async def ubigeo_departamentos(db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
+async def ubigeo_departamentos(db: AsyncSession = Depends(get_db_central), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     from app.shared.ubigeo.service import get_departamentos
     return [{"id": d.id, "nombre": d.nombre} for d in await get_departamentos(db)]
 
 
 @router.get("/ubigeo/provincias/{departamento_id}", summary="Catálogo ubigeo: provincias de un departamento")
-async def ubigeo_provincias(departamento_id: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
+async def ubigeo_provincias(departamento_id: str, db: AsyncSession = Depends(get_db_central), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     from app.shared.ubigeo.service import get_provincias
     return [{"id": p.id, "nombre": p.nombre} for p in await get_provincias(db, departamento_id)]
 
 
 @router.get("/ubigeo/distritos/{provincia_id}", summary="Catálogo ubigeo: distritos de una provincia")
-async def ubigeo_distritos(provincia_id: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
+async def ubigeo_distritos(provincia_id: str, db: AsyncSession = Depends(get_db_central), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     from app.shared.ubigeo.service import get_distritos
     return [{"id": d.id, "nombre": d.nombre} for d in await get_distritos(db, provincia_id)]
 
@@ -133,7 +145,12 @@ async def eliminar(request: Request, id: uuid.UUID, db: AsyncSession = Depends(g
 
 @router.post("/empleados/{empleado_id}/especialidades", response_model=EmpleadoEspecialidadResponse, status_code=201)
 async def agregar_esp(request: Request, empleado_id: uuid.UUID, data: EmpleadoEspecialidadCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
-    return await svc.agregar_especialidad(db, empleado_id, data)
+    if not await svc.obtener_empleado(db, empleado_id, _tid(current_user, request)):
+        raise HTTPException(404, detail="Empleado no encontrado")
+    try:
+        return await svc.agregar_especialidad(db, empleado_id, data)
+    except svc.ReglaNegocioError as e:
+        raise _rn(e) from e
 
 
 @router.delete("/empleados/{empleado_id}/especialidades/{id}")
@@ -146,13 +163,16 @@ async def eliminar_esp(request: Request, empleado_id: uuid.UUID, id: uuid.UUID, 
 # ─── Catálogo de Especialidades ───────────────────────────────────────────────
 
 @router.get("/especialidades", response_model=list[EspecialidadResponse])
-async def listar_esp(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ESPECIALIDADES), current_user: dict = Depends(get_current_user)):
-    return await svc.listar_especialidades(db, _tid(current_user, request))
+async def listar_esp(request: Request, active_only: bool = False, db: AsyncSession = Depends(get_db), tenant=Depends(_referencia_especialidades), current_user: dict = Depends(get_current_user)):
+    return await svc.listar_especialidades(db, _tid(current_user, request), active_only)
 
 
 @router.post("/especialidades", response_model=EspecialidadResponse, status_code=201)
 async def crear_esp(request: Request, data: EspecialidadCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ESPECIALIDADES), current_user: dict = Depends(get_current_user)):
-    return await svc.crear_especialidad(db, _tid(current_user, request), data)
+    try:
+        return await svc.crear_especialidad(db, _tid(current_user, request), data)
+    except svc.ReglaNegocioError as e:
+        raise _rn(e) from e
 
 
 @router.get("/especialidades/{id}", response_model=EspecialidadResponse)
@@ -167,7 +187,10 @@ async def obtener_esp(request: Request, id: uuid.UUID, db: AsyncSession = Depend
 
 @router.patch("/especialidades/{id}", response_model=EspecialidadResponse)
 async def actualizar_esp(request: Request, id: uuid.UUID, data: EspecialidadUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ESPECIALIDADES), current_user: dict = Depends(get_current_user)):
-    esp = await svc.actualizar_especialidad(db, id, _tid(current_user, request), data)
+    try:
+        esp = await svc.actualizar_especialidad(db, id, _tid(current_user, request), data)
+    except svc.ReglaNegocioError as e:
+        raise _rn(e) from e
     if not esp:
         raise HTTPException(404, detail="Especialidad no encontrada")
     return esp

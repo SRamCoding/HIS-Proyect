@@ -45,8 +45,8 @@ async def listar_servicios(request: Request, db: AsyncSession = Depends(get_db),
 
 
 @router.get("/programacion-medica/especialidades", response_model=list[EspecialidadOut])
-async def listar_especialidades(request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
-    return await get_especialidades(db, get_tenant_id(current_user, request))
+async def listar_especialidades(request: Request, servicio_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+    return await get_especialidades(db, get_tenant_id(current_user, request), servicio_id)
 
 
 @router.get("/programacion-medica/medicos/{especialidad_id}", response_model=list[MedicoOut])

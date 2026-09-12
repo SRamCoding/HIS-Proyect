@@ -2,7 +2,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import get_db, get_db_central
 from app.core.dependencies import get_current_user
 from app.tenants.entitlements import require_module_jwt, require_any_module_jwt
 from app.hospital.admision.schemas import (
@@ -259,7 +259,7 @@ async def mover_historia_clinica(
 # --- Ubigeo en cascada (para los selects de Domicilio/Nacimiento del formulario) ---
 @router.get("/ubigeo/departamentos", response_model=list[UbigeoDepartamentoOut], summary="Listar departamentos")
 async def listar_departamentos(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_central),
     current_user: dict = Depends(require_module_jwt("admision")),
 ):
     return await get_departamentos(db)
@@ -268,7 +268,7 @@ async def listar_departamentos(
 @router.get("/ubigeo/provincias/{departamento_id}", response_model=list[UbigeoProvinciaOut], summary="Listar provincias de un departamento")
 async def listar_provincias(
     departamento_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_central),
     current_user: dict = Depends(require_module_jwt("admision")),
 ):
     return await get_provincias(db, departamento_id)
@@ -277,7 +277,7 @@ async def listar_provincias(
 @router.get("/ubigeo/distritos/{provincia_id}", response_model=list[UbigeoDistritoOut], summary="Listar distritos de una provincia")
 async def listar_distritos(
     provincia_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_central),
     current_user: dict = Depends(require_module_jwt("admision")),
 ):
     return await get_distritos(db, provincia_id)

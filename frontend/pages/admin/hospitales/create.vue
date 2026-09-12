@@ -173,7 +173,7 @@
                     :class="{ 'input-error': errors.subdomain }"
                   />
                 </div>
-                <span class="subdomain-suffix">.erp.local</span>
+                <span class="subdomain-suffix">.{{ tenantBaseDomain }}</span>
               </div>
               <span v-if="errors.subdomain" class="error-message">{{ errors.subdomain }}</span>
               <p class="field-hint">El subdominio será la URL de acceso del hospital y no podrá modificarse después</p>
@@ -517,7 +517,7 @@
             </div>
             <div class="summary-item">
               <span class="summary-label">Dominio</span>
-              <span class="summary-value font-mono-data">{{ form.subdomain ? `${form.subdomain}.erp.local` : '—' }}</span>
+              <span class="summary-value font-mono-data">{{ form.subdomain ? `${form.subdomain.toLowerCase()}.${tenantBaseDomain}` : '—' }}</span>
             </div>
             <div class="summary-item">
               <span class="summary-label">Nivel</span>
@@ -644,6 +644,8 @@ interface HospitalResumen {
 
 const { api } = useApi()
 const router = useRouter()
+const config = useRuntimeConfig()
+const tenantBaseDomain = config.public.tenantDomain as string
 
 const steps = ['Nivel', 'Identidad', 'Usuarios', 'Módulos']
 const tips = [
@@ -747,7 +749,13 @@ const validateStep = (step: number): boolean => {
   
   if (step === 1) {
     errors.name = !form.name ? 'El nombre es requerido' : ''
-    errors.subdomain = !form.subdomain ? 'El subdominio es requerido' : ''
+    errors.subdomain = !form.subdomain
+      ? 'El subdominio es requerido'
+      : !/^(?!-)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(form.subdomain.toLowerCase())
+        ? 'Usa solo letras, números y guiones'
+        : ['www', 'api', 'his-erp', 'admin'].includes(form.subdomain.toLowerCase())
+          ? 'Este subdominio está reservado'
+          : ''
     if (errors.name || errors.subdomain) valid = false
   }
   
@@ -805,7 +813,7 @@ const handleCreate = async () => {
   creating.value = true
   createError.value = ''
   try {
-    const domain = `${form.subdomain}.erp.local`
+    const domain = `${form.subdomain.toLowerCase()}.${tenantBaseDomain}`
     const activeModules = [
       ...(modulosNivel.value?.app || []),
       ...(modulosNivel.value?.sigarh || []),

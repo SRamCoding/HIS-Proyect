@@ -20,6 +20,28 @@ async def get_users_by_tenant(db: AsyncSession, tenant_id: uuid.UUID) -> list[Us
 
 
 async def create_user(db: AsyncSession, data, creador: dict) -> User:
+    if data.panel != "admin":
+        from app.tenants.hospitales.models import Tenant
+        from app.core.tenant_db import get_tenant_sessionmaker
+        hospital = await db.get(Tenant, data.tenant_id) if data.tenant_id else None
+        if not hospital or not hospital.is_active or not hospital.database_name:
+            raise HTTPException(400, detail="Seleccione un hospital activo con base de datos")
+        async with get_tenant_sessionmaker(hospital.database_name)() as hospital_db:
+            if await hospital_db.scalar(select(User.id).where(User.email == data.email)):
+                raise HTTPException(400, detail="El correo ya existe en este hospital")
+            user = User(name=data.name, email=data.email,
+                        password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
+                        role=data.role, panel=data.panel, tenant_id=None, is_active=True)
+            hospital_db.add(user)
+            await hospital_db.commit()
+            await hospital_db.refresh(user)
+        from app.admin.auditoria.service import create_audit_log
+        await create_audit_log(db, user_id=creador.get("sub"), user_name=creador.get("name"),
+                              tenant_id=hospital.id, tenant_name=hospital.name, action="user_created",
+                              model="User", model_id=str(user.id), description=f"Usuario creado: {user.email}")
+        return user
+    if data.tenant_id:
+        raise HTTPException(400, detail="Una cuenta admin no pertenece a un hospital")
     existente = await db.scalar(select(User.id).where(User.email == data.email))
     if existente:
         raise HTTPException(400, detail=f"Ya existe un usuario con el correo {data.email}")
@@ -131,6 +153,16 @@ async def update_user(db: AsyncSession, user_id: uuid.UUID, data, actor: dict) -
         raise HTTPException(400, detail="Las cuentas SIGARH se editan desde SIGARH → Mantenimiento → Usuarios")
     try:
         cambios = data.model_dump(exclude_unset=True, exclude={"password"})
+        if es_tenant:
+            if cambios.get("panel", user.panel) == "admin":
+                raise HTTPException(400, detail="Una cuenta hospitalaria no puede convertirse en admin")
+            if "tenant_id" in cambios:
+                if cambios["tenant_id"] is not None:
+                    from app.tenants.hospitales.models import Tenant
+                    hospital = await db.scalar(select(Tenant).where(Tenant.database_name == work_db.bind.url.database))
+                    if not hospital or hospital.id != cambios["tenant_id"]:
+                        raise HTTPException(400, detail="No se puede trasladar una cuenta a otro hospital")
+                cambios.pop("tenant_id")
         if data.email and data.email != user.email:
             existente = await work_db.scalar(select(User.id).where(User.email == data.email, User.id != user_id))
             if existente:

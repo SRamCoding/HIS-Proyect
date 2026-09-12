@@ -1,6 +1,7 @@
 import re
 import uuid
 from datetime import datetime, date
+from typing import Literal
 from pydantic import BaseModel, field_validator, model_validator
 
 # ─── Validadores reutilizables para Empleado ─────────────────────────────────
@@ -72,6 +73,7 @@ class _EmpleadoCampos(BaseModel):
     tipo_trabajador_id: uuid.UUID | None = None
     nivel_remunerativo_id: uuid.UUID | None = None
     grupo_ocupacional_id: uuid.UUID | None = None
+    profesion_id: uuid.UUID | None = None
     departamento_id: uuid.UUID | None = None
     servicio_id: uuid.UUID | None = None
     cargo_laboral: str | None = None
@@ -79,6 +81,8 @@ class _EmpleadoCampos(BaseModel):
     modalidad: str | None = None
     codigo_minsa: str | None = None
     numero_cmp: str | None = None
+    numero_colegiatura: str | None = None
+    habilitado_colegio: bool = False
     fecha_ingreso: date | None = None
     fecha_nombramiento: date | None = None
     fecha_cese: date | None = None
@@ -148,7 +152,7 @@ class _EmpleadoCampos(BaseModel):
     def _v_ruc(cls, v):
         return _solo_digitos(v, 11, "El RUC")
 
-    @field_validator("numero_cmp", "codigo_minsa")
+    @field_validator("numero_cmp", "numero_colegiatura", "codigo_minsa")
     @classmethod
     def _v_cod_corto(cls, v):
         v = _limpiar(v)
@@ -294,6 +298,7 @@ class EmpleadoResponse(BaseModel):
     tipo_trabajador_id: uuid.UUID | None
     nivel_remunerativo_id: uuid.UUID | None
     grupo_ocupacional_id: uuid.UUID | None
+    profesion_id: uuid.UUID | None
     departamento_id: uuid.UUID | None
     servicio_id: uuid.UUID | None
     cargo_laboral: str | None
@@ -301,6 +306,8 @@ class EmpleadoResponse(BaseModel):
     modalidad: str | None
     codigo_minsa: str | None
     numero_cmp: str | None
+    numero_colegiatura: str | None
+    habilitado_colegio: bool
     fecha_ingreso: date | None
     fecha_nombramiento: date | None
     fecha_cese: date | None
@@ -344,6 +351,16 @@ class EspecialidadCreate(BaseModel):
     codigo: str | None = None
     descripcion: str | None = None
     is_active: bool = True
+    tipo: Literal["especialidad", "subespecialidad"] = "especialidad"
+    parent_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _v_jerarquia(self):
+        if self.tipo == "subespecialidad" and not self.parent_id:
+            raise ValueError("Selecciona la especialidad principal")
+        if self.tipo == "especialidad":
+            self.parent_id = None
+        return self
 
     @field_validator("nombre")
     @classmethod
@@ -391,6 +408,17 @@ class EspecialidadResponse(BaseModel):
     is_active: bool
     medicos_asignados: int = 0
     created_at: datetime
+    catalogo_id: uuid.UUID | None = None
+    tipo: str = "especialidad"
+    parent_id: uuid.UUID | None = None
+    parent_nombre: str | None = None
+    requisitos: str | None = None
+    fuente: str | None = None
+    norma: str | None = None
+    fuente_url: str | None = None
+    es_oficial: bool = False
+    recomendada_nivel: bool = False
+    hospital_level: str | None = None
 
     model_config = {"from_attributes": True}
 

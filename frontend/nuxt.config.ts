@@ -22,7 +22,8 @@ app: {
 },
 runtimeConfig: {
   public: {
-    apiUrl: 'http://localhost:8000',
+    apiUrl: process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8000',
+    tenantDomain: process.env.NUXT_PUBLIC_TENANT_DOMAIN || 'techquk.com',
   },
 },
   routeRules: {

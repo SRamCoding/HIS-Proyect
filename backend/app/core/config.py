@@ -31,6 +31,18 @@ class Settings(BaseSettings):
 
     # Multi-tenant
     CENTRAL_DOMAIN: str = "erp.local"
+    TENANT_BASE_DOMAIN: str = "techquk.com"
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def parse_debug(cls, value):
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"release", "production", "prod"}:
+                return False
+            if normalized in {"development", "dev"}:
+                return True
+        return value
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod

@@ -8,6 +8,7 @@ const id = computed(() => route.params.id as string)
 
 const loading = ref(true)
 const saving = ref(false)
+const esMedico = ref(false)
 const error = ref('')
 
 const gruposSanguineos = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
@@ -47,7 +48,7 @@ const errors = reactive<Record<string, string>>({
 const form = reactive({
   dni: '', nombres: '', apellido_paterno: '', apellido_materno: '', fecha_nacimiento: '',
   sexo: '', estado_civil: '', grupo_sanguineo: '', celular: '', telefono_fijo: '', correo: '',
-  is_active: true,
+  is_active: true, profesion_id: '', numero_colegiatura: '', habilitado_colegio: false,
   tipo_trabajador_id: '', nivel_remunerativo_id: '', grupo_ocupacional_id: '',
   departamento_id: '', servicio_id: '', cargo_laboral: '', es_jefe_servicio: false, modalidad: '',
   codigo_minsa: '', numero_cmp: '', fecha_ingreso: '', fecha_nombramiento: '', fecha_cese: '',
@@ -158,6 +159,7 @@ const handleSave = async () => {
         fecha_nacimiento: form.fecha_nacimiento || null, sexo: form.sexo || null, estado_civil: form.estado_civil || null,
         grupo_sanguineo: form.grupo_sanguineo || null, celular: form.celular || null, telefono_fijo: form.telefono_fijo || null,
         correo: form.correo || null, is_active: form.is_active,
+        profesion_id: form.profesion_id || null, numero_colegiatura: form.numero_colegiatura || null, habilitado_colegio: form.habilitado_colegio,
         tipo_trabajador_id: form.tipo_trabajador_id || null, nivel_remunerativo_id: form.nivel_remunerativo_id || null,
         grupo_ocupacional_id: form.grupo_ocupacional_id || null, departamento_id: form.departamento_id || null,
         servicio_id: form.servicio_id || null, cargo_laboral: form.cargo_laboral || null, es_jefe_servicio: form.es_jefe_servicio, modalidad: form.modalidad || null,
@@ -193,9 +195,10 @@ onMounted(async () => {
       api<any[]>('/sigarh/mantenimiento/grupos-ocupacionales'),
       api<any[]>('/sigarh/mantenimiento/departamentos'),
       api<any[]>('/sigarh/mantenimiento/servicios'),
-      api<any[]>('/sigarh/rrhh/especialidades'),
+      api<any[]>('/sigarh/rrhh/especialidades?active_only=true'),
     ])
     Object.assign(form, {
+      profesion_id: data.profesion_id || '', numero_colegiatura: data.numero_colegiatura || data.numero_cmp || '', habilitado_colegio: !!data.habilitado_colegio,
       dni: data.dni || '', nombres: data.nombres || '', apellido_paterno: data.apellido_paterno || '', apellido_materno: data.apellido_materno || '',
       fecha_nacimiento: data.fecha_nacimiento || '', sexo: data.sexo || '', estado_civil: data.estado_civil || '', grupo_sanguineo: data.grupo_sanguineo || '',
       celular: data.celular || '', telefono_fijo: data.telefono_fijo || '', correo: data.correo || '', is_active: data.is_active,
@@ -330,10 +333,11 @@ onMounted(async () => {
               <select v-model="form.nivel_remunerativo_id" class="input-clinical"><option value="">Seleccione</option><option v-for="n in nivelesRemunerativos" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
             </div>
           </div>
-          <div class="form-group">
+          <SClasificacionProfesional v-model:profesion-id="form.profesion_id" v-model:numero-colegiatura="form.numero_colegiatura" v-model:habilitado="form.habilitado_colegio" @grupo="form.grupo_ocupacional_id = $event" @medico="esMedico = $event" />
+        <div class="form-group">
             <label class="form-label">Grupo Ocupacional</label>
             <div class="input-wrapper"><UIcon name="i-heroicons-chart-bar" class="input-icon" />
-              <select v-model="form.grupo_ocupacional_id" class="input-clinical"><option value="">Seleccione</option><option v-for="g in gruposOcupacionales" :key="g.id" :value="g.id">{{ g.nombre }}</option></select>
+              <select v-model="form.grupo_ocupacional_id" class="input-clinical" :disabled="!!form.profesion_id"><option value="">Seleccione</option><option v-for="g in gruposOcupacionales" :key="g.id" :value="g.id">{{ g.nombre }}</option></select>
             </div>
           </div>
           <div class="form-group">
@@ -418,7 +422,7 @@ onMounted(async () => {
             </div>
           </div>
           <div class="form-group full-width">
-            <button type="button" class="btn-outline" @click="form.especialidades.push({ id: null, especialidad_id: '', numero_rne: '', validado: false, nueva: true })">
+            <button type="button" class="btn-outline" :disabled="!esMedico" @click="form.especialidades.push({ id: null, especialidad_id: '', numero_rne: '', validado: false, nueva: true })">
               <UIcon name="i-heroicons-plus" class="w-4 h-4" /> Agregar Especialidad
             </button>
           </div>

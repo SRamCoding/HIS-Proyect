@@ -50,7 +50,15 @@ from app.sigarh.creacion_roles.models import (
 config = context.config
 import os
 tenant_db_url = os.environ.get("TENANT_DATABASE_URL")
-config.set_main_option("sqlalchemy.url", tenant_db_url or settings.DATABASE_URL)
+configured_tenant_url = config.attributes.get("tenant_database_url")
+if configured_tenant_url:
+    config.set_main_option("sqlalchemy.url", configured_tenant_url)
+elif tenant_db_url:
+    # Compatibilidad con comandos operativos existentes. La provisión automática
+    # pasa la URL directamente en Config y no comparte estado global entre hilos.
+    config.set_main_option("sqlalchemy.url", tenant_db_url)
+else:
+    config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

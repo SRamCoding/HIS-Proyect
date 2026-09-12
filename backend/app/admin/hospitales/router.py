@@ -1,4 +1,5 @@
 import uuid
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -44,13 +45,25 @@ async def crear_hospital(
     if existing:
         raise HTTPException(400, detail=f"Ya existe un hospital con el dominio '{data.domain}'")
     tenant = await create_tenant(db, data)
-    await create_audit_log(
-        db, user_id=current_user.get("sub"), user_name=current_user.get("name") or current_user.get("email"),
-        tenant_id=tenant.id, tenant_name=tenant.name, action="tenant_created",
-        model="Tenant", model_id=str(tenant.id),
-        description=f"Hospital creado: {tenant.name} ({tenant.domain})",
-        new_values=data.model_dump(exclude={"admin_password", "sigarh_password"}),
-    )
+    created_tenant_id = tenant.id
+    try:
+        await create_audit_log(
+            db, user_id=current_user.get("sub"), user_name=current_user.get("name") or current_user.get("email"),
+            tenant_id=tenant.id, tenant_name=tenant.name, action="tenant_created",
+            model="Tenant", model_id=str(tenant.id),
+            description=f"Hospital creado: {tenant.name} ({tenant.domain})",
+            new_values=data.model_dump(exclude={"admin_password", "sigarh_password"}),
+        )
+    except Exception:
+        await db.rollback()
+        logging.getLogger(__name__).exception(
+            "El hospital %s se creó, pero no se pudo registrar su auditoría", created_tenant_id
+        )
+        tenant = await db.scalar(
+            select(Tenant).options(selectinload(Tenant.modules)).where(
+                Tenant.id == created_tenant_id
+            )
+        )
     return tenant
 
 
@@ -100,7 +113,7 @@ async def actualizar_hospital(
     # TenantUpdate es la lista blanca de campos editables (hereda de TenantBase);
     # antes se aceptaba un dict libre y se aplicaba con setattr a cualquier
     # atributo del modelo, incluidos campos internos como schema_name/is_active.
-    cambios = data.model_dump(exclude_unset=True, exclude={"active_modules"})
+    cambios = data.model_dump(exclude_unset=True, exclude={"active_modules", "domain"})
     anteriores = {campo: getattr(tenant, campo) for campo in cambios}
     for field, value in cambios.items():
         setattr(tenant, field, value)

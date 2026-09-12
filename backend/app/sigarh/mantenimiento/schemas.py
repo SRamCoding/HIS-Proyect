@@ -1,10 +1,18 @@
-﻿import re
+import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, create_model, field_serializer, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    create_model,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from app.sigarh.creacion_roles.models import CATEGORIAS_PERSONAL
 
@@ -44,13 +52,16 @@ class CatalogoResponse(BaseModel):
 class DepartamentoCreate(CatalogoBase):
     pass
 
+
 class DepartamentoResponse(CatalogoResponse):
     pass
+
 
 class ServicioCreate(CatalogoBase):
     departamento_id: uuid.UUID | None = None
     piso_id: uuid.UUID | None = None
     tiempo_atencion_min: Annotated[int, Field(ge=5, le=120)] | None = None
+
 
 class ServicioResponse(CatalogoResponse):
     departamento_id: uuid.UUID | None = None
@@ -58,10 +69,19 @@ class ServicioResponse(CatalogoResponse):
     piso_id: uuid.UUID | None = None
     piso_nombre: str | None = None
     tiempo_atencion_min: int | None = None
+    es_base: bool = False
+
+
+class ServicioEstructuraUpdate(Entrada):
+    upss_ids: list[uuid.UUID] = Field(default_factory=list)
+    especialidad_ids: list[uuid.UUID] = Field(default_factory=list)
+
 
 def _v_categoria_personal(value):
     if value is not None and value not in CATEGORIAS_PERSONAL:
-        raise ValueError(f"categoria_personal debe ser una de: {', '.join(CATEGORIAS_PERSONAL)}")
+        raise ValueError(
+            f"categoria_personal debe ser una de: {', '.join(CATEGORIAS_PERSONAL)}"
+        )
     return value
 
 
@@ -73,21 +93,26 @@ class TipoTrabajadorCreate(CatalogoBase):
     def _v_cat(cls, v):
         return _v_categoria_personal(v)
 
+
 class TipoTrabajadorResponse(CatalogoResponse):
     categoria_personal: str | None = None
+
 
 class TipoGuardiaCreate(CatalogoBase):
     horas: Annotated[int, Field(ge=1, le=24)] | None = None
     es_laborable: bool = True
     requiere_epp: bool = False
 
+
 class TipoGuardiaResponse(CatalogoResponse):
     horas: int | None = None
     es_laborable: bool = True
     requiere_epp: bool = False
 
+
 class NivelRemunerativoCreate(CatalogoBase):
     pass
+
 
 class NivelRemunerativoResponse(CatalogoResponse):
     pass
@@ -97,9 +122,12 @@ def duracion_minutos(inicio: str, fin: str) -> int:
     def minutos(hora):
         h, m = map(int, hora.split(":"))
         return h * 60 + m
+
     resultado = (minutos(fin) - minutos(inicio)) % 1440
     if not resultado:
-        raise ValueError("Inicio y fin deben ser distintos; divida las jornadas de 24 horas")
+        raise ValueError(
+            "Inicio y fin deben ser distintos; divida las jornadas de 24 horas"
+        )
     return resultado
 
 
@@ -108,7 +136,9 @@ class HorarioGuardiaCreate(Entrada):
     hora_inicio: Hora
     hora_fin: Hora
     # Compatibilidad de lectura/escritura; la fuente exacta son los minutos.
-    horas_totales: Annotated[float, Field(gt=0, lt=24, allow_inf_nan=False)] | None = None
+    horas_totales: Annotated[float, Field(gt=0, lt=24, allow_inf_nan=False)] | None = (
+        None
+    )
     duracion_minutos: Annotated[int, Field(ge=1, le=1439)] | None = None
     tipo_guardia_id: uuid.UUID | None = None
     is_active: bool = True
@@ -118,11 +148,15 @@ class HorarioGuardiaCreate(Entrada):
         minutos = duracion_minutos(self.hora_inicio, self.hora_fin)
         if self.duracion_minutos is not None and self.duracion_minutos != minutos:
             raise ValueError("La duración no coincide con el horario")
-        if self.horas_totales is not None and abs(self.horas_totales * 60 - minutos) > 0.001:
+        if (
+            self.horas_totales is not None
+            and abs(self.horas_totales * 60 - minutos) > 0.001
+        ):
             raise ValueError("Las horas totales no coinciden con inicio y fin")
         self.duracion_minutos = minutos
         self.horas_totales = minutos / 60
         return self
+
 
 class HorarioGuardiaResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -138,11 +172,14 @@ class HorarioGuardiaResponse(BaseModel):
     is_active: bool
     created_at: datetime
 
+
 class TipoGrupoOcupacionalCreate(CatalogoBase):
     pass
 
+
 class TipoGrupoOcupacionalResponse(CatalogoResponse):
     pass
+
 
 class GrupoOcupacionalCreate(CatalogoBase):
     tipo_grupo_id: uuid.UUID | None = None
@@ -153,14 +190,40 @@ class GrupoOcupacionalCreate(CatalogoBase):
     def _v_cat(cls, v):
         return _v_categoria_personal(v)
 
+
 class GrupoOcupacionalResponse(CatalogoResponse):
     tipo_grupo_id: uuid.UUID | None = None
     categoria_personal: str | None = None
+
+
+class ProfesionCreate(CatalogoBase):
+    codigo: Annotated[str, Field(min_length=1, max_length=20)]
+    grupo_ocupacional_id: uuid.UUID
+    codigo_colegio: str | None = None
+    colegio_profesional: str | None = None
+    categoria_personal: str | None = None
+
+    @field_validator("categoria_personal")
+    @classmethod
+    def _v_cat(cls, v):
+        return _v_categoria_personal(v)
+
+
+class ProfesionResponse(CatalogoResponse):
+    grupo_ocupacional_id: uuid.UUID
+    codigo_colegio: str | None = None
+    colegio_profesional: str | None = None
+    categoria_personal: str | None = None
+    fuente: str | None = None
+    fuente_url: str | None = None
+    es_base: bool = False
+
 
 class TipoActividadCreate(Entrada):
     nombre: Nombre
     codigo: Codigo | None = None
     is_active: bool = True
+
 
 class TipoActividadResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -171,21 +234,26 @@ class TipoActividadResponse(BaseModel):
     is_active: bool
     created_at: datetime
 
+
 class ActividadCreate(TipoActividadCreate):
     tipo_actividad_id: uuid.UUID | None = None
     requiere_consultorio: bool = False
     genera_agenda: bool = False
+
 
 class ActividadResponse(TipoActividadResponse):
     tipo_actividad_id: uuid.UUID | None = None
     requiere_consultorio: bool = False
     genera_agenda: bool = False
 
+
 class GuardiaValorizadaCreate(Entrada):
     tipo_guardia_id: uuid.UUID
     grupo_ocupacional_id: uuid.UUID | None = None
     nivel_remunerativo_id: uuid.UUID | None = None
-    valor: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=2, allow_inf_nan=False)]
+    valor: Annotated[
+        Decimal, Field(gt=0, max_digits=12, decimal_places=2, allow_inf_nan=False)
+    ]
     moneda: Literal["PEN"] = "PEN"
     vigencia_desde: date
     vigencia_hasta: date | None = None
@@ -197,6 +265,7 @@ class GuardiaValorizadaCreate(Entrada):
         if self.vigencia_hasta and self.vigencia_hasta < self.vigencia_desde:
             raise ValueError("La vigencia final no puede ser anterior a la inicial")
         return self
+
 
 class GuardiaValorizadaResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -218,7 +287,10 @@ class GuardiaValorizadaResponse(BaseModel):
 
     @field_serializer("valor", when_used="json")
     def importe_json(self, value):
-        return float(value)  # compatibilidad de la interfaz; cálculo/almacenamiento Decimal
+        return float(
+            value
+        )  # compatibilidad de la interfaz; cálculo/almacenamiento Decimal
+
 
 class RolSistemaCreate(Entrada):
     codigo: Annotated[str, Field(min_length=1, max_length=100)]
@@ -239,6 +311,7 @@ class RolSistemaCreate(Entrada):
             raise ValueError("Permiso de acción desconocido")
         return sorted(set(value))
 
+
 class RolSistemaResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -255,12 +328,14 @@ class RolSistemaResponse(BaseModel):
     is_active: bool
     created_at: datetime
 
+
 class PerfilUsuarioCreate(Entrada):
     nombre: Nombre
     rol_sistema_id: uuid.UUID
     modulos_acceso: list[str] = []
     descripcion: str | None = None
     is_active: bool = True
+
 
 class PerfilUsuarioResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -273,6 +348,7 @@ class PerfilUsuarioResponse(BaseModel):
     is_active: bool
     created_at: datetime
 
+
 class DependenciaCreate(Entrada):
     nombre: Nombre
     codigo: Codigo | None = None
@@ -280,6 +356,7 @@ class DependenciaCreate(Entrada):
     departamento_id: uuid.UUID | None = None
     servicio_id: uuid.UUID | None = None
     is_active: bool = True
+
 
 class DependenciaResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -309,10 +386,13 @@ def validar_password(value: str) -> str:
         raise ValueError("La contraseña debe incluir al menos un carácter especial")
     return value
 
+
 class UsuarioSigarhCreate(Entrada):
     empleado_id: uuid.UUID | None = None
     perfil_id: uuid.UUID
-    username: Annotated[str, Field(min_length=3, max_length=100, pattern=r"^[a-zA-Z0-9._-]+$")]
+    username: Annotated[
+        str, Field(min_length=3, max_length=100, pattern=r"^[a-zA-Z0-9._-]+$")
+    ]
     email: Annotated[str, Field(max_length=255, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")]
     password: str
     is_active: bool = True
@@ -329,9 +409,13 @@ class UsuarioSigarhCreate(Entrada):
 
     @model_validator(mode="after")
     def password_distinto(self):
-        if self.password.casefold() in {self.username.casefold(), self.email.casefold()}:
+        if self.password.casefold() in {
+            self.username.casefold(),
+            self.email.casefold(),
+        }:
             raise ValueError("La contraseña no puede ser el usuario ni el correo")
         return self
+
 
 class UsuarioSigarhResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -350,9 +434,15 @@ def esquema_parcial(schema):
     # Omitir es diferente de enviar NULL, y se conservan límites/formatos de cada campo.
     fields = {}
     for name, info in schema.model_fields.items():
-        annotation = Annotated[info.annotation, *info.metadata] if info.metadata else info.annotation
+        annotation = (
+            Annotated[info.annotation, *info.metadata]
+            if info.metadata
+            else info.annotation
+        )
         fields[name] = (annotation, None)
-    return create_model(schema.__name__.replace("Create", "Update"), __base__=Entrada, **fields)
+    return create_model(
+        schema.__name__.replace("Create", "Update"), __base__=Entrada, **fields
+    )
 
 
 UsuarioSigarhUpdate = esquema_parcial(UsuarioSigarhCreate)

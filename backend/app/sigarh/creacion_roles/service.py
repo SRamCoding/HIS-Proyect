@@ -596,8 +596,13 @@ async def categorias_de_empleados(db: AsyncSession, empleados: list[Empleado]) -
     go_cat = dict((await db.execute(
         select(GrupoOcupacional.id, GrupoOcupacional.categoria_personal).where(GrupoOcupacional.id.in_(go_ids))
     )).all()) if go_ids else {}
+    from app.sigarh.mantenimiento.models import Profesion
+    profesion_ids = {e.profesion_id for e in empleados if e.profesion_id}
+    profesion_cat = dict((await db.execute(select(
+        Profesion.id, Profesion.categoria_personal
+    ).where(Profesion.id.in_(profesion_ids)))).all()) if profesion_ids else {}
     return {
-        e.id: tt_cat.get(e.tipo_trabajador_id) or go_cat.get(e.grupo_ocupacional_id)
+        e.id: tt_cat.get(e.tipo_trabajador_id) or profesion_cat.get(e.profesion_id) or go_cat.get(e.grupo_ocupacional_id)
         for e in empleados
     }
 

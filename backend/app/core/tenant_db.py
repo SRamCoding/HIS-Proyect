@@ -2,7 +2,6 @@
 Gestión de conexiones y provisión de bases de datos por hospital (tenant).
 """
 import re
-import os
 from urllib.parse import urlparse, urlunparse
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import text
@@ -32,20 +31,34 @@ async def create_tenant_database(database_name: str) -> None:
     """Crea la base de datos física en Postgres (requiere conexión con CREATE DATABASE)."""
     admin_url = _build_tenant_url("postgres")  # conecta a la BD admin para poder crear otras
     admin_engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT")
-    async with admin_engine.connect() as conn:
-        await conn.execute(text(f'CREATE DATABASE "{database_name}"'))
-    await admin_engine.dispose()
+    try:
+        async with admin_engine.connect() as conn:
+            await conn.execute(text(f'CREATE DATABASE "{database_name}"'))
+    finally:
+        await admin_engine.dispose()
+
+
+async def drop_tenant_database(database_name: str) -> None:
+    """Elimina exclusivamente una BD recién creada cuya provisión falló."""
+    if not re.fullmatch(r"his_[a-z0-9_]+", database_name):
+        raise ValueError("Nombre de base hospitalaria inválido")
+    admin_engine = create_async_engine(
+        _build_tenant_url("postgres"), isolation_level="AUTOCOMMIT"
+    )
+    try:
+        async with admin_engine.connect() as conn:
+            await conn.execute(
+                text(f'DROP DATABASE IF EXISTS "{database_name}" WITH (FORCE)')
+            )
+    finally:
+        await admin_engine.dispose()
 
 
 def run_tenant_migrations(database_name: str) -> None:
     """Corre alembic upgrade head contra la BD del tenant nuevo."""
-    tenant_url = _build_tenant_url(database_name)
-    os.environ["TENANT_DATABASE_URL"] = tenant_url
-    try:
-        alembic_cfg = Config("alembic.ini")
-        command.upgrade(alembic_cfg, "head")
-    finally:
-        os.environ.pop("TENANT_DATABASE_URL", None)
+    alembic_cfg = Config("alembic.ini")
+    alembic_cfg.attributes["tenant_database_url"] = _build_tenant_url(database_name)
+    command.upgrade(alembic_cfg, "head")
 
 
 def get_tenant_engine(database_name: str):

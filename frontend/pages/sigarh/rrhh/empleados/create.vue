@@ -8,6 +8,7 @@ const tenantId = computed(() => route.query.tenant as string || '')
 const pasos = ['Datos Personales', 'Datos Laborales', 'Especialidades', 'Datos Bancarios', 'Ubicación']
 const stepActual = ref(0)
 const saving = ref(false)
+const esMedico = ref(false)
 const error = ref('')
 const registroManual = ref(false)
 const dniCargado = ref(false)
@@ -46,7 +47,7 @@ const errors = reactive<Record<string, string>>({
 const form = reactive({
   dni: '', nombres: '', apellido_paterno: '', apellido_materno: '', fecha_nacimiento: '',
   sexo: '', estado_civil: '', grupo_sanguineo: '', celular: '', telefono_fijo: '', correo: '',
-  is_active: true,
+  is_active: true, profesion_id: '', numero_colegiatura: '', habilitado_colegio: false,
   tipo_trabajador_id: '', nivel_remunerativo_id: '', grupo_ocupacional_id: '',
   departamento_id: '', servicio_id: '', cargo_laboral: '', es_jefe_servicio: false, modalidad: '',
   codigo_minsa: '', numero_cmp: '', fecha_ingreso: '', fecha_nombramiento: '', fecha_cese: '',
@@ -234,6 +235,8 @@ const handleCreate = async () => {
     const { especialidades: _esp, ...campos } = form
     const payload = {
       ...campos,
+      profesion_id: form.profesion_id || null,
+      numero_colegiatura: form.numero_colegiatura || null,
       tipo_trabajador_id: form.tipo_trabajador_id || null,
       nivel_remunerativo_id: form.nivel_remunerativo_id || null,
       grupo_ocupacional_id: form.grupo_ocupacional_id || null,
@@ -267,7 +270,7 @@ onMounted(async () => {
       api<any[]>('/sigarh/mantenimiento/grupos-ocupacionales'),
       api<any[]>('/sigarh/mantenimiento/departamentos'),
       api<any[]>('/sigarh/mantenimiento/servicios'),
-      api<any[]>('/sigarh/rrhh/especialidades'),
+      api<any[]>('/sigarh/rrhh/especialidades?active_only=true'),
     ])
     tiposTrabajador.value = tt; nivelesRemunerativos.value = nr; gruposOcupacionales.value = go
     departamentos.value = dep; servicios.value = ser; especialidades.value = esp
@@ -424,10 +427,11 @@ onMounted(async () => {
           </div>
           <span v-if="errors.nivel_remunerativo_id" class="error-message">{{ errors.nivel_remunerativo_id }}</span>
         </div>
+        <SClasificacionProfesional v-model:profesion-id="form.profesion_id" v-model:numero-colegiatura="form.numero_colegiatura" v-model:habilitado="form.habilitado_colegio" @grupo="form.grupo_ocupacional_id = $event" @medico="esMedico = $event" />
         <div class="form-group">
           <label class="form-label">Grupo Ocupacional <span class="required">*</span></label>
           <div class="input-wrapper"><UIcon name="i-heroicons-chart-bar" class="input-icon" />
-            <select v-model="form.grupo_ocupacional_id" class="input-clinical" :class="{ 'input-error': errors.grupo_ocupacional_id }"><option value="">Seleccione</option><option v-for="g in gruposOcupacionales" :key="g.id" :value="g.id">{{ g.nombre }}</option></select>
+            <select v-model="form.grupo_ocupacional_id" class="input-clinical" :disabled="!!form.profesion_id" :class="{ 'input-error': errors.grupo_ocupacional_id }"><option value="">Seleccione</option><option v-for="g in gruposOcupacionales" :key="g.id" :value="g.id">{{ g.nombre }}</option></select>
           </div>
           <span v-if="errors.grupo_ocupacional_id" class="error-message">{{ errors.grupo_ocupacional_id }}</span>
         </div>
@@ -525,7 +529,7 @@ onMounted(async () => {
           </div>
         </div>
         <div class="form-group full-width">
-          <button type="button" class="btn-outline" @click="form.especialidades.push({ especialidad_id: '', numero_rne: '', validado: false })">
+          <button type="button" class="btn-outline" :disabled="!esMedico" @click="form.especialidades.push({ especialidad_id: '', numero_rne: '', validado: false })">
             <UIcon name="i-heroicons-plus" class="w-4 h-4" /> Agregar Especialidad
           </button>
         </div>

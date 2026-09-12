@@ -91,6 +91,9 @@
             </div>
           </div>
 
+          <div class="form-group full-width"><label class="form-label">UPSS donde funciona</label><div class="grid sm:grid-cols-2 gap-2 rounded-xl border p-3"><label v-for="u in upss" :key="u.id" class="flex items-center gap-2 text-sm"><input v-model="form.upss_ids" type="checkbox" :value="u.id" /> {{u.nombre}}</label></div></div>
+          <div class="form-group full-width"><label class="form-label">Especialidades atendidas</label><div class="grid sm:grid-cols-2 gap-2 rounded-xl border p-3 max-h-64 overflow-auto"><label v-for="e in especialidades" :key="e.id" class="flex items-center gap-2 text-sm"><input v-model="form.especialidad_ids" type="checkbox" :value="e.id" /> {{e.nombre}}</label></div></div>
+
           <SFormPreview
             :nombre="form.nombre"
             :codigo="form.codigo"
@@ -144,7 +147,9 @@ const saving = ref(false)
 const error = ref('')
 const departamentos = ref<any[]>([])
 const pisos = ref<any[]>([])
-const form = reactive({ nombre: '', codigo: '', descripcion: '', departamento_id: '', piso_id: '', tiempo_atencion_min: null as number | null, is_active: true })
+const upss = ref<any[]>([])
+const especialidades = ref<any[]>([])
+const form = reactive({ nombre: '', codigo: '', descripcion: '', departamento_id: '', piso_id: '', tiempo_atencion_min: null as number | null, is_active: true, upss_ids: [] as string[], especialidad_ids: [] as string[] })
 
 const departamentoNombre = computed(() => departamentos.value.find(d => d.id === form.departamento_id)?.nombre || '')
 const pisoNombre = computed(() => pisos.value.find(p => p.id === form.piso_id)?.nombre || '')
@@ -166,6 +171,7 @@ const handleSave = async () => {
         is_active: form.is_active,
       },
     })
+    await api(`/sigarh/mantenimiento/servicios/${id.value}/estructura`, { method: 'PUT', body: { upss_ids: form.upss_ids, especialidad_ids: form.especialidad_ids } })
     router.push(`/sigarh/mantenimiento/servicios?tenant=${tenantId.value}`)
   } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar' }
   finally { saving.value = false }
@@ -173,10 +179,12 @@ const handleSave = async () => {
 
 onMounted(async () => {
   try {
-    const [data, deps, pisosData] = await Promise.all([
+    const [data, deps, pisosData, structure, specialties] = await Promise.all([
       api<any>(`/sigarh/mantenimiento/servicios/${id.value}`),
       api<any[]>('/sigarh/mantenimiento/departamentos'),
       api<any[]>('/sigarh/infraestructura-hosp/pisos').catch(() => []),
+      api<any>('/sigarh/mantenimiento/estructura-asistencial'),
+      api<any[]>('/sigarh/rrhh/especialidades?active_only=true'),
     ])
     form.nombre = data.nombre
     form.codigo = data.codigo || ''
@@ -187,6 +195,11 @@ onMounted(async () => {
     form.is_active = data.is_active
     departamentos.value = deps
     pisos.value = pisosData
+    upss.value = structure.upss
+    especialidades.value = specialties.filter((e:any) => e.tipo === 'especialidad')
+    const current = [...structure.upss.flatMap((u:any) => u.servicios), ...structure.servicios_sin_upss].find((s:any) => s.id === id.value)
+    form.upss_ids = current?.upss_ids || []
+    form.especialidad_ids = current?.especialidades?.map((e:any) => e.id) || []
   } catch (e: any) { error.value = 'No se pudo cargar el servicio' }
   finally { loading.value = false }
 })

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Text, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -68,6 +68,7 @@ class TenantModule(Base):
     Equivalente a la tabla tenant_modules de Laravel + el CheckboxList de TenantResource.
     """
     __tablename__ = "tenant_modules"
+    __table_args__ = (UniqueConstraint("tenant_id", "module_code", name="uq_tenant_module"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
