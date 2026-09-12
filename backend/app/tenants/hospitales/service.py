@@ -96,6 +96,8 @@ async def create_tenant(db: AsyncSession, data: TenantCreate) -> Tenant:
             await asegurar_departamentos(tenant_db, tenant.id, data.hospital_level)
             from app.sigarh.mantenimiento.guardias_catalogo import asegurar_guardias
             await asegurar_guardias(tenant_db, tenant.id, data.hospital_level)
+            from app.sigarh.mantenimiento.actividades_catalogo import asegurar_actividades
+            await asegurar_actividades(tenant_db, tenant.id, data.hospital_level)
             tenant_db.add(User(
                 name=data.admin_name, email=data.admin_email,
                 password=bcrypt.hashpw(data.admin_password.encode(), bcrypt.gensalt()).decode(),
@@ -143,6 +145,8 @@ async def create_tenant(db: AsyncSession, data: TenantCreate) -> Tenant:
         await asegurar_departamentos(db, tenant.id, data.hospital_level)
         from app.sigarh.mantenimiento.guardias_catalogo import asegurar_guardias
         await asegurar_guardias(db, tenant.id, data.hospital_level)
+        from app.sigarh.mantenimiento.actividades_catalogo import asegurar_actividades
+        await asegurar_actividades(db, tenant.id, data.hospital_level)
         await db.commit()
         await db.refresh(tenant, attribute_names=["modules"])
         return tenant
