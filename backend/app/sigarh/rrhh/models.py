@@ -32,6 +32,7 @@ class Empleado(Base):
     correo: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # ─── Datos Laborales ──────────────────────────────────────────────────────
+    vinculo_laboral_codigo: Mapped[str | None] = mapped_column(String(30), ForeignKey("catalogo_vinculos_laborales.codigo", ondelete="RESTRICT"), nullable=True)
     tipo_trabajador_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_tipos_trabajador.id", ondelete="SET NULL"), nullable=True)
     nivel_remunerativo_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_niveles_remunerativos.id", ondelete="SET NULL"), nullable=True)
     grupo_ocupacional_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_grupos_ocupacionales.id", ondelete="SET NULL"), nullable=True)
@@ -286,3 +287,15 @@ class Justificacion(Base):
 
     def __repr__(self) -> str:
         return f"<Justificacion {self.empleado_id} {self.fecha_inicio}>"
+
+
+class VinculoLaboral(Base):
+    """Combinaciones comunes de regimen y condicion laboral con fuente oficial."""
+    __tablename__ = "catalogo_vinculos_laborales"
+    codigo: Mapped[str] = mapped_column(String(30), primary_key=True)
+    regimen_codigo: Mapped[str] = mapped_column(String(10))
+    regimen_nombre: Mapped[str] = mapped_column(String(150))
+    condicion_nombre: Mapped[str] = mapped_column(String(100))
+    norma: Mapped[str] = mapped_column(String(255))
+    fuente_url: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)

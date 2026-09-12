@@ -75,6 +75,7 @@ async def _correo_duplicado(db: AsyncSession, tenant_id: uuid.UUID, correo: str,
 async def crear_empleado(db: AsyncSession, tenant_id: uuid.UUID, data) -> Empleado:
     if data.correo and await _correo_duplicado(db, tenant_id, data.correo):
         raise ReglaNegocioError(f"Ya existe un empleado con el correo {data.correo}.")
+    await validar_vinculo_laboral(db, data.model_dump())
     await _validar_profesion_empleado(db, tenant_id, data.model_dump())
     empleado = Empleado(tenant_id=tenant_id, **data.model_dump())
     db.add(empleado)
@@ -87,6 +88,7 @@ async def actualizar_empleado(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.U
     if not empleado:
         return None
     cambios = data.model_dump(exclude_unset=True)
+    await validar_vinculo_laboral(db, cambios)
     await _validar_profesion_empleado(db, tenant_id, cambios, empleado)
     if cambios.get("correo") and await _correo_duplicado(db, tenant_id, cambios["correo"], excluir=id):
         raise ReglaNegocioError(f"Ya existe un empleado con el correo {cambios['correo']}.")
@@ -570,9 +572,8 @@ async def _serializar_justificaciones(db: AsyncSession, tenant_id: uuid.UUID, it
     motivos = dict((await db.execute(
         select(MotivoJustificacion.id, MotivoJustificacion.nombre).where(MotivoJustificacion.tenant_id == tenant_id)
     )).all())
-    tipos = dict((await db.execute(
-        select(TipoTrabajador.id, TipoTrabajador.nombre).where(TipoTrabajador.tenant_id == tenant_id)
-    )).all())
+    from app.sigarh.rrhh.models import VinculoLaboral
+    regimenes = dict((await db.execute(select(VinculoLaboral.codigo, VinculoLaboral.regimen_nombre))).all())
     out = []
     for j in items:
         emp = emps.get(j.empleado_id)
@@ -581,7 +582,7 @@ async def _serializar_justificaciones(db: AsyncSession, tenant_id: uuid.UUID, it
             **_cols(j),
             "empleado_nombre": emp.nombre_completo if emp else None,
             "empleado_dni": emp.dni if emp else None,
-            "empleado_regimen": tipos.get(emp.tipo_trabajador_id) if emp else None,
+            "empleado_regimen": regimenes.get(emp.vinculo_laboral_codigo) if emp else None,
             "empleado_cargo": emp.cargo_laboral if emp else None,
             "motivo_nombre": motivos.get(j.motivo_id),
             "dias": max(dias, 0),
@@ -724,3 +725,13 @@ async def _validar_profesion_empleado(db, tenant_id, values, empleado=None):
         raise ReglaNegocioError("Para registrar habilitacion verificada se requiere colegio y numero de colegiatura.")
     if empleado and empleado.especialidades and profession.codigo != "MED":
         raise ReglaNegocioError("Retira las especialidades medicas antes de cambiar la profesion.")
+
+
+async def validar_vinculo_laboral(db, values):
+    from app.sigarh.rrhh.models import VinculoLaboral
+    codigo = values.get("vinculo_laboral_codigo")
+    if codigo is None:
+        return
+    vinculo = await db.get(VinculoLaboral, codigo)
+    if not vinculo or not vinculo.is_active:
+        raise ReglaNegocioError("Seleccione un regimen y condicion laboral vigentes del catalogo.")

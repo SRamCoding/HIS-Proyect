@@ -60,6 +60,15 @@ def _rn(e: svc.ReglaNegocioError):
 
 # ─── Empleados ────────────────────────────────────────────────────────────────
 
+@router.get("/vinculos-laborales")
+async def vinculos_laborales(db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS)):
+    from sqlalchemy import select
+    from app.sigarh.rrhh.models import VinculoLaboral
+    items = (await db.scalars(select(VinculoLaboral).where(VinculoLaboral.is_active.is_(True)).order_by(VinculoLaboral.regimen_codigo, VinculoLaboral.condicion_nombre))).all()
+    return [{"codigo": i.codigo, "regimen_codigo": i.regimen_codigo, "regimen_nombre": i.regimen_nombre,
+             "condicion_nombre": i.condicion_nombre, "norma": i.norma, "fuente_url": i.fuente_url} for i in items]
+
+
 @router.get("/empleados", response_model=list[EmpleadoListItem])
 async def listar(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     return await svc.listar_empleados(db, _tid(current_user, request))

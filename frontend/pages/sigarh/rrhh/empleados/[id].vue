@@ -8,6 +8,7 @@ const id = computed(() => route.params.id as string)
 
 const loading = ref(true)
 const saving = ref(false)
+const vinculoValido = ref(true)
 const esMedico = ref(false)
 const error = ref('')
 
@@ -46,6 +47,7 @@ const errors = reactive<Record<string, string>>({
 })
 
 const form = reactive({
+  vinculo_laboral_codigo: '',
   dni: '', nombres: '', apellido_paterno: '', apellido_materno: '', fecha_nacimiento: '',
   sexo: '', estado_civil: '', grupo_sanguineo: '', celular: '', telefono_fijo: '', correo: '',
   is_active: true, profesion_id: '', numero_colegiatura: '', habilitado_colegio: false,
@@ -149,6 +151,7 @@ const eliminarEmpleado = async () => {
 }
 
 const handleSave = async () => {
+  if (!vinculoValido.value) { error.value = 'Selecciona la condici?n del r?gimen laboral elegido.'; return }
   if (!validate()) { error.value = 'Revisa los campos marcados en rojo.'; return }
   saving.value = true; error.value = ''
   try {
@@ -160,6 +163,7 @@ const handleSave = async () => {
         grupo_sanguineo: form.grupo_sanguineo || null, celular: form.celular || null, telefono_fijo: form.telefono_fijo || null,
         correo: form.correo || null, is_active: form.is_active,
         profesion_id: form.profesion_id || null, numero_colegiatura: form.numero_colegiatura || null, habilitado_colegio: form.habilitado_colegio,
+      vinculo_laboral_codigo: form.vinculo_laboral_codigo || null,
         tipo_trabajador_id: form.tipo_trabajador_id || null, nivel_remunerativo_id: form.nivel_remunerativo_id || null,
         grupo_ocupacional_id: form.grupo_ocupacional_id || null, departamento_id: form.departamento_id || null,
         servicio_id: form.servicio_id || null, cargo_laboral: form.cargo_laboral || null, es_jefe_servicio: form.es_jefe_servicio, modalidad: form.modalidad || null,
@@ -198,6 +202,7 @@ onMounted(async () => {
       api<any[]>('/sigarh/rrhh/especialidades?active_only=true'),
     ])
     Object.assign(form, {
+      vinculo_laboral_codigo: data.vinculo_laboral_codigo || '',
       profesion_id: data.profesion_id || '', numero_colegiatura: data.numero_colegiatura || data.numero_cmp || '', habilitado_colegio: !!data.habilitado_colegio,
       dni: data.dni || '', nombres: data.nombres || '', apellido_paterno: data.apellido_paterno || '', apellido_materno: data.apellido_materno || '',
       fecha_nacimiento: data.fecha_nacimiento || '', sexo: data.sexo || '', estado_civil: data.estado_civil || '', grupo_sanguineo: data.grupo_sanguineo || '',
@@ -333,6 +338,7 @@ onMounted(async () => {
               <select v-model="form.nivel_remunerativo_id" class="input-clinical"><option value="">Seleccione</option><option v-for="n in nivelesRemunerativos" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
             </div>
           </div>
+        <SVinculoLaboral v-model="form.vinculo_laboral_codigo" @valido="vinculoValido = $event" />
           <SClasificacionProfesional v-model:profesion-id="form.profesion_id" v-model:numero-colegiatura="form.numero_colegiatura" v-model:habilitado="form.habilitado_colegio" @grupo="form.grupo_ocupacional_id = $event" @medico="esMedico = $event" />
         <div class="form-group">
             <label class="form-label">Grupo Ocupacional</label>

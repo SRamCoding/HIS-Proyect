@@ -70,6 +70,7 @@ class _EmpleadoCampos(BaseModel):
     correo: str | None = None
 
     # Datos Laborales
+    vinculo_laboral_codigo: str | None = None
     tipo_trabajador_id: uuid.UUID | None = None
     nivel_remunerativo_id: uuid.UUID | None = None
     grupo_ocupacional_id: uuid.UUID | None = None
@@ -295,6 +296,7 @@ class EmpleadoResponse(BaseModel):
     celular: str | None
     telefono_fijo: str | None
     correo: str | None
+    vinculo_laboral_codigo: str | None = None
     tipo_trabajador_id: uuid.UUID | None
     nivel_remunerativo_id: uuid.UUID | None
     grupo_ocupacional_id: uuid.UUID | None

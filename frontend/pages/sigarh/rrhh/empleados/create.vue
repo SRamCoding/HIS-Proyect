@@ -8,6 +8,7 @@ const tenantId = computed(() => route.query.tenant as string || '')
 const pasos = ['Datos Personales', 'Datos Laborales', 'Especialidades', 'Datos Bancarios', 'Ubicación']
 const stepActual = ref(0)
 const saving = ref(false)
+const vinculoValido = ref(true)
 const esMedico = ref(false)
 const error = ref('')
 const registroManual = ref(false)
@@ -45,6 +46,7 @@ const errors = reactive<Record<string, string>>({
 })
 
 const form = reactive({
+  vinculo_laboral_codigo: '',
   dni: '', nombres: '', apellido_paterno: '', apellido_materno: '', fecha_nacimiento: '',
   sexo: '', estado_civil: '', grupo_sanguineo: '', celular: '', telefono_fijo: '', correo: '',
   is_active: true, profesion_id: '', numero_colegiatura: '', habilitado_colegio: false,
@@ -225,6 +227,7 @@ const nextStep = async () => {
 }
 
 const handleCreate = async () => {
+  if (!vinculoValido.value) { error.value = 'Selecciona la condici?n del r?gimen laboral elegido.'; return }
   clearTimeout(dniTimer)
   await checkDni()
   for (const s of [0, 1]) {
@@ -237,6 +240,7 @@ const handleCreate = async () => {
       ...campos,
       profesion_id: form.profesion_id || null,
       numero_colegiatura: form.numero_colegiatura || null,
+      vinculo_laboral_codigo: form.vinculo_laboral_codigo || null,
       tipo_trabajador_id: form.tipo_trabajador_id || null,
       nivel_remunerativo_id: form.nivel_remunerativo_id || null,
       grupo_ocupacional_id: form.grupo_ocupacional_id || null,
@@ -427,6 +431,7 @@ onMounted(async () => {
           </div>
           <span v-if="errors.nivel_remunerativo_id" class="error-message">{{ errors.nivel_remunerativo_id }}</span>
         </div>
+        <SVinculoLaboral v-model="form.vinculo_laboral_codigo" @valido="vinculoValido = $event" />
         <SClasificacionProfesional v-model:profesion-id="form.profesion_id" v-model:numero-colegiatura="form.numero_colegiatura" v-model:habilitado="form.habilitado_colegio" @grupo="form.grupo_ocupacional_id = $event" @medico="esMedico = $event" />
         <div class="form-group">
           <label class="form-label">Grupo Ocupacional <span class="required">*</span></label>
