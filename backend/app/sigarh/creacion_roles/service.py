@@ -334,9 +334,11 @@ async def diagnosticar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol) -> 
                     add("error", f"{nombre_emp}: horario inactivo o inexistente.", nombre_emp, nombre_act)
                 sin_horario = not t.horario_guardia_id
                 sin_dias = not (t.dias_semana or [])
-                if asistencial and sin_horario:
+                if hor_actual and not _rango_min(hor_actual.hora_inicio, hor_actual.hora_fin):
+                    add("error", f"{nombre_emp}: horario con horas inválidas.", nombre_emp, nombre_act)
+                if (asistencial or es_medicos) and sin_horario:
                     add("error", f"{nombre_emp} · {nombre_act}: un turno no tiene horario; no generará cupos.", nombre_emp, nombre_act)
-                if asistencial and sin_dias:
+                if (asistencial or es_medicos) and sin_dias:
                     add("error", f"{nombre_emp} · {nombre_act}: un turno no tiene días de la semana.", nombre_emp, nombre_act)
                 if not asistencial and sin_horario:
                     add("advertencia", f"{nombre_emp} · {nombre_act}: un turno no tiene horario asignado.", nombre_emp, nombre_act)
@@ -359,12 +361,59 @@ async def diagnosticar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol) -> 
         if es_medicos and tiene_asistencial:
             validados = esp_por_empleado.get(re_.empleado_id)
             if not validados:
-                add("error", f"{nombre_emp}: el médico no tiene especialidad registrada; sus cupos no se sincronizarán con App Hospitalario.", nombre_emp)
+                add("error", f"{nombre_emp}: registre una especialidad activa compatible con el servicio del rol para generar cupos.", nombre_emp)
             elif not any(validados):
-                add("advertencia", f"{nombre_emp}: la especialidad del médico no está validada.", nombre_emp)
+                add("error", f"{nombre_emp}: la especialidad del médico no está validada.", nombre_emp)
 
+    if es_medicos:
+        hallazgos.extend(await _validar_jornada_medica(db, tenant_id, rol, cat))
     hallazgos.extend(await _solapes_entre_roles(db, tenant_id, rol, cat))
     return hallazgos
+
+
+async def bloquear_personal_rol(db, rol):
+    ids = sorted({re.empleado_id for re in rol.empleados}, key=str)
+    if ids:
+        await db.execute(select(Empleado.id).where(Empleado.id.in_(ids)).order_by(Empleado.id).with_for_update())
+
+
+async def _validar_jornada_medica(db, tenant_id, rol, cat):
+    from app.sigarh.creacion_roles.jornada import intervalos, revisar_intervalos
+    ids = [re.empleado_id for re in rol.empleados]
+    otros = (await db.execute(_rol_stmt().where(
+        Rol.tenant_id == tenant_id, Rol.id != rol.id,
+        Rol.status.in_(("pending", "approved")),
+        Rol.empleados.any(RolEmpleado.empleado_id.in_(ids))
+    ))).scalars().unique().all()
+    from app.sigarh.rrhh.models import DiasFeriado
+    feriados = set((await db.scalars(select(DiasFeriado.fecha).where(DiasFeriado.tenant_id == tenant_id, DiasFeriado.is_active == True, DiasFeriado.tipo == "nacional"))).all())
+    errores = []
+    for eid in ids:
+        emp = cat["emps"].get(eid)
+        if not emp:
+            continue
+        nombre = emp.nombre_completo
+        mensajes = []
+        if emp.es_jefe_servicio:
+            mensajes.append("La programación de jefaturas requiere autorización y distribución de jornada específicas aún no registradas.")
+        if not all((emp.profesion_id, emp.tipo_trabajador_id, emp.nivel_remunerativo_id, emp.grupo_ocupacional_id, emp.servicio_id)):
+            mensajes.append("Complete profesión, tipo de trabajador, nivel, grupo ocupacional y servicio del médico.")
+        if not emp.numero_colegiatura and not emp.numero_cmp or not emp.habilitado_colegio:
+            mensajes.append("Registre la colegiatura y su habilitación verificada en la ficha del médico.")
+        if not emp.fecha_ingreso or not emp.vinculo_laboral_codigo:
+            mensajes.append("Registre fecha de ingreso y vínculo laboral del médico.")
+        if not emp.jornada_mensual_horas or not (emp.jornada_sustento or "").strip():
+            mensajes.append("Registre la jornada mensual y el documento que la sustenta en la ficha del médico.")
+        franjas = []
+        for fuente in [rol, *otros]:
+            franjas.extend(intervalos(fuente, eid, cat["hors"], cat["acts"]))
+        primer_dia = datetime(rol.anio, rol.mes, 1) - timedelta(days=1)
+        fin_periodo = datetime(rol.anio, rol.mes, monthrange(rol.anio, rol.mes)[1]) + timedelta(days=2)
+        franjas = [f for f in franjas if f[1] > primer_dia and f[0] < fin_periodo]
+        mensajes.extend(revisar_intervalos(franjas, rol.mes, rol.anio, emp.jornada_mensual_horas or 150, feriados))
+        for mensaje in mensajes:
+            errores.append({"nivel": "error", "empleado": nombre, "actividad": None, "mensaje": f"{nombre}: {mensaje}"})
+    return errores
 
 
 async def _solapes_entre_roles(db: AsyncSession, tenant_id: uuid.UUID, rol: Rol, cat: dict) -> list[dict]:
@@ -547,6 +596,7 @@ async def enviar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID) 
         return None
     if rol.status not in EDITABLE:
         raise ReglaNegocioError("El rol ya fue enviado.")
+    await bloquear_personal_rol(db, rol)
     errores = errores_bloqueantes(await diagnosticar_rol(db, tenant_id, rol))
     if errores:
         raise ReglaNegocioError("No se puede enviar el rol: " + " · ".join(errores[:8]))

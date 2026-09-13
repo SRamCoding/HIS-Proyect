@@ -176,7 +176,7 @@ async def sincronizar_programacion_sigarh(
                 EmpleadoEspecialidad.empleado_id, EmpleadoEspecialidad.especialidad_id
             )
             .join(Especialidad, Especialidad.id == EmpleadoEspecialidad.especialidad_id)
-            .where(EmpleadoEspecialidad.empleado_id.in_(empleado_ids),
+            .where(EmpleadoEspecialidad.empleado_id.in_(empleado_ids), EmpleadoEspecialidad.validado == True,
                    Especialidad.tenant_id == tenant_id, Especialidad.is_active == True)
             .order_by(
                 EmpleadoEspecialidad.validado.desc(), EmpleadoEspecialidad.created_at
@@ -247,7 +247,16 @@ async def sincronizar_programacion_sigarh(
     creadas = actualizadas = omitidas = ausencias = 0
     claves_vigentes: set[tuple[uuid.UUID, date_type]] = set()
 
+    roles_revisados = {}
+    from app.sigarh.creacion_roles.service import obtener_rol_orm, diagnosticar_rol, errores_bloqueantes
+    for fuente, *_ in filas:
+        if fuente.id not in roles_revisados:
+            completo = await obtener_rol_orm(db, fuente.id, tenant_id)
+            roles_revisados[fuente.id] = errores_bloqueantes(await diagnosticar_rol(db, tenant_id, completo))
     for rol, turno, actividad, horario, empleado in filas:
+        if roles_revisados[rol.id]:
+            omitidas += 1
+            continue
         dias = {
             int(d)
             for d in (turno.dias_semana or [])
@@ -630,6 +639,23 @@ def _generar_slots(
     return slots
 
 
+async def _validar_rol_programacion(db, tenant_id, prog):
+    if not prog.origen_sigarh_turno_id:
+        return
+    from app.sigarh.creacion_roles.service import obtener_rol_orm, diagnosticar_rol, errores_bloqueantes
+    rol_id = await db.scalar(select(Rol.id)
+        .join(RolEmpleado, RolEmpleado.rol_id == Rol.id)
+        .join(RolActividad, RolActividad.rol_empleado_id == RolEmpleado.id)
+        .join(RolTurno, RolTurno.rol_actividad_id == RolActividad.id)
+        .where(Rol.tenant_id == tenant_id, RolTurno.id == prog.origen_sigarh_turno_id))
+    rol = await obtener_rol_orm(db, rol_id, tenant_id) if rol_id else None
+    if not rol or rol.status != "approved":
+        raise ValueError("La programación requiere un rol aprobado vigente.")
+    errores = errores_bloqueantes(await diagnosticar_rol(db, tenant_id, rol))
+    if errores:
+        raise ValueError("La programación no cumple validaciones: " + " · ".join(errores[:4]))
+
+
 async def get_cupos(
     db: AsyncSession, tenant_id: uuid.UUID, programacion_id: uuid.UUID
 ) -> list[dict] | None:
@@ -643,6 +669,9 @@ async def get_cupos(
     if not prog:
         return None
 
+    if prog.estado != "activo":
+        return []
+    await _validar_rol_programacion(db, tenant_id, prog)
     slots = _generar_slots(
         prog.hora_inicio, prog.hora_fin, prog.tiempo_promedio_atencion
     )
@@ -695,6 +724,7 @@ async def create_cita(db: AsyncSession, tenant_id: uuid.UUID, data: CitaCreate) 
     if not programacion:
         raise ValueError("La programación no existe o no está activa")
 
+    await _validar_rol_programacion(db, tenant_id, programacion)
     paciente_result = await db.execute(
         select(Patient.id).where(
             Patient.id == data.patient_id, Patient.tenant_id == tenant_id

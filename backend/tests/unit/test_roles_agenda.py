@@ -36,7 +36,7 @@ def test_aprobacion_revierte_si_falla_agenda():
     from app.sigarh.roles_pendientes import service
     creador, revisor = uuid.uuid4(), uuid.uuid4()
     rol = SimpleNamespace(servicio_id=uuid.uuid4(), status="pending", created_by_id=creador,
-                          mes=9, anio=2026)
+                          mes=9, anio=2026, empleados=[])
     db = SimpleNamespace(flush=AsyncMock(), commit=AsyncMock(), rollback=AsyncMock())
     sync = AsyncMock(side_effect=RuntimeError("fallo agenda"))
     async def ejecutar():

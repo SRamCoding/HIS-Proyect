@@ -87,6 +87,19 @@ async def asegurar_guardias(db, tid, hospital_level):
             db.add(HorarioGuardia(id=ident, tenant_id=tid, nombre=nombre, hora_inicio=inicio, hora_fin=fin,
                 tipo_guardia_id=tipos["MINSA-GDO" if code == "MINSA-HD" else "MINSA-GNO"],
                 horas_totales=12, duracion_minutos=720, is_active=hospitalario))
+    for code, nombre, inicio, fin, minutos in (
+        ("ORD-M6", "Turno ordinario mañana 08:00-14:00", "08:00", "14:00", 360),
+        ("ORD-T6", "Turno ordinario tarde 14:00-20:00", "14:00", "20:00", 360),
+        ("CE-M4", "Consulta externa mañana 08:00-12:00", "08:00", "12:00", 240),
+        ("GC-M2", "Gestión clínica mañana 12:00-14:00", "12:00", "14:00", 120),
+        ("CE-T4", "Consulta externa tarde 14:00-18:00", "14:00", "18:00", 240),
+        ("GC-T2", "Gestión clínica tarde 18:00-20:00", "18:00", "20:00", 120),
+    ):
+        ident = stable_id(tid, code)
+        if not await db.get(HorarioGuardia, ident):
+            db.add(HorarioGuardia(id=ident, tenant_id=tid, nombre=nombre,
+                hora_inicio=inicio, hora_fin=fin, tipo_guardia_id=None,
+                horas_totales=minutos // 60, duracion_minutos=minutos, is_active=True))
     niveles = (await db.scalars(select(NivelRemunerativo).where(NivelRemunerativo.tenant_id == tid))).all()
     for nivel in niveles:
         valores = importes_nivel(nivel.codigo)

@@ -79,6 +79,8 @@ class _EmpleadoCampos(BaseModel):
 
     # Datos Laborales
     vinculo_laboral_codigo: str | None = None
+    jornada_mensual_horas: int | None = Field(None, ge=1, le=150)
+    jornada_sustento: str | None = Field(None, max_length=255)
     numero_legajo: str | None = Field(None, max_length=50)
     titulo_profesional: str | None = Field(None, max_length=255)
     institucion_formacion: str | None = Field(None, max_length=255)
@@ -335,6 +337,8 @@ class EmpleadoResponse(BaseModel):
     telefono_fijo: str | None
     correo: str | None
     vinculo_laboral_codigo: str | None = None
+    jornada_mensual_horas: int | None = Field(None, ge=1, le=150)
+    jornada_sustento: str | None = Field(None, max_length=255)
     numero_legajo: str | None = Field(None, max_length=50)
     titulo_profesional: str | None = Field(None, max_length=255)
     institucion_formacion: str | None = Field(None, max_length=255)

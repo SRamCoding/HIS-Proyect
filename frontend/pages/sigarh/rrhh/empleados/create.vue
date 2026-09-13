@@ -50,6 +50,7 @@ const errors = reactive<Record<string, string>>({
 
 const form = reactive({
   numero_legajo: '',
+  jornada_mensual_horas: '' as number | string, jornada_sustento: '',
   titulo_profesional: '',
   institucion_formacion: '',
   documento_vinculo_laboral: '',
@@ -282,6 +283,8 @@ const handleCreate = async () => {
       profesion_id: form.profesion_id || null,
       numero_colegiatura: form.numero_colegiatura || null,
       numero_legajo: form.numero_legajo || null,
+      jornada_mensual_horas: form.jornada_mensual_horas ? Number(form.jornada_mensual_horas) : null,
+      jornada_sustento: form.jornada_sustento || null,
       titulo_profesional: form.titulo_profesional || null,
       institucion_formacion: form.institucion_formacion || null,
       documento_vinculo_laboral: form.documento_vinculo_laboral || null,
@@ -468,6 +471,7 @@ onMounted(async () => {
           </div>
           <span v-if="errors.nivel_remunerativo_id" class="error-message">{{ errors.nivel_remunerativo_id }}</span>
         </div>
+        <SJornadaMedica v-model="form" />
         <SEmpleadoLegajo v-model="form" />
         <SVinculoLaboral v-model="form.vinculo_laboral_codigo" @valido="vinculoValido = $event" />
         <div class="form-group">

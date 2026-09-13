@@ -33,6 +33,8 @@ class Empleado(Base):
 
     # ─── Datos Laborales ──────────────────────────────────────────────────────
     vinculo_laboral_codigo: Mapped[str | None] = mapped_column(String(30), ForeignKey("catalogo_vinculos_laborales.codigo", ondelete="RESTRICT"), nullable=True)
+    jornada_mensual_horas: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    jornada_sustento: Mapped[str | None] = mapped_column(String(255), nullable=True)
     numero_legajo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     titulo_profesional: Mapped[str | None] = mapped_column(String(255), nullable=True)
     institucion_formacion: Mapped[str | None] = mapped_column(String(255), nullable=True)
