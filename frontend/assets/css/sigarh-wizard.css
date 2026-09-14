@@ -193,9 +193,8 @@
   border-radius: 50%;
   display: inline-block;
 }
-.loading-spinner {
-  animation: spin 1s linear infinite;
-}
+/* .loading-spinner: sin animacion propia -- el UIcon de adentro ya gira
+   solo con la clase Tailwind animate-spin; el wrapper es puro layout. */
 .edit-grid {
   display: grid;
   grid-template-columns: 1fr 320px;
@@ -436,4 +435,9 @@
   border-radius: 8px;
   background: var(--mist);
   animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }

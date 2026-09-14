@@ -553,11 +553,6 @@ onMounted(async () => {
   padding: 1.5rem 2rem;
 }
 
-/* Progress Steps */
-.onboarding-progress {
-  margin-bottom: 2.5rem;
-}
-
 /* Grid Layout */
 .onboarding-grid {
   display: grid;
@@ -583,17 +578,6 @@ onMounted(async () => {
   padding: 1.5rem;
   margin-bottom: 1.5rem;
   animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 /* Form */
@@ -633,11 +617,6 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0.625rem;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
 }
 
 /* Navigation Actions */
