@@ -452,7 +452,7 @@ const error = ref('')
 const filtros = reactive({
   servicio_id: '',
   especialidad_id: '',
-  fecha: new Date().toISOString().slice(0, 10),
+  fecha: new Date().toLocaleDateString('en-CA'),
 })
 
 const totalCupos = computed(() => cupos.value.length)
@@ -517,7 +517,7 @@ const getPatientColor = (name: string) => {
 
 const formatFecha = (fecha: string) => {
   if (!fecha) return '—'
-  const d = new Date(fecha)
+  const d = new Date(`${fecha.slice(0, 10)}T00:00:00`)
   return d.toLocaleDateString('es-PE', {
     day: '2-digit',
     month: '2-digit',
@@ -528,7 +528,7 @@ const formatFecha = (fecha: string) => {
 const limpiarFiltros = () => {
   filtros.servicio_id = ''
   filtros.especialidad_id = ''
-  filtros.fecha = new Date().toISOString().slice(0, 10)
+  filtros.fecha = new Date().toLocaleDateString('en-CA')
   cargarProgramaciones()
 }
 
@@ -537,6 +537,9 @@ const cargarProgramaciones = async () => {
   error.value = ''
   progSeleccionada.value = null
   cupos.value = []
+  cupoSeleccionado.value = null
+  ++peticionCupos
+  cargandoCupos.value = false
   try {
     const params = new URLSearchParams()
     if (filtros.servicio_id) params.set('servicio_id', filtros.servicio_id)
@@ -550,15 +553,20 @@ const cargarProgramaciones = async () => {
   }
 }
 
+let peticionCupos = 0
 const seleccionarProgramacion = async (p: any) => {
+  const peticion = ++peticionCupos
+  cupos.value = []
+  cupoSeleccionado.value = null
   progSeleccionada.value = p
   cargandoCupos.value = true
   try {
-    cupos.value = await api(`/app/consulta-externa/citas/cupos/${p.id}`)
+    const resultado = await api<any[]>(`/app/consulta-externa/citas/cupos/${p.id}`)
+    if (peticion === peticionCupos) cupos.value = resultado
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al cargar cupos'
+    if (peticion === peticionCupos) error.value = e?.data?.detail || 'Error al cargar cupos'
   } finally {
-    cargandoCupos.value = false
+    if (peticion === peticionCupos) cargandoCupos.value = false
   }
 }
 

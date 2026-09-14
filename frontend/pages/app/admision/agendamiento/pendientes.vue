@@ -67,6 +67,10 @@
     </div>
 
     <!-- Filter Section -->
+    <div v-if="exito" class="filter-card" role="status" style="padding: 16px; margin-bottom: 16px">
+      <p>{{ exito }}</p>
+      <NuxtLink :to="link('/app/consulta-externa/triaje')" class="btn-secondary">Ir a Registro de Triaje</NuxtLink>
+    </div>
     <div class="filter-section">
       <div class="filter-card">
         <div class="filter-header">
@@ -76,7 +80,7 @@
         <div class="filter-body">
           <div class="filter-group">
             <div class="filter-item">
-              <label class="filter-label">Fecha</label>
+              <label class="filter-label">Fecha (vacía: todas)</label>
               <div class="input-wrapper-small">
                 <UIcon name="i-heroicons-calendar" class="input-icon-small" />
                 <input 
@@ -185,7 +189,7 @@
                   <button 
                     class="action-btn action-confirm" 
                     title="Confirmar cita"
-                    :disabled="confirmandoId === c.id"
+                    :disabled="!!confirmandoId"
                     @click="confirmar(c.id)"
                   >
                     <UIcon v-if="confirmandoId === c.id" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
@@ -212,7 +216,7 @@
         <UIcon name="i-heroicons-clock" class="w-12 h-12" style="color: var(--ink-soft)" />
       </div>
       <h3 style="color: var(--ink)">No hay citas pendientes</h3>
-      <p style="color: var(--ink-soft)">Todas las citas han sido confirmadas para esta fecha</p>
+      <p style="color: var(--ink-soft)">No hay citas separadas {{ filtros.fecha ? 'para la fecha seleccionada' : 'con estos filtros' }}.</p>
       <button class="btn-secondary" @click="limpiarFiltros">
         <UIcon name="i-heroicons-arrow-path" class="w-4 h-4" />
         Refrescar
@@ -233,6 +237,7 @@ const citas = ref<any[]>([])
 const cargando = ref(false)
 const error = ref('')
 const confirmandoId = ref('')
+const exito = ref('')
 
 async function imprimir(citaId: string) {
   error.value = ''
@@ -245,26 +250,28 @@ async function imprimir(citaId: string) {
 
 // Filtros
 const filtros = reactive({
-  fecha: new Date().toISOString().slice(0, 10),
+  fecha: '',
 })
+
+function fechaLocal(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 
 // Computed
 const citasHoy = computed(() => {
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = fechaLocal(new Date())
   return citas.value.filter(c => c.fecha === hoy).length
 })
 
 const citasManana = computed(() => {
   const manana = new Date()
   manana.setDate(manana.getDate() + 1)
-  const mananaStr = manana.toISOString().slice(0, 10)
+  const mananaStr = fechaLocal(manana)
   return citas.value.filter(c => c.fecha === mananaStr).length
 })
 
 const citasProximas = computed(() => {
   const manana = new Date()
   manana.setDate(manana.getDate() + 1)
-  const mananaStr = manana.toISOString().slice(0, 10)
+  const mananaStr = fechaLocal(manana)
   return citas.value.filter(c => c.fecha > mananaStr).length
 })
 
@@ -312,7 +319,7 @@ const getTipoColor = (tipo: string) => {
 
 const formatFecha = (fecha: string) => {
   if (!fecha) return '—'
-  const d = new Date(fecha)
+  const d = new Date(`${fecha.slice(0, 10)}T00:00:00`)
   return d.toLocaleDateString('es-PE', {
     day: '2-digit',
     month: '2-digit',
@@ -322,7 +329,7 @@ const formatFecha = (fecha: string) => {
 
 // Funciones
 function limpiarFiltros() {
-  filtros.fecha = new Date().toISOString().slice(0, 10)
+  filtros.fecha = ''
   cargar()
 }
 
@@ -341,11 +348,13 @@ async function cargar() {
 }
 
 async function confirmar(citaId: string) {
+  if (confirmandoId.value) return
   confirmandoId.value = citaId
   error.value = ''
   try {
     await api(`/app/consulta-externa/citas/${citaId}/confirmar`, { method: 'POST' })
     citas.value = citas.value.filter((c) => c.id !== citaId)
+    exito.value = 'Cita confirmada. Continúa en Registro de Triaje seleccionando la fecha de la cita.'
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al confirmar la cita'
   } finally {

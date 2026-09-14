@@ -966,11 +966,23 @@ async def update_cita(
     db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: CitaUpdate
 ) -> dict | None:
     result = await db.execute(
-        select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id)
+        select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id).with_for_update().execution_options(populate_existing=True)
     )
     cita = result.scalar_one_or_none()
     if not cita:
         return None
+    cambios = data.model_dump(exclude_unset=True)
+    nuevo_estado = cambios.get("estado", cita.estado)
+    if nuevo_estado != cita.estado:
+        if cita.estado not in ("separada", "confirmada") or nuevo_estado not in ("cancelada", "no_asistio"):
+            raise ValueError("Confirme la cita con su acción específica. El estado atendida se registra desde la atención médica.")
+        if await db.scalar(select(Triaje.id).where(Triaje.tenant_id == tenant_id, Triaje.cita_id == cita_id)):
+            raise ValueError("La cita ya tiene triaje; continúe su atención clínica.")
+        if nuevo_estado == "no_asistio":
+            prog = await db.scalar(select(ProgramacionMedica).where(ProgramacionMedica.tenant_id == tenant_id, ProgramacionMedica.id == cita.programacion_medica_id))
+            from zoneinfo import ZoneInfo
+            if prog and prog.fecha > datetime.now(ZoneInfo("America/Lima")).date():
+                raise ValueError("No puede marcar como no asistió una cita de una fecha futura.")
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(cita, field, value)
     await db.commit()
@@ -1207,13 +1219,17 @@ async def confirmar_cita(
     db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID
 ) -> dict | None:
     result = await db.execute(
-        select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id)
+        select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id).with_for_update().execution_options(populate_existing=True)
     )
     cita = result.scalar_one_or_none()
     if not cita:
         return None
     if cita.estado != "separada":
         raise ValueError(f"No se puede confirmar una cita en estado '{cita.estado}'")
+    prog = await db.scalar(select(ProgramacionMedica).where(ProgramacionMedica.tenant_id == tenant_id, ProgramacionMedica.id == cita.programacion_medica_id))
+    if not prog or prog.estado != "activo":
+        raise ValueError("La programación ya no está activa; reprograme la cita.")
+    await _validar_rol_programacion(db, tenant_id, prog)
     cita.estado = "confirmada"
     await db.commit()
     return await get_cita_by_id(db, tenant_id, cita_id)
