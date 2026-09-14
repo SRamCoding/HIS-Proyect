@@ -8,7 +8,23 @@ from app.sigarh.mantenimiento.schemas import validar_password
 PANELES = ("admin", "app", "sigarh", "portal")
 
 
+class PerfilHospitalInput(BaseModel):
+    nombre: str
+    role: str
+    modulos: list[str]
+    is_active: bool = True
+
+    @field_validator("nombre", "role")
+    @classmethod
+    def texto_perfil(cls, value):
+        value = value.strip()
+        if not value or len(value) > 100:
+            raise ValueError("Ingrese un texto de 1 a 100 caracteres")
+        return value
+
+
 class UserListItem(BaseModel):
+    perfil_hospital_id: uuid.UUID | None = None
     id: uuid.UUID
     name: str
     email: str
@@ -23,6 +39,7 @@ class UserListItem(BaseModel):
 
 
 class UserCreate(BaseModel):
+    perfil_hospital_id: uuid.UUID | None = None
     name: str
     email: str
     password: str
@@ -63,6 +80,8 @@ class UserCreate(BaseModel):
 
     @model_validator(mode="after")
     def _v_admin_role(self):
+        if self.perfil_hospital_id and self.panel != "app":
+            raise ValueError("El perfil hospitalario solo corresponde al panel hospitalario")
         # Una cuenta del panel admin siempre debe tener el rol real de
         # administrador: es lo único que separa a un superadmin de una
         # cuenta cualquiera (ver get_admin_user en core/dependencies.py).
@@ -74,6 +93,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    perfil_hospital_id: uuid.UUID | None = None
     name: str | None = None
     email: str | None = None
     password: str | None = None

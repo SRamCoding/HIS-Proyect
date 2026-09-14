@@ -116,6 +116,11 @@ async def login(
         )
         active_modules = [m.module_code for m in mods_result.scalars().all()]
 
+        if user.panel == "app":
+            from app.auth.hospital_access import contexto_hospital, validar_rol_hospital, limitar_por_rol
+            rol = await validar_rol_hospital(db, user.role)
+            return _respuesta_sesion(limitar_por_rol(await contexto_hospital(tdb, user, tenant, set(active_modules)), rol))
+
         token_data = {
             "sub": str(user.id), "email": user.email, "name": user.name,
             "role": user.role, "panel": user.panel, "tenant_id": str(tenant.id),
@@ -143,7 +148,7 @@ async def refresh_token(
 
     from app.sigarh.mantenimiento.security import usuario_actual
     token_data = await usuario_actual(db, payload)
-    if token_data.get("auth_source") != "sigarh":
+    if token_data.get("auth_source") != "sigarh" and token_data.get("panel") != "app":
         from app.tenants.hospitales.models import TenantModule
         active_modules = []
         if token_data.get("tenant_id"):

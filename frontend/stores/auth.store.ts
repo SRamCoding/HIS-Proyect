@@ -4,6 +4,8 @@ interface User {
   email: string
   name: string
   role: string
+  empleado_id?: string | null
+  perfil_hospital_id?: string | null
   panel: 'admin' | 'app' | 'sigarh' | 'portal'
   tenant_id: string | null
   active_modules: string[]  // ← línea 8: módulos activos del tenant

@@ -504,7 +504,7 @@
               </li>
               <li class="info-item">
                 <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
-                <span>Los antecedentes se guardan en el perfil del paciente</span>
+                <span>Los antecedentes quedan documentados en esta atención</span>
               </li>
               <li class="info-item">
                 <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
@@ -866,7 +866,7 @@ onMounted(async () => {
           especialidad_nombre: cita.especialidad_nombre,
           triaje: await api(`/app/consulta-externa/triaje/${citaId}`).catch(() => null)
         }
-        const paciente = await api(`/app/admision/${cita.patient_id}`)
+        const paciente = await api(`/app/consulta-externa/paciente-consulta/${citaId}`)
         atencion.value.paciente_edad = paciente.age
         antecedentes.antecedente_quirurgico = paciente.antecedente_quirurgico || ''
         antecedentes.antecedente_patologico = paciente.antecedente_patologico || ''

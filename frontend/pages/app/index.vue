@@ -1,13 +1,14 @@
 <!-- frontend/pages/app/index.vue -->
 <template>
-  <div class="p-6">
+  <SMedicoPanel v-if="authStore.user?.role === 'medico'" />
+  <div v-else class="p-6">
     <h1 class="text-lg font-semibold mb-1" style="color: var(--ink)">Escritorio</h1>
     <p class="text-sm mb-6" style="color: var(--ink-soft)">Panel Hospitalario</p>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <component
         :is="tieneAlguno([grupo.modulo]) ? 'NuxtLink' : 'div'"
-        v-for="grupo in grupos"
+        v-for="grupo in gruposVisibles"
         :key="grupo.label"
         :to="tieneAlguno([grupo.modulo]) ? link(grupo.items[0]?.path || '/app') : undefined"
         class="p-4 flex items-center gap-3"
@@ -31,8 +32,8 @@
 definePageMeta({ layout: 'app', middleware: ['auth'] })
 
 const authStore = useAuthStore()
-const { link, grupos } = useHospitalNav()
+const { link, gruposVisibles } = useHospitalNav()
 
 const tieneAlguno = (codes: string[]) =>
-  codes.some(c => authStore.user?.active_modules?.includes(c) ?? false)
+  codes.some(c => authStore.user?.active_modules?.some(p => p === c || p.startsWith(c + '.')) ?? false)
 </script>

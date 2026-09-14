@@ -104,7 +104,9 @@ async def usuario_actual(db, payload):
     tenant_id_str = payload.get("tenant_id")
 
     # Panel admin: siempre en la BD central, sin hospital asociado.
-    if panel == "admin" or not tenant_id_str:
+    if panel != "admin" and not tenant_id_str:
+        raise HTTPException(401, "Sin hospital asignado a la sesión")
+    if panel == "admin":
         usuario = await db.scalar(select(User).where(User.id == uid, User.is_active.is_(True)))
         if not usuario or usuario.panel != panel:
             raise HTTPException(401, "Usuario no encontrado o inactivo")
@@ -135,6 +137,16 @@ async def usuario_actual(db, payload):
         usuario = await tdb.scalar(select(User).where(User.id == uid, User.is_active.is_(True)))
         if not usuario or usuario.panel != panel:
             raise HTTPException(401, "Usuario no encontrado o inactivo")
+        if panel == "app":
+            from app.auth.hospital_access import contexto_hospital, validar_rol_hospital, limitar_por_rol
+            from app.tenants.hospitales.models import TenantModule
+            from app.tenants.modulos.models import Module
+            habilitados = set((await db.scalars(select(TenantModule.module_code).join(
+                Module, Module.code == TenantModule.module_code).where(
+                TenantModule.tenant_id == hospital.id, TenantModule.is_active.is_(True),
+                Module.is_active.is_(True)))).all())
+            rol = await validar_rol_hospital(db, usuario.role)
+            return limitar_por_rol(await contexto_hospital(tdb, usuario, hospital, habilitados), rol)
         result = dict(payload)
         result.update(name=usuario.name, email=usuario.email, role=usuario.role, tenant_id=str(hospital.id))
         return result

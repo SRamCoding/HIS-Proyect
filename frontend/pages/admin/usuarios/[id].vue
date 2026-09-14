@@ -145,6 +145,7 @@
           </div>
 
           <SUsuarioEmpleado v-if="!isAdminView && form.panel === 'app'" v-model="form.empleado_id" :tenant-id="form.tenant_id" />
+          <SPerfilHospital v-if="!isAdminView && form.panel === 'app'" v-model="form.perfil_hospital_id" :tenant-id="form.tenant_id" :role="form.role" />
 
         <template #actions>
             <SFormActions
@@ -253,6 +254,7 @@ const form = reactive({
   panel: 'app',
   tenant_id: '',
   empleado_id: '',
+  perfil_hospital_id: '',
   is_active: true,
 })
 
@@ -310,6 +312,7 @@ const handleSave = async () => {
       role: form.role,
       panel: isAdminView.value ? 'admin' : form.panel,
       tenant_id: form.tenant_id || null,
+      perfil_hospital_id: form.panel === 'app' ? form.perfil_hospital_id || null : null,
       empleado_id: form.panel === 'app' ? form.empleado_id || null : null,
       is_active: form.is_active,
     }
@@ -354,6 +357,7 @@ onMounted(async () => {
     form.panel = user.panel
     form.tenant_id = user.tenant_id || ''
     form.empleado_id = user.empleado_id || ''
+    form.perfil_hospital_id = user.perfil_hospital_id || ''
     form.is_active = user.is_active
     isSigarhAccount.value = user.account_type === 'sigarh'
     hospitales.value = hospitals

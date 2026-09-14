@@ -14,7 +14,7 @@ class SystemRole(Base):
     label: Mapped[str] = mapped_column(String(255))
     panel: Mapped[str] = mapped_column(String(50))
     required_module: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    allowed_modules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    allowed_modules: Mapped[list | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

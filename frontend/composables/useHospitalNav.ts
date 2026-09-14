@@ -307,7 +307,7 @@ export const useHospitalNav = () => {
   ])
 
   const gruposVisibles = computed(() =>
-    grupos.value.filter(g => tieneAlguno([g.modulo]))
+    grupos.value.map(g => ({ ...g, items: g.items.filter(i => hospitalPuede(authStore.user?.active_modules || [], hospitalPermiso(i.path) || g.modulo)) })).filter(g => g.items.length)
   )
 
   return { tenantId, link, activo, tieneAlguno, grupos, gruposVisibles }

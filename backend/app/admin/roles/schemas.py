@@ -12,6 +12,7 @@ class SystemRoleCreate(BaseModel):
 
 
 class SystemRoleResponse(SystemRoleCreate):
+    allowed_modules: list[str] | None = None
     id: uuid.UUID
     is_active: bool
 

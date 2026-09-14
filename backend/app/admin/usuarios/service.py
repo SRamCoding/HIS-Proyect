@@ -30,7 +30,9 @@ async def create_user(db: AsyncSession, data, creador: dict) -> User:
             if await hospital_db.scalar(select(User.id).where(User.email == data.email)):
                 raise HTTPException(400, detail="El correo ya existe en este hospital")
             await validar_empleado_usuario(hospital_db, hospital.id, data.empleado_id, data.panel)
-            user = User(empleado_id=data.empleado_id, name=data.name, email=data.email,
+            from app.auth.hospital_access import validar_perfil
+            await validar_perfil(hospital_db, hospital.id, data.perfil_hospital_id, data.role, data.empleado_id, data.panel)
+            user = User(perfil_hospital_id=data.perfil_hospital_id, empleado_id=data.empleado_id, name=data.name, email=data.email,
                         password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
                         role=data.role, panel=data.panel, tenant_id=None, is_active=True)
             hospital_db.add(user)
@@ -176,6 +178,9 @@ async def update_user(db: AsyncSession, user_id: uuid.UUID, data, actor: dict) -
         panel_final = cambios.get("panel", user.panel)
         await validar_empleado_usuario(work_db, None, cambios.get("empleado_id", user.empleado_id), panel_final)
         role_final = cambios.get("role", user.role)
+        from app.auth.hospital_access import validar_perfil
+        await validar_perfil(work_db, None, cambios.get("perfil_hospital_id", user.perfil_hospital_id),
+            role_final, cambios.get("empleado_id", user.empleado_id), panel_final)
         if panel_final == "admin" and role_final != "administrador":
             raise HTTPException(400, detail="Las cuentas del panel admin deben tener el rol 'administrador'")
 

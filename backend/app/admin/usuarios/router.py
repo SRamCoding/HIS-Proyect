@@ -14,6 +14,84 @@ from app.admin.usuarios.service import (
 router = APIRouter()
 
 
+async def hospital_perfiles(tenant_id):
+    from app.core.tenant_db import get_tenant_by_id
+    hospital = await get_tenant_by_id(tenant_id)
+    if not hospital or not hospital.is_active or not hospital.database_name:
+        raise HTTPException(400, "Seleccione un hospital activo")
+    return hospital
+
+
+@router.get("/usuarios/perfiles-hospital/catalogo")
+async def catalogo_perfiles(tenant_id: uuid.UUID, db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user)):
+    from app.tenants.hospitales.models import TenantModule
+    from app.tenants.modulos.models import Module
+    from app.auth.hospital_access import RECURSOS
+    await hospital_perfiles(tenant_id)
+    modulos = (await db.scalars(select(Module).join(TenantModule, Module.code == TenantModule.module_code).where(
+        TenantModule.tenant_id == tenant_id, TenantModule.is_active.is_(True), Module.is_active.is_(True),
+        Module.category != "sigarh"))).all()
+    codes = {m.code for m in modulos}
+    return [{"code": m.code, "label": m.name} for m in modulos] + [r for r in RECURSOS if r["code"].split(".")[0] in codes]
+
+
+@router.get("/usuarios/perfiles-hospital")
+async def listar_perfiles_hospital(tenant_id: uuid.UUID, current_user: dict = Depends(get_admin_user)):
+    from app.auth.models import PerfilHospital
+    from app.core.tenant_db import get_tenant_sessionmaker
+    hospital = await hospital_perfiles(tenant_id)
+    async with get_tenant_sessionmaker(hospital.database_name)() as tdb:
+        perfiles = (await tdb.scalars(select(PerfilHospital).where(PerfilHospital.tenant_id == tenant_id).order_by(PerfilHospital.nombre))).all()
+        return [{"id": str(p.id), "nombre": p.nombre, "role": p.role, "modulos": p.modulos, "is_active": p.is_active} for p in perfiles]
+
+
+from app.admin.usuarios.schemas import PerfilHospitalInput
+
+
+@router.post("/usuarios/perfiles-hospital", status_code=201)
+@router.put("/usuarios/perfiles-hospital/{perfil_id}")
+async def guardar_perfil_hospital(data: PerfilHospitalInput, tenant_id: uuid.UUID,
+    perfil_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user)):
+    from app.auth.models import PerfilHospital, User
+    from app.auth.hospital_access import MEDICO_MODULOS
+    from app.core.tenant_db import get_tenant_sessionmaker
+    from app.admin.roles.models import SystemRole
+    from app.admin.auditoria.service import create_audit_log
+    hospital = await hospital_perfiles(tenant_id)
+    rol = await db.scalar(select(SystemRole).where(SystemRole.name == data.role, SystemRole.panel == "app", SystemRole.is_active.is_(True)))
+    if not rol:
+        raise HTTPException(400, "Seleccione un rol hospitalario activo")
+    from app.tenants.modulos.submodulos import permiso_incluye
+    if isinstance(rol.allowed_modules, list) and any(not permiso_incluye(rol.allowed_modules, c) for c in data.modulos):
+        raise HTTPException(400, "El perfil no puede exceder los módulos permitidos por el rol del sistema")
+    catalogo = await catalogo_perfiles(tenant_id, db, current_user)
+    if not set(data.modulos) <= {m["code"] for m in catalogo}:
+        raise HTTPException(400, "El perfil contiene módulos que no están habilitados para este hospital")
+    if data.role == "medico" and not set(data.modulos) <= MEDICO_MODULOS:
+        raise HTTPException(400, "El perfil médico admite programación en lectura y atenciones médicas")
+    async with get_tenant_sessionmaker(hospital.database_name)() as tdb:
+        perfil = await tdb.scalar(select(PerfilHospital).where(PerfilHospital.id == perfil_id,
+            PerfilHospital.tenant_id == tenant_id).with_for_update()) if perfil_id else None
+        if perfil_id and not perfil:
+            raise HTTPException(404, "Perfil no encontrado")
+        if perfil and perfil.role != data.role and await tdb.scalar(select(User.id).where(User.perfil_hospital_id == perfil.id).limit(1)):
+            raise HTTPException(400, "No cambie el rol de un perfil asignado; cree otro perfil")
+        if not perfil:
+            perfil = PerfilHospital(tenant_id=tenant_id)
+            tdb.add(perfil)
+        anteriores = {"nombre": perfil.nombre, "role": perfil.role, "modulos": perfil.modulos, "is_active": perfil.is_active} if perfil.id else None
+        perfil.nombre, perfil.role, perfil.modulos, perfil.is_active = data.nombre, data.role, sorted(set(data.modulos)), data.is_active
+        await tdb.commit()
+        await tdb.refresh(perfil)
+        resultado = {"id": str(perfil.id), **data.model_dump()}
+    await create_audit_log(db, user_id=current_user["sub"], user_name=current_user.get("name"),
+        tenant_id=hospital.id, tenant_name=hospital.name, action="hospital_profile_updated" if perfil_id else "hospital_profile_created",
+        model="PerfilHospital", model_id=str(perfil.id), description=data.nombre, old_values=anteriores, new_values=data.model_dump())
+    return resultado
+
+
 @router.get("/usuarios/empleados-disponibles")
 async def empleados_disponibles(tenant_id: uuid.UUID, current_user: dict = Depends(get_admin_user)):
     from app.core.tenant_db import get_tenant_by_id, get_tenant_sessionmaker
@@ -66,6 +144,7 @@ async def usuarios_con_hospital(
         {
             "id": str(u.id),
             "name": u.name,
+                    "perfil_hospital_id": str(u.perfil_hospital_id) if u.perfil_hospital_id else None,
                     "empleado_id": str(u.empleado_id) if u.empleado_id else None,
             "email": u.email,
             "role": u.role,
@@ -111,6 +190,7 @@ async def usuarios_con_hospital(
                 items.append({
                     "id": str(u.id),
                     "name": u.name,
+                    "perfil_hospital_id": str(u.perfil_hospital_id) if u.perfil_hospital_id else None,
                     "empleado_id": str(u.empleado_id) if u.empleado_id else None,
                     "email": u.email,
                     "role": u.role,
