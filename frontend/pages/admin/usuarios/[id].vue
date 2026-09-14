@@ -145,7 +145,6 @@
           </div>
 
           <SUsuarioEmpleado v-if="!isAdminView && form.panel === 'app'" v-model="form.empleado_id" :tenant-id="form.tenant_id" />
-          <SPerfilHospital v-if="!isAdminView && form.panel === 'app'" v-model="form.perfil_hospital_id" :tenant-id="form.tenant_id" :role="form.role" />
 
         <template #actions>
             <SFormActions

@@ -125,7 +125,7 @@
                   <div class="sigarh-item-icon" style="background: var(--purple-soft)">
                     <UIcon name="i-heroicons-user-group" class="w-4 h-4" style="color: var(--purple)" />
                   </div>
-                  <span class="sigarh-item-name">{{ item.nombre }}</span>
+                  <span class="sigarh-item-name">{{ item.nombre }}</span><span class="badge badge--neutral">{{ item.panel === 'app' ? 'Hospitalario' : 'SIGARH' }}</span>
                 </div>
               </td>
               <td style="color: var(--ink-soft); font-size: 0.8125rem">{{ item.descripcion || '-' }}</td>
@@ -171,6 +171,7 @@
 definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
 
 interface Item {
+  panel: string
   id: string
   nombre: string
   descripcion: string | null

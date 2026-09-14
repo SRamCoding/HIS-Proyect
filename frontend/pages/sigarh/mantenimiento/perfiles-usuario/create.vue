@@ -35,8 +35,8 @@
           <div class="input-wrapper">
             <UIcon name="i-heroicons-shield-check" class="input-icon" />
             <select v-model="form.rol_sistema_id" class="input-clinical">
-              <option value="">Seleccione un rol SIGARH</option>
-              <option v-for="r in rolesDisponibles" :key="r.id" :value="r.id">{{ r.nombre }}</option>
+              <option value="">Seleccione un rol</option>
+              <option v-for="r in rolesDisponibles" :key="r.id" :value="r.id">{{ r.nombre }} ({{ r.panel === 'app' ? 'Hospitalario' : 'SIGARH' }})</option>
             </select>
           </div>
           <p class="field-hint">Rol base para el perfil</p>
@@ -163,7 +163,7 @@ const form = reactive({
 
 const rolesDisponibles = computed(() =>
   rolesSistema.value.filter(r =>
-    r.panel === 'sigarh' && r.is_active && (!r.modulo_requerido || todosModulos.value.some(m => m.code === r.modulo_requerido))
+    ['sigarh', 'app'].includes(r.panel) && r.is_active && (!r.modulo_requerido || todosModulos.value.some(m => m.code === r.modulo_requerido))
   )
 )
 
@@ -276,7 +276,7 @@ const toggleTodosModulos = () => {
 }
 
 const handleCreate = async (createAnother: boolean) => {
-  if (!form.rol_sistema_id) { error.value = 'Seleccione un rol SIGARH activo'; return }
+  if (!form.rol_sistema_id) { error.value = 'Seleccione un rol activo'; return }
   if (!form.nombre.trim()) { error.value = 'El nombre del perfil es requerido'; return }
   saving.value = true
   error.value = ''
@@ -309,7 +309,7 @@ onMounted(async () => {
   try {
     const [roles, modulos] = await Promise.all([
       api('/sigarh/mantenimiento/roles-sistema'),
-      api('/sigarh/mantenimiento/modulos-catalogo'),
+      Promise.all([api<any[]>('/sigarh/mantenimiento/modulos-catalogo?panel=sigarh'), api<any[]>('/sigarh/mantenimiento/modulos-catalogo?panel=app')]).then(r => r.flat()),
     ])
     rolesSistema.value = roles
     todosModulos.value = modulos

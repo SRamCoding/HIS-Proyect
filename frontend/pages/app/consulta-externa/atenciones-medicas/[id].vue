@@ -58,7 +58,7 @@
           <!-- Patient Info Card -->
           <div v-if="!accesoClinico" class="form-card" role="alert" style="padding: 16px; margin-bottom: 16px">
             <p>{{ motivoAcceso || 'No se pudo verificar el acceso para registrar esta atención.' }}</p>
-            <p>En Admin → Usuarios, configura una cuenta con rol Médico y vincúlala al empleado que figura en la programación. Ingresa con esa cuenta para registrar y cerrar la atención.</p>
+            <p>En SIGARH → Mantenimiento → Usuarios, asigna el perfil hospitalario del médico y vincula el empleado que figura en la programación. Ingresa con esa cuenta para registrar y cerrar la atención.</p>
           </div>
           <section class="form-card">
             <div class="card-header">

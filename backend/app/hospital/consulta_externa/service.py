@@ -1349,7 +1349,7 @@ async def validar_autor_clinico(db, tenant_id, cita, user):
     from app.sigarh.mantenimiento.models import Profesion
     usuario = await db.scalar(select(User).where(User.id == uuid.UUID(user["sub"]), User.is_active == True)) if user else None
     if not usuario or usuario.panel != "app" or usuario.role != "medico" or not usuario.empleado_id:
-        raise ValueError("La atención requiere una cuenta médica vinculada al empleado desde Admin > Usuarios.")
+        raise ValueError("La atención requiere una cuenta médica vinculada al empleado desde SIGARH > Mantenimiento > Usuarios.")
     prog = await db.scalar(select(ProgramacionMedica).where(ProgramacionMedica.id == cita.programacion_medica_id, ProgramacionMedica.tenant_id == tenant_id))
     medico = await db.scalar(select(Empleado).where(Empleado.id == usuario.empleado_id, Empleado.tenant_id == tenant_id, Empleado.is_active == True))
     profesion = await db.scalar(select(Profesion.codigo).where(Profesion.id == medico.profesion_id, Profesion.tenant_id == tenant_id)) if medico else None

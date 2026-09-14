@@ -27,6 +27,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     empleado_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="SET NULL"), nullable=True)
     perfil_hospital_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("hospital_perfiles.id", ondelete="RESTRICT"), nullable=True)
+    perfil_usuario_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_perfiles_usuario.id", ondelete="RESTRICT"), nullable=True)
+    username: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

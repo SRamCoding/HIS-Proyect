@@ -52,14 +52,31 @@ async def contexto_hospital(db, usuario, hospital, habilitados):
     from app.sigarh.rrhh.models import Empleado
     from app.tenants.modulos.submodulos import modulo_padre
     perfil = None
-    if usuario.perfil_hospital_id:
+    shared_id = getattr(usuario, 'perfil_usuario_id', None)
+    if shared_id:
+        from app.sigarh.mantenimiento.models import PerfilUsuario, RolSistema
+        from app.sigarh.mantenimiento.security import lista
+        from app.tenants.modulos.submodulos import permiso_incluye
+        perfil_compartido = await db.scalar(select(PerfilUsuario).where(PerfilUsuario.id == shared_id,
+            PerfilUsuario.tenant_id == hospital.id, PerfilUsuario.is_active.is_(True)))
+        rol = await db.scalar(select(RolSistema).where(RolSistema.id == perfil_compartido.rol_sistema_id,
+            RolSistema.tenant_id == hospital.id, RolSistema.panel == 'app', RolSistema.is_active.is_(True))) if perfil_compartido else None
+        if not rol or rol.tipo_usuario != usuario.role:
+            raise HTTPException(403, 'El perfil y rol hospitalarios deben estar activos y corresponder a la cuenta')
+        concedidos = lista(rol.modulos_permitidos)
+        pedidos = lista(perfil_compartido.modulos_acceso)
+        effective = [c for c in set(concedidos + pedidos) if permiso_incluye(concedidos, c) and permiso_incluye(pedidos, c)]
+        perfil = type('PerfilEfectivo', (), {'id': perfil_compartido.id, 'modulos': effective})()
+        if rol.modulo_requerido and rol.modulo_requerido not in habilitados:
+            raise HTTPException(403, 'El m?dulo requerido por el rol est? deshabilitado')
+    elif usuario.perfil_hospital_id:
         perfil = await db.scalar(select(PerfilHospital).where(
             PerfilHospital.id == usuario.perfil_hospital_id,
             PerfilHospital.tenant_id == hospital.id, PerfilHospital.is_active.is_(True)))
         if not perfil or perfil.role != usuario.role:
             raise HTTPException(403, "El perfil hospitalario está inactivo o no corresponde al rol")
     elif usuario.role != "administrador":
-        raise HTTPException(403, "Asigne un perfil hospitalario a esta cuenta desde Admin > Usuarios")
+        raise HTTPException(403, "Asigne un perfil hospitalario a esta cuenta desde SIGARH > Mantenimiento > Usuarios")
     empleado = None
     if usuario.empleado_id:
         empleado = await db.scalar(select(Empleado).where(Empleado.id == usuario.empleado_id,
@@ -68,13 +85,17 @@ async def contexto_hospital(db, usuario, hospital, habilitados):
             raise HTTPException(403, "El empleado vinculado está inactivo o pertenece a otro hospital")
     if usuario.role == "medico" and not empleado:
         raise HTTPException(403, "Vincule la cuenta médica a un empleado del hospital")
+    if shared_id:
+        grupos = set(lista(rol.grupos_ocupacionales_permitidos))
+        if grupos and (not empleado or str(empleado.grupo_ocupacional_id) not in grupos):
+            raise HTTPException(403, 'El grupo ocupacional no est? autorizado por el rol')
     permisos = set(perfil.modulos) if perfil else set(habilitados)
     if usuario.role == "medico":
         permisos &= MEDICO_MODULOS
     permisos = sorted(c for c in permisos if modulo_padre(c) in habilitados)
     return {"sub": str(usuario.id), "name": usuario.name, "email": usuario.email,
         "role": usuario.role, "panel": usuario.panel, "tenant_id": str(hospital.id),
-        "active_modules": permisos, "perfil_hospital_id": str(perfil.id) if perfil else None,
+        "active_modules": permisos, "perfil_id": str(shared_id) if shared_id else None, "perfil_hospital_id": str(perfil.id) if perfil else None,
         "empleado_id": str(empleado.id) if empleado else None}
 
 async def validar_perfil(db, tid, perfil_id, role, empleado_id, panel):

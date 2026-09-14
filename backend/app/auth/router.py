@@ -89,8 +89,11 @@ async def login(
             token_data["tenant_id"] = str(tenant.id)
             return _respuesta_sesion(token_data)
 
-        result = await tdb.execute(select(User).where(User.email == data.email))
-        user = result.scalar_one_or_none()
+        from sqlalchemy import func, or_
+        identifier = data.email.strip().lower()
+        matches = (await tdb.scalars(select(User).where(or_(func.lower(User.email) == identifier,
+            func.lower(User.username) == identifier)).limit(2))).all()
+        user = matches[0] if len(matches) == 1 else None
 
         if not user or not verify_password(data.password, user.password):
             await _log_audit(db, None, "Sistema", str(tenant.id), "login_failed", "User",
@@ -118,6 +121,8 @@ async def login(
 
         if user.panel == "app":
             from app.auth.hospital_access import contexto_hospital, validar_rol_hospital, limitar_por_rol
+            if user.perfil_usuario_id:
+                return _respuesta_sesion(await contexto_hospital(tdb, user, tenant, set(active_modules)))
             rol = await validar_rol_hospital(db, user.role)
             return _respuesta_sesion(limitar_por_rol(await contexto_hospital(tdb, user, tenant, set(active_modules)), rol))
 

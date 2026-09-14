@@ -346,7 +346,7 @@ async def referencia(db, modelo, id, tenant_id, campo, activo=True):
     return item
 
 
-async def modulos_habilitados(db, tenant_id):
+async def modulos_habilitados(db, tenant_id, panel="sigarh"):
     # TenantModule/Module son catálogos centrales (contratación de módulos
     # por hospital); nunca viven en la BD física del tenant, así que esta
     # consulta va siempre contra la BD central, sin importar qué BD trae la
@@ -357,7 +357,7 @@ async def modulos_habilitados(db, tenant_id):
     async with AsyncSessionLocal() as central:
         return (await central.scalars(select(Module).join(TenantModule, TenantModule.module_code == Module.code).where(
             TenantModule.tenant_id == tenant_id, TenantModule.is_active.is_(True), Module.is_active.is_(True),
-            Module.code.startswith("sigarh_"),
+            Module.code.startswith("sigarh_") if panel == "sigarh" else ~Module.code.startswith("sigarh_"),
         ).order_by(Module.name))).all()
 
 
@@ -414,7 +414,15 @@ async def validar_relaciones(db, modelo, tenant_id, values):
             )
     if modelo is m.RolSistema:
         from app.tenants.modulos.submodulos import modulo_padre
-        habilitados = {module.code for module in await modulos_habilitados(db, tenant_id)}
+        habilitados = {module.code for module in await modulos_habilitados(db, tenant_id, values.get("panel", "sigarh"))}
+        if values.get("panel") == "app":
+            from app.auth.hospital_access import MEDICO_MODULOS
+            if not values.get("tipo_usuario"):
+                raise HTTPException(422, "Seleccione el tipo de cuenta hospitalaria")
+            if values.get("permisos_accion"):
+                raise HTTPException(422, "Las acciones SIGARH no se asignan al panel hospitalario")
+            if values["tipo_usuario"] == "medico" and not set(values["modulos_permitidos"]) <= MEDICO_MODULOS:
+                raise HTTPException(422, "El m?dico admite programaci?n y atenciones m?dicas")
         elegidos = set(values["modulos_permitidos"])
         requerido = values.get("modulo_requerido")
         # Un código puede venir con submódulo (ej. "sigarh_recursos_humanos.empleados"):
@@ -422,7 +430,7 @@ async def validar_relaciones(db, modelo, tenant_id, values):
         no_habilitados = {c for c in elegidos if modulo_padre(c) not in habilitados}
         if no_habilitados or (requerido and requerido not in habilitados):
             raise HTTPException(422, "Los módulos deben existir y estar habilitados para SIGARH en este hospital")
-        if requerido and requerido not in elegidos:
+        if requerido and not any(modulo_padre(c) == requerido for c in elegidos):
             raise HTTPException(
                 422, "El módulo requerido debe estar incluido entre los permitidos"
             )
@@ -449,8 +457,8 @@ async def validar_relaciones(db, modelo, tenant_id, values):
     if modelo is m.PerfilUsuario:
         from app.tenants.modulos.submodulos import modulo_padre, permiso_incluye
         rol = refs["rol_sistema_id"]
-        habilitados = {module.code for module in await modulos_habilitados(db, tenant_id)}
-        if rol.panel != "sigarh" or (rol.modulo_requerido and rol.modulo_requerido not in habilitados):
+        habilitados = {module.code for module in await modulos_habilitados(db, tenant_id, rol.panel)}
+        if rol.panel not in {"sigarh", "app"} or (rol.modulo_requerido and rol.modulo_requerido not in habilitados):
             raise HTTPException(422, "El rol no es válido para SIGARH o su módulo requerido está deshabilitado")
         # Un código de modulos_acceso puede venir con submódulo (ej.
         # "sigarh_recursos_humanos.empleados"): es válido si el rol lo cubre
@@ -574,6 +582,8 @@ async def guardar(db, recurso, tenant_id, data, user, id=None, ip=None):
     )
     for key in JSON_FIELDS & values.keys():
         values[key] = lista(values[key])
+    if modelo is m.UsuarioSigarh:
+        supplied.pop("panel", None)
     if modelo is m.UsuarioSigarh and item:
         # El hash nunca pasa por el contrato de una contraseña nueva.
         values["password"] = "placeholder-seguro-interno"
@@ -599,6 +609,8 @@ async def guardar(db, recurso, tenant_id, data, user, id=None, ip=None):
         )
     if modelo is m.UsuarioSigarh and item and "password" not in supplied:
         values.pop("password", None)
+    if modelo is m.UsuarioSigarh:
+        values.pop("panel", None)
     changed = {
         key
         for key, value in values.items()
@@ -606,6 +618,13 @@ async def guardar(db, recurso, tenant_id, data, user, id=None, ip=None):
         or (lista(getattr(item, key)) if key in JSON_FIELDS else getattr(item, key))
         != value
     }
+    if item and modelo is m.RolSistema and changed & {'panel','tipo_usuario'} and await usado(db, modelo, item.id):
+        raise HTTPException(409, 'No cambie el panel o tipo de cuenta de un rol utilizado; cree otro rol')
+    if item and modelo is m.PerfilUsuario and 'rol_sistema_id' in changed and await usado(db, modelo, item.id):
+        anterior_rol = await db.get(m.RolSistema, item.rol_sistema_id)
+        nuevo_rol = await db.get(m.RolSistema, values['rol_sistema_id'])
+        if anterior_rol and nuevo_rol and (anterior_rol.panel, anterior_rol.tipo_usuario) != (nuevo_rol.panel, nuevo_rol.tipo_usuario):
+            raise HTTPException(409, 'El nuevo rol debe conservar el panel y tipo de cuenta del perfil utilizado')
     if item and not es_admin_erp(user):
         own = (modelo is m.UsuarioSigarh and str(item.id) == user.get("sub")) or (
             modelo is m.PerfilUsuario and str(item.id) == user.get("perfil_id")

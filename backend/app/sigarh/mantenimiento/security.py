@@ -145,6 +145,8 @@ async def usuario_actual(db, payload):
                 Module, Module.code == TenantModule.module_code).where(
                 TenantModule.tenant_id == hospital.id, TenantModule.is_active.is_(True),
                 Module.is_active.is_(True)))).all())
+            if getattr(usuario, 'perfil_usuario_id', None):
+                return await contexto_hospital(tdb, usuario, hospital, habilitados)
             rol = await validar_rol_hospital(db, usuario.role)
             return limitar_por_rol(await contexto_hospital(tdb, usuario, hospital, habilitados), rol)
         result = dict(payload)

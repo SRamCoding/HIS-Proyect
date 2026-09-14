@@ -1,5 +1,7 @@
 # Revisión de roles, perfiles y cuentas — 14/09/2026
 
+Este informe describe la revisión anterior. El flujo fue reemplazado por f94c23b6de51: desde SIGARH se gestionan roles con panel SIGARH u Hospitalario, sus perfiles y sus usuarios. Las instrucciones actuales están en README.md; ya no se requiere Admin para crear las cuentas hospitalarias.
+
 La pantalla SIGARH de creación de roles ofrecía `app` por defecto mientras su esquema backend solo acepta `sigarh` y su catálogo contiene módulos SIGARH. Se corrigieron creación y edición para presentar exclusivamente SIGARH y se explican los dos flujos en roles, perfiles y usuarios.
 
 Flujos actuales:

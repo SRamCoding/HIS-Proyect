@@ -2,7 +2,7 @@
 
 Cada hospital conserva sus cuentas y perfiles en su base física. El catálogo de roles del sistema y los módulos contratados se consultan en la base central.
 
-En **Admin > Usuarios**, seleccionar hospital, panel hospitalario, rol, empleado y perfil. El selector permite crear perfiles y editar sus accesos. Editar un perfil afecta a todas sus cuentas. Desactivarlo bloquea sus solicitudes posteriores; el servidor vuelve a consultar el perfil, el rol y los módulos habilitados en cada solicitud y renovación de sesión.
+En **SIGARH > Mantenimiento**, crear el Rol del Sistema con panel Hospitalario y tipo de cuenta; crear el Perfil de Usuario seleccionando ese rol; crear el Usuario con ese perfil y el empleado. Toda la gesti?n operativa ocurre en SIGARH. Editar un perfil afecta a todas sus cuentas. Desactivarlo bloquea sus solicitudes posteriores; el servidor vuelve a consultar el perfil, el rol y los módulos habilitados en cada solicitud y renovación de sesión.
 
 El administrador general existente conserva los módulos habilitados del hospital cuando no tiene un perfil asignado. Las demás cuentas requieren un perfil explícito. No se concede acceso utilizando los módulos declarados por un token antiguo.
 
@@ -26,3 +26,5 @@ Los usuarios SIGARH mantienen su mecanismo independiente de perfiles y permisos.
 `scripts/migrate_perfiles_hospital.py` verifica la cabeza Alembic, migra central y hospitales activos con base existente, registra los roles básicos y crea el perfil médico sin crear cuentas ni sustituir al administrador.
 
 `scripts/check_perfil_medico_reque.py` prueba los endpoints del médico con un perfil y una cuenta simulados dentro de una transacción revertida. `tests/unit/test_hospital_perfiles.py` verifica separación de operaciones, revocación y lectura de permisos desde BD.
+
+`check_accesos_sigarh_hospital.py` prueba con transacci?n revertida la creaci?n de rol, perfil y usuario desde SIGARH, login App por username, programaci?n propia y bloqueo de modificaci?n de agendas.

@@ -281,6 +281,7 @@ class RolSistema(Base):
     codigo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     nombre: Mapped[str] = mapped_column(String(255))
     panel: Mapped[str] = mapped_column(String(50), default="sigarh")  # app, sigarh, portal
+    tipo_usuario: Mapped[str | None] = mapped_column(String(100), nullable=True)
     modulo_requerido: Mapped[str | None] = mapped_column(String(100), nullable=True)
     modulos_permitidos: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: lista de codigos
     grupos_ocupacionales_permitidos: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: lista de UUIDs (str)

@@ -51,13 +51,14 @@
             </div>
           </div>
 
-          <div class="form-group full-width">
+          <SSeguridadEmpleado v-model="form.empleado_id" />
+<div class="form-group full-width">
             <label class="form-label">Perfil <span class="required">*</span></label>
             <div class="input-wrapper">
               <UIcon name="i-heroicons-shield-check" class="input-icon" />
               <select v-model="form.perfil_id" class="input-clinical">
                 <option value="">Seleccione un perfil</option>
-                <option v-for="p in perfiles.filter(p => p.is_active)" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+                <option v-for="p in perfiles.filter(p => p.is_active)" :key="p.id" :value="p.id">{{ p.nombre }} ({{ p.panel === 'app' ? 'Hospitalario' : 'SIGARH' }})</option>
               </select>
             </div>
             <p class="field-hint">El rol y los modulos se toman del perfil seleccionado</p>
@@ -160,12 +161,16 @@ const form = reactive({
   email: '',
   password: '',
   perfil_id: '',
+  panel: 'sigarh',
+  empleado_id: '',
   is_active: true
 })
 
 const perfilSeleccionado = computed(() =>
   perfiles.value.find(p => p.id === form.perfil_id) || null
 )
+
+watch(() => form.perfil_id, () => { const p = perfiles.value.find(p => p.id === form.perfil_id); if (p) form.panel = p.panel || 'sigarh' })
 
 const pwdChecks = computed(() => ({
   length: form.password.length >= 8,
@@ -188,6 +193,8 @@ const handleSave = async () => {
       username: form.username,
       email: form.email,
       perfil_id: form.perfil_id || null,
+      panel: form.panel,
+      empleado_id: form.empleado_id || null,
       is_active: form.is_active,
     }
     if (form.password) body.password = form.password
@@ -213,6 +220,8 @@ onMounted(async () => {
     form.username = data.username
     form.email = data.email
     form.perfil_id = data.perfil_id || ''
+    form.panel = data.panel || 'sigarh'
+    form.empleado_id = data.empleado_id || ''
     form.is_active = data.is_active
     perfiles.value = perfilesData
   } catch (e: any) {

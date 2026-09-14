@@ -13,7 +13,7 @@
           </div>
           <div>
             <h1 class="page-title">Crear Rol del Sistema</h1>
-            <p class="page-subtitle">Define permisos para las cuentas de SIGARH</p>
+            <p class="page-subtitle">Define permisos por panel y módulo</p>
           </div>
         </div>
       </div>
@@ -44,12 +44,13 @@
             <UIcon name="i-heroicons-computer-desktop" class="input-icon" />
             <select v-model="form.panel" class="input-clinical">
 
-              <option value="sigarh">SIGARH</option>
+              <option value="sigarh">SIGARH</option><option value="app">Hospitalario</option>
             </select>
           </div>
         </div>
 
-        <div class="form-group">
+        <div v-if="form.panel === 'app'" class="form-group"><label class="form-label">Tipo de cuenta hospitalaria</label><select v-model="form.tipo_usuario" class="input-clinical"><option value="medico">Médico</option><option value="enfermera">Enfermería</option><option value="administrador">Administrativo</option><option value="farmaceutico">Farmacéutico</option><option value="laboratorista">Laboratorista</option><option value="cajero">Cajero</option><option value="tuasis">TUASIS</option></select></div>
+<div class="form-group">
           <label class="form-label">Modulo requerido</label>
           <div class="input-wrapper">
             <UIcon name="i-heroicons-lock-closed" class="input-icon" />
@@ -139,7 +140,7 @@
           <p class="field-hint">Vacio = sin restriccion por grupo ocupacional</p>
         </div>
 
-        <div class="form-group full-width">
+        <div v-if="form.panel === 'sigarh'" class="form-group full-width">
           <label class="form-label">Permisos de accion</label>
           <div class="check-catalog">
             <label
@@ -221,7 +222,9 @@ const tenantId = computed(() => route.query.tenant as string || '')
 const saving = ref(false)
 const error = ref('')
 
-const todosModulos = ref<Modulo[]>([])
+const catalogoModulos = ref<Modulo[]>([])
+const todosModulos = computed(() => form.panel === 'app' && form.tipo_usuario === 'medico'
+  ? catalogoModulos.value.filter(m => m.code === 'consulta_externa').map(m => ({ ...m, submodulos: (m.submodulos || []).filter(s => ['programacion', 'atenciones'].includes(s.code)) })) : catalogoModulos.value)
 const gruposOcupacionales = ref<GrupoOcupacional[]>([])
 
 const PERMISOS_ACCION = [
@@ -234,6 +237,7 @@ const form = reactive({
   codigo: '',
   nombre: '',
   panel: 'sigarh',
+  tipo_usuario: 'medico',
   modulo_requerido: '',
   descripcion: '',
   is_active: true,
@@ -242,6 +246,15 @@ const form = reactive({
   permisos_accion: [] as string[],
   alcance_global: false,
 })
+let cargaModulos = 0
+watch(() => form.panel, async (panel, anterior) => {
+  if (panel === anterior) return
+  const actual = ++cargaModulos
+  form.modulos_permitidos = []; form.modulo_requerido = ''; form.permisos_accion = []; form.alcance_global = false
+  try { const modulos = await api<Modulo[]>(`/sigarh/mantenimiento/modulos-catalogo?panel=${panel}`); if (actual === cargaModulos) catalogoModulos.value = modulos }
+  catch (e) { error.value = apiErr(e, 'No se pudieron cargar los módulos del panel') }
+})
+
 
 // --- Arbol de modulos/submodulos permitidos ---
 // form.modulos_permitidos guarda strings sueltos: o el codigo completo del
@@ -281,7 +294,7 @@ const toggleModulo = (mod: Modulo) => {
   const estabaCompleto = estadoModulo(mod) === 'all'
   form.modulos_permitidos = form.modulos_permitidos.filter(c => c !== mod.code && !codigosSubmodulo.includes(c))
   if (!estabaCompleto) {
-    form.modulos_permitidos.push(mod.code)
+    form.modulos_permitidos.push(...(form.panel === 'app' && form.tipo_usuario === 'medico' ? codigosSubmodulo : [mod.code]))
   }
 }
 
@@ -304,7 +317,7 @@ const toggleSub = (mod: Modulo, sub: Submodulo) => {
   // codigo del modulo completo (mas simple y ya cubre nuevos submodulos futuros).
   const todosCodigos = (mod.submodulos || []).map(s => `${mod.code}.${s.code}`)
   const seleccionadosAhora = todosCodigos.filter(c => actuales.includes(c))
-  if (todosCodigos.length && seleccionadosAhora.length === todosCodigos.length) {
+  if (!(form.panel === 'app' && form.tipo_usuario === 'medico') && todosCodigos.length && seleccionadosAhora.length === todosCodigos.length) {
     actuales = actuales.filter(c => !todosCodigos.includes(c))
     actuales.push(mod.code)
   }
@@ -314,7 +327,7 @@ const toggleSub = (mod: Modulo, sub: Submodulo) => {
 const todosSeleccionados = computed(() => todosModulos.value.every(m => estadoModulo(m) === 'all'))
 
 const toggleTodosModulos = () => {
-  form.modulos_permitidos = todosSeleccionados.value ? [] : todosModulos.value.map(m => m.code)
+  form.modulos_permitidos = todosSeleccionados.value ? [] : todosModulos.value.flatMap(m => form.panel === 'app' && form.tipo_usuario === 'medico' ? (m.submodulos || []).map(s => `${m.code}.${s.code}`) : [m.code])
 }
 
 const toggleTodosGrupos = () => {
@@ -343,6 +356,7 @@ const handleCreate = async (createAnother: boolean) => {
         codigo: form.codigo.trim(),
         nombre: form.nombre.trim(),
         panel: form.panel,
+        tipo_usuario: form.panel === 'app' ? form.tipo_usuario : null,
         modulo_requerido: form.modulo_requerido || null,
         descripcion: form.descripcion || null,
         is_active: form.is_active,
@@ -368,7 +382,7 @@ onMounted(async () => {
       api<Modulo[]>('/sigarh/mantenimiento/modulos-catalogo'),
       api<GrupoOcupacional[]>('/sigarh/mantenimiento/grupos-ocupacionales'),
     ])
-    todosModulos.value = modulos
+    catalogoModulos.value = modulos
     gruposOcupacionales.value = grupos
   } catch (e: any) {
     error.value = apiErr(e, 'No se pudieron cargar los catalogos')
