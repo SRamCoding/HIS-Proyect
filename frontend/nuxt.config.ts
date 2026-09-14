@@ -8,7 +8,7 @@ export default defineNuxtConfig({
     '@pinia/nuxt',
     '@pinia-plugin-persistedstate/nuxt',
   ],
-  css: ['~/assets/css/main.css', '~/assets/css/sigarh-form.css', '~/assets/css/sigarh-index.css'],
+  css: ['~/assets/css/main.css', '~/assets/css/sigarh-form.css', '~/assets/css/sigarh-index.css', '~/assets/css/sigarh-wizard.css'],
 app: {
   head: {
     viewport: 'width=device-width, initial-scale=1',

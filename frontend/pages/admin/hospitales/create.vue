@@ -875,70 +875,6 @@ onMounted(async () => {
   margin-bottom: 2rem;
 }
 
-.progress-steps {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.step-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 1rem;
-  border-radius: 12px;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  opacity: 0.5;
-  transition: all 0.3s ease;
-}
-
-.step-item.active {
-  opacity: 1;
-  border-color: var(--teal);
-  background: var(--teal-soft);
-}
-
-.step-item.completed {
-  opacity: 1;
-  border-color: var(--teal);
-  background: rgba(8, 145, 178, 0.08);
-}
-
-.step-circle {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: var(--mist);
-  color: var(--ink-soft);
-  transition: all 0.3s ease;
-}
-
-.step-item.active .step-circle {
-  background: var(--teal);
-  color: white;
-}
-
-.step-item.completed .step-circle {
-  background: var(--teal);
-  color: white;
-}
-
-.step-check {
-  font-size: 0.875rem;
-}
-
-.step-label {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink);
-}
-
 /* Grid */
 .hospital-grid {
   display: grid;
@@ -1124,28 +1060,6 @@ onMounted(async () => {
   gap: 1.25rem;
 }
 
-.input-wrapper {
-  position: relative;
-}
-
-.input-clinical {
-  width: 100%;
-  padding: 0.625rem 0.875rem;
-  padding-left: 2.5rem;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 0.875rem;
-  transition: all 0.2s ease;
-}
-
-.field-hint {
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-  margin-top: 0.375rem;
-}
-
 /* Subdomain */
 .subdomain-wrapper {
   display: flex;
@@ -1319,38 +1233,9 @@ onMounted(async () => {
   border-top: 1px solid var(--line);
 }
 
-.action-spacer {
-  flex: 1;
-}
-
-.action-group {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
 .btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.5rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-secondary:hover {
-  background: var(--mist);
 }
 
 /* Recent Hospitals */
@@ -1426,46 +1311,6 @@ onMounted(async () => {
   margin-bottom: 1rem;
 }
 
-.widget-progress-label {
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-}
-
-.widget-progress-bar {
-  flex: 1;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--mist);
-  overflow: hidden;
-}
-
-.widget-progress-fill {
-  height: 100%;
-  border-radius: 2px;
-  background: var(--teal);
-  transition: width 0.6s ease;
-}
-
-.widget-progress-value {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--teal);
-}
-
-.summary-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.375rem 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.summary-value {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink);
-}
-
 .mini-badge {
   padding: 0.0625rem 0.5rem;
   border-radius: 3px;
@@ -1474,51 +1319,12 @@ onMounted(async () => {
   font-family: monospace;
 }
 
-.distribution-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.distribution-bar {
-  display: flex;
-  height: 6px;
-  border-radius: 3px;
-  overflow: hidden;
-  background: var(--mist);
-}
-
-.distribution-fill {
-  height: 100%;
-  transition: width 0.6s ease;
-}
-
 .distribution-fill.app {
   background: var(--teal);
 }
 
 .distribution-fill.sigarh {
   background: var(--purple);
-}
-
-.distribution-labels {
-  display: flex;
-  justify-content: space-between;
-}
-
-.distribution-label {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-}
-
-.distribution-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
 }
 
 /* Checklist Widget */
@@ -1619,10 +1425,6 @@ onMounted(async () => {
   justify-content: center;
   padding: 2rem;
   gap: 0.75rem;
-}
-
-.loading-spinner {
-  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
