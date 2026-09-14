@@ -14,6 +14,18 @@ from app.admin.usuarios.service import (
 router = APIRouter()
 
 
+@router.get("/usuarios/empleados-disponibles")
+async def empleados_disponibles(tenant_id: uuid.UUID, current_user: dict = Depends(get_admin_user)):
+    from app.core.tenant_db import get_tenant_by_id, get_tenant_sessionmaker
+    from app.sigarh.rrhh.models import Empleado
+    hospital = await get_tenant_by_id(tenant_id)
+    if not hospital or not hospital.is_active or not hospital.database_name:
+        raise HTTPException(400, detail="Seleccione un hospital activo")
+    async with get_tenant_sessionmaker(hospital.database_name)() as db:
+        empleados = (await db.scalars(select(Empleado).where(Empleado.tenant_id == tenant_id, Empleado.is_active == True).order_by(Empleado.apellido_paterno))).all()
+        return [{"id": str(e.id), "nombre": e.nombre_completo} for e in empleados]
+
+
 @router.get("/usuarios", response_model=list[UserListItem], summary="Listar todos los usuarios")
 async def listar_usuarios(
     db: AsyncSession = Depends(get_db),
@@ -54,6 +66,7 @@ async def usuarios_con_hospital(
         {
             "id": str(u.id),
             "name": u.name,
+                    "empleado_id": str(u.empleado_id) if u.empleado_id else None,
             "email": u.email,
             "role": u.role,
             "panel": u.panel,
@@ -98,6 +111,7 @@ async def usuarios_con_hospital(
                 items.append({
                     "id": str(u.id),
                     "name": u.name,
+                    "empleado_id": str(u.empleado_id) if u.empleado_id else None,
                     "email": u.email,
                     "role": u.role,
                     "panel": u.panel,

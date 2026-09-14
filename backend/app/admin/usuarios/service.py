@@ -29,7 +29,8 @@ async def create_user(db: AsyncSession, data, creador: dict) -> User:
         async with get_tenant_sessionmaker(hospital.database_name)() as hospital_db:
             if await hospital_db.scalar(select(User.id).where(User.email == data.email)):
                 raise HTTPException(400, detail="El correo ya existe en este hospital")
-            user = User(name=data.name, email=data.email,
+            await validar_empleado_usuario(hospital_db, hospital.id, data.empleado_id, data.panel)
+            user = User(empleado_id=data.empleado_id, name=data.name, email=data.email,
                         password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
                         role=data.role, panel=data.panel, tenant_id=None, is_active=True)
             hospital_db.add(user)
@@ -173,6 +174,7 @@ async def update_user(db: AsyncSession, user_id: uuid.UUID, data, actor: dict) -
                 raise HTTPException(400, detail="El hospital indicado no existe")
 
         panel_final = cambios.get("panel", user.panel)
+        await validar_empleado_usuario(work_db, None, cambios.get("empleado_id", user.empleado_id), panel_final)
         role_final = cambios.get("role", user.role)
         if panel_final == "admin" and role_final != "administrador":
             raise HTTPException(400, detail="Las cuentas del panel admin deben tener el rol 'administrador'")
@@ -257,3 +259,16 @@ async def delete_user(db: AsyncSession, user_id: uuid.UUID, actor: dict) -> bool
         model=modelo, model_id=str(user_id), description=f"Usuario eliminado: {email} ({panel})",
     )
     return True
+
+
+async def validar_empleado_usuario(db, tid, empleado_id, panel):
+    if not empleado_id:
+        return
+    if panel != "app":
+        raise HTTPException(400, detail="Solo el panel hospitalario admite vincular un empleado.")
+    from app.sigarh.rrhh.models import Empleado
+    query = select(Empleado).where(Empleado.id == empleado_id, Empleado.is_active == True)
+    if tid:
+        query = query.where(Empleado.tenant_id == tid)
+    if not await db.scalar(query):
+        raise HTTPException(400, detail="El empleado no pertenece a este hospital o no está activo.")

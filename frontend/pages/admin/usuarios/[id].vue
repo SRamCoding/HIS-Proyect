@@ -144,7 +144,9 @@
             </div>
           </div>
 
-          <template #actions>
+          <SUsuarioEmpleado v-if="!isAdminView && form.panel === 'app'" v-model="form.empleado_id" :tenant-id="form.tenant_id" />
+
+        <template #actions>
             <SFormActions
               :saving="saving"
               save-text="Guardar Cambios"
@@ -250,6 +252,7 @@ const form = reactive({
   role: 'administrador',
   panel: 'app',
   tenant_id: '',
+  empleado_id: '',
   is_active: true,
 })
 
@@ -307,6 +310,7 @@ const handleSave = async () => {
       role: form.role,
       panel: isAdminView.value ? 'admin' : form.panel,
       tenant_id: form.tenant_id || null,
+      empleado_id: form.panel === 'app' ? form.empleado_id || null : null,
       is_active: form.is_active,
     }
     if (form.password) body.password = form.password
@@ -349,6 +353,7 @@ onMounted(async () => {
     form.role = user.role
     form.panel = user.panel
     form.tenant_id = user.tenant_id || ''
+    form.empleado_id = user.empleado_id || ''
     form.is_active = user.is_active
     isSigarhAccount.value = user.account_type === 'sigarh'
     hospitales.value = hospitals

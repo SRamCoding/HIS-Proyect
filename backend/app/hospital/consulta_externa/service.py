@@ -5,7 +5,7 @@ from calendar import monthrange
 from xml.sax.saxutils import escape
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_, func, delete
 from sqlalchemy.exc import IntegrityError
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -873,6 +873,8 @@ async def reprogramar_cita(
     )
     if not cita:
         return None
+    if await db.scalar(select(Triaje.id).where(Triaje.tenant_id == tenant_id, Triaje.cita_id == cita.id)):
+        raise ValueError("La cita ya tiene triaje; no puede trasladar su registro clínico a otra programación.")
     if cita.estado in ("atendida", "cancelada"):
         raise ValueError(f"No se puede reprogramar una cita {cita.estado}")
     programacion = await db.scalar(
@@ -941,6 +943,8 @@ async def reprogramar_citas_bloque(
         raise ValueError("Una o más citas no existen")
     if any(c.estado in ("atendida", "cancelada") for c in citas):
         raise ValueError("No se pueden reprogramar citas atendidas o canceladas")
+    if await db.scalar(select(Triaje.id).where(Triaje.tenant_id == tenant_id, Triaje.cita_id.in_([c.id for c in citas])).limit(1)):
+        raise ValueError("No puede reprogramar citas que ya tienen triaje.")
     for cita, cupo in zip(sorted(citas, key=lambda c: c.hora_inicio), cupos):
         cita.programacion_medica_id = programacion_id
         cita.hora_inicio = cupo["hora_inicio"]
@@ -1306,50 +1310,73 @@ async def buscar_cie10(
     return result.scalars().all()
 
 
-async def create_atencion_medica(
-    db: AsyncSession,
-    tenant_id: uuid.UUID,
-    cita_id: uuid.UUID,
-    data: "AtencionMedicaCreate",
-) -> dict:
-    result = await db.execute(
-        select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id)
-    )
-    cita = result.scalar_one_or_none()
-    if not cita:
-        raise ValueError("Cita no encontrada")
-    if cita.estado != "confirmada":
-        raise ValueError("Solo se puede registrar atencion sobre una cita confirmada")
+ANTECEDENTES = ("antecedente_quirurgico", "antecedente_patologico", "antecedente_alergias", "antecedentes_obstetricos", "antecedente_familiares", "antecedente_otros")
 
-    existing = await db.execute(
-        select(AtencionMedica).where(AtencionMedica.cita_id == cita_id)
-    )
-    if existing.scalar_one_or_none():
-        raise ValueError("Esta cita ya tiene una atencion medica registrada")
 
-    atencion = AtencionMedica(
-        tenant_id=tenant_id,
-        cita_id=cita_id,
-        motivo_consulta=data.motivo_consulta,
-        examen_clinico=data.examen_clinico,
-        plan_tratamiento=data.plan_tratamiento,
-        observaciones=data.observaciones,
-        destino_atencion=data.destino_atencion,
-        indicaciones_alta=data.indicaciones_alta,
-    )
+def expediente(atencion):
+    return {k: getattr(atencion, k) for k in ("motivo_consulta", "enfermedad_actual", "examen_clinico", "plan_tratamiento", "observaciones", "destino_atencion", "indicaciones_alta", "antecedentes_snapshot", "prestaciones", "estado")}
+
+
+async def auditar_atencion(db, tenant_id, atencion, user, accion, antes=None):
+    from app.admin.auditoria.models import AuditLog
+    await db.flush()
+    dx = (await db.scalars(select(AtencionDiagnostico).where(AtencionDiagnostico.atencion_medica_id == atencion.id))).all()
+    datos = expediente(atencion) | {"diagnosticos": [{"id": str(d.diagnostico_cie10_id), "tipo": d.tipo} for d in dx], "cierre_evidencia": atencion.cierre_evidencia}
+    db.add(AuditLog(tenant_id=tenant_id, user_id=uuid.UUID(user["sub"]) if user and user.get("sub") else None,
+        action=accion, model="AtencionMedica", model_id=str(atencion.id), old_values=antes,
+        new_values=datos))
+
+
+async def validar_diagnosticos(db, tenant_id, diagnosticos):
+    ids = [d.diagnostico_cie10_id for d in diagnosticos]
+    if len(ids) != len(set(ids)):
+        raise ValueError("No repita un diagnóstico en la misma atención.")
+    if ids:
+        activos = (await db.scalars(select(DiagnosticoCIE10.id).where(DiagnosticoCIE10.tenant_id == tenant_id,
+            DiagnosticoCIE10.id.in_(ids), DiagnosticoCIE10.is_active == True))).all()
+        if set(activos) != set(ids):
+            raise ValueError("Seleccione diagnósticos activos del catálogo CIE-10 de este hospital.")
+
+
+async def reemplazar_diagnosticos(db, atencion_id, diagnosticos):
+    await db.execute(delete(AtencionDiagnostico).where(AtencionDiagnostico.atencion_medica_id == atencion_id))
+    for dx in diagnosticos:
+        db.add(AtencionDiagnostico(atencion_medica_id=atencion_id, diagnostico_cie10_id=dx.diagnostico_cie10_id, tipo=dx.tipo))
+
+
+async def validar_autor_clinico(db, tenant_id, cita, user):
+    from app.auth.models import User
+    from app.sigarh.mantenimiento.models import Profesion
+    usuario = await db.scalar(select(User).where(User.id == uuid.UUID(user["sub"]), User.is_active == True)) if user else None
+    if not usuario or usuario.panel != "app" or usuario.role != "medico" or not usuario.empleado_id:
+        raise ValueError("La atención requiere una cuenta médica vinculada al empleado desde Admin > Usuarios.")
+    prog = await db.scalar(select(ProgramacionMedica).where(ProgramacionMedica.id == cita.programacion_medica_id, ProgramacionMedica.tenant_id == tenant_id))
+    medico = await db.scalar(select(Empleado).where(Empleado.id == usuario.empleado_id, Empleado.tenant_id == tenant_id, Empleado.is_active == True))
+    profesion = await db.scalar(select(Profesion.codigo).where(Profesion.id == medico.profesion_id, Profesion.tenant_id == tenant_id)) if medico else None
+    if not medico or not prog or prog.medico_id != medico.id or profesion != "MED" or not medico.habilitado_colegio or not (medico.numero_cmp or medico.numero_colegiatura):
+        raise ValueError("Solo el médico programado con colegiatura y habilitación registrada puede modificar o cerrar la atención.")
+    return usuario, medico, prog
+
+
+async def create_atencion_medica(db, tenant_id, cita_id, data, user=None):
+    cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id).with_for_update().execution_options(populate_existing=True))
+    if not cita or cita.estado != "confirmada":
+        raise ValueError("La atención requiere una cita confirmada.")
+    if user:
+        await validar_autor_clinico(db, tenant_id, cita, user)
+    if not await db.scalar(select(Triaje.id).where(Triaje.tenant_id == tenant_id, Triaje.cita_id == cita_id)):
+        raise ValueError("Registre el triaje antes de iniciar la atención médica.")
+    if await db.scalar(select(AtencionMedica.id).where(AtencionMedica.cita_id == cita_id)):
+        raise ValueError("Esta cita ya tiene atención médica.")
+    await validar_diagnosticos(db, tenant_id, data.diagnosticos)
+    paciente = await db.scalar(select(Patient).where(Patient.id == cita.patient_id, Patient.tenant_id == tenant_id))
+    snapshot = data.antecedentes.model_dump() if data.antecedentes else {k: getattr(paciente, k) for k in ANTECEDENTES}
+    payload = data.model_dump(exclude={"diagnosticos", "antecedentes"})
+    atencion = AtencionMedica(tenant_id=tenant_id, cita_id=cita_id, antecedentes_snapshot=snapshot, **payload)
     db.add(atencion)
     await db.flush()
-
-    for dx in data.diagnosticos:
-        db.add(
-            AtencionDiagnostico(
-                atencion_medica_id=atencion.id,
-                diagnostico_cie10_id=dx.diagnostico_cie10_id,
-                tipo=dx.tipo,
-            )
-        )
-
-    cita.estado = "atendida"
+    await reemplazar_diagnosticos(db, atencion.id, data.diagnosticos)
+    await auditar_atencion(db, tenant_id, atencion, user, "atencion_creada")
     await db.commit()
     return await get_atencion_medica(db, tenant_id, cita_id)
 
@@ -1411,6 +1438,10 @@ async def get_atencion_medica(
         "especialidad_nombre": especialidad.nombre if especialidad else None,
         "servicio_nombre": servicio.nombre if servicio else None,
         "motivo_consulta": atencion.motivo_consulta,
+        "enfermedad_actual": atencion.enfermedad_actual,
+        "prestaciones": atencion.prestaciones or [],
+        "antecedentes_documentados": atencion.antecedentes_snapshot is not None,
+        "cierre_evidencia": atencion.cierre_evidencia,
         "examen_clinico": atencion.examen_clinico,
         "plan_tratamiento": atencion.plan_tratamiento,
         "observaciones": atencion.observaciones,
@@ -1419,12 +1450,12 @@ async def get_atencion_medica(
         "estado": atencion.estado,
         "firmado_at": atencion.firmado_at,
         "diagnosticos": diagnosticos,
-        "antecedente_quirurgico": paciente.antecedente_quirurgico,
-        "antecedente_patologico": paciente.antecedente_patologico,
-        "antecedente_alergias": paciente.antecedente_alergias,
-        "antecedentes_obstetricos": paciente.antecedentes_obstetricos,
-        "antecedente_familiares": paciente.antecedente_familiares,
-        "antecedente_otros": paciente.antecedente_otros,
+        "antecedente_quirurgico": (atencion.antecedentes_snapshot or {}).get("antecedente_quirurgico"),
+        "antecedente_patologico": (atencion.antecedentes_snapshot or {}).get("antecedente_patologico"),
+        "antecedente_alergias": (atencion.antecedentes_snapshot or {}).get("antecedente_alergias"),
+        "antecedentes_obstetricos": (atencion.antecedentes_snapshot or {}).get("antecedentes_obstetricos"),
+        "antecedente_familiares": (atencion.antecedentes_snapshot or {}).get("antecedente_familiares"),
+        "antecedente_otros": (atencion.antecedentes_snapshot or {}).get("antecedente_otros"),
         "triaje": {
             "pulso": triaje.pulso,
             "temperatura": triaje.temperatura,
@@ -1443,47 +1474,84 @@ async def get_atencion_medica(
     }
 
 
-async def update_atencion_medica(
-    db: AsyncSession,
-    tenant_id: uuid.UUID,
-    cita_id: uuid.UUID,
-    data: "AtencionMedicaUpdate",
-) -> dict | None:
-    result = await db.execute(
-        select(AtencionMedica).where(
-            AtencionMedica.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id
-        )
-    )
-    atencion = result.scalar_one_or_none()
+async def update_atencion_medica(db, tenant_id, cita_id, data, user=None):
+    atencion = await db.scalar(select(AtencionMedica).where(AtencionMedica.tenant_id == tenant_id,
+        AtencionMedica.cita_id == cita_id).with_for_update().execution_options(populate_existing=True))
     if not atencion:
         return None
-    if atencion.estado == "firmado":
-        raise ValueError("No se puede editar una atencion ya firmada")
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(atencion, field, value)
+    if atencion.estado != "borrador":
+        raise ValueError("No puede editar una atención cerrada.")
+    if user:
+        cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id))
+        await validar_autor_clinico(db, tenant_id, cita, user)
+    payload = data.model_dump(exclude_unset=True, exclude={"diagnosticos", "antecedentes"})
+    if data.diagnosticos is not None:
+        await validar_diagnosticos(db, tenant_id, data.diagnosticos)
+    # Evita dejar documentos emitidos fuera de la selección guardada.
+    for prestacion, modelo in (("FARMACIA", Receta), ("LABORATORIO", OrdenLaboratorio), ("IMAGEN", OrdenImagen), ("INTERCONSULTA", Interconsulta), ("HOSPITALIZACION", Hospitalizacion), ("REFERENCIA", Referencia)):
+        requerida = prestacion in payload.get("prestaciones", atencion.prestaciones or []) or prestacion == payload.get("destino_atencion", atencion.destino_atencion)
+        if not requerida and await db.scalar(select(modelo.id).where(modelo.atencion_medica_id == atencion.id)):
+            raise ValueError("Ya existe un documento de " + prestacion + "; no puede quitarlo de esta atención.")
+    antes = expediente(atencion)
+    for k, v in payload.items():
+        setattr(atencion, k, v)
+    if data.antecedentes is not None:
+        atencion.antecedentes_snapshot = data.antecedentes.model_dump()
+    if data.diagnosticos is not None:
+        await reemplazar_diagnosticos(db, atencion.id, data.diagnosticos)
+    await auditar_atencion(db, tenant_id, atencion, user, "atencion_editada", antes)
     await db.commit()
     return await get_atencion_medica(db, tenant_id, cita_id)
 
 
-async def firmar_atencion_medica(
-    db: AsyncSession,
-    tenant_id: uuid.UUID,
-    cita_id: uuid.UUID,
-    firmado_por_id: uuid.UUID | None = None,
-) -> dict | None:
-    result = await db.execute(
-        select(AtencionMedica).where(
-            AtencionMedica.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id
-        )
-    )
-    atencion = result.scalar_one_or_none()
+async def firmar_atencion_medica(db, tenant_id, cita_id, firmado_por_id=None, user=None):
+    import hashlib, json
+    from app.auth.models import User
+    cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id).with_for_update().execution_options(populate_existing=True))
+    if not cita:
+        return None
+    atencion = await db.scalar(select(AtencionMedica).where(AtencionMedica.tenant_id == tenant_id,
+        AtencionMedica.cita_id == cita_id).with_for_update().execution_options(populate_existing=True))
     if not atencion:
         return None
-    if atencion.estado == "firmado":
-        raise ValueError("Esta atencion ya esta firmada")
+    if atencion.estado != "borrador":
+        raise ValueError("Esta atención ya está cerrada.")
+    usuario, medico, prog = await validar_autor_clinico(db, tenant_id, cita, user)
+    faltantes = [k for k in ("motivo_consulta", "enfermedad_actual", "examen_clinico", "plan_tratamiento") if not (getattr(atencion, k) or "").strip()]
+    if faltantes:
+        raise ValueError("Complete los datos clínicos: " + ", ".join(faltantes))
+    if not atencion.antecedentes_snapshot or any(not (atencion.antecedentes_snapshot.get(k) or "").strip() for k in ANTECEDENTES):
+        raise ValueError("Documente los antecedentes; indique expresamente cuando no aplica o el paciente no refiere.")
+    triaje = await get_triaje_by_cita(db, tenant_id, cita_id)
+    if not triaje:
+        raise ValueError("La atención requiere triaje registrado.")
+    diagnosticos = (await db.scalars(select(AtencionDiagnostico).where(AtencionDiagnostico.atencion_medica_id == atencion.id))).all()
+    if not diagnosticos:
+        raise ValueError("Registre al menos un diagnóstico CIE-10.")
+    await validar_diagnosticos(db, tenant_id, diagnosticos)
+    if atencion.destino_atencion not in ("ALTA", "HOSPITALIZACION", "REFERENCIA"):
+        raise ValueError("Seleccione un destino del paciente válido.")
+    if atencion.destino_atencion == "ALTA" and not (atencion.indicaciones_alta or "").strip():
+        raise ValueError("Registre las indicaciones de alta.")
+    for prestacion, modelo in (("FARMACIA", Receta), ("LABORATORIO", OrdenLaboratorio), ("IMAGEN", OrdenImagen), ("INTERCONSULTA", Interconsulta), ("HOSPITALIZACION", Hospitalizacion), ("REFERENCIA", Referencia)):
+        if prestacion in (atencion.prestaciones or []) or prestacion == atencion.destino_atencion:
+            if not await db.scalar(select(modelo.id).where(modelo.atencion_medica_id == atencion.id)):
+                raise ValueError("Complete el documento de " + prestacion + " antes del cierre.")
+    antes = expediente(atencion)
+    contenido = expediente(atencion) | {"diagnosticos": [{"id": str(d.diagnostico_cie10_id), "tipo": d.tipo} for d in diagnosticos],
+        "triaje": {k: getattr(triaje, k) for k in ("pulso", "temperatura", "presion_sistolica", "presion_diastolica", "frecuencia_cardiaca", "frecuencia_respiratoria", "peso", "talla", "saturacion_o2")},
+        "cita_id": str(cita_id), "tenant_id": str(tenant_id)}
+    paciente = await db.scalar(select(Patient).where(Patient.id == cita.patient_id, Patient.tenant_id == tenant_id))
+    historia = await db.scalar(select(ClinicalRecord).where(ClinicalRecord.patient_id == cita.patient_id))
+    contenido["paciente"] = {"id": str(paciente.id), "nombre": paciente.full_name, "documento": paciente.dni, "historia_clinica": historia.record_number if historia else None}
+    atencion.cierre_evidencia = {"tipo": "CIERRE_INTERNO_SIN_CERTIFICADO_DIGITAL", "usuario_id": str(usuario.id), "usuario_nombre": usuario.name,
+        "medico_id": str(medico.id), "medico_nombre": medico.nombre_completo, "colegiatura": medico.numero_cmp or medico.numero_colegiatura,
+        "contenido": contenido, "sha256": hashlib.sha256(json.dumps(contenido, sort_keys=True, ensure_ascii=False).encode()).hexdigest()}
     atencion.estado = "firmado"
     atencion.firmado_at = datetime.utcnow()
-    atencion.firmado_por_id = firmado_por_id
+    atencion.firmado_por_id = medico.id
+    cita.estado = "atendida"
+    await auditar_atencion(db, tenant_id, atencion, user, "atencion_cerrada", antes)
     await db.commit()
     return await get_atencion_medica(db, tenant_id, cita_id)
 
@@ -1572,19 +1640,24 @@ def _generar_numero_receta(secuencia: int) -> str:
 
 
 async def create_receta(
-    db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: "RecetaCreate"
+    db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: "RecetaCreate", user=None
 ) -> dict:
     result = await db.execute(
         select(AtencionMedica).where(
             AtencionMedica.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id
-        )
+        ).with_for_update().execution_options(populate_existing=True)
     )
     atencion = result.scalar_one_or_none()
     if not atencion:
         raise ValueError("Debe registrar la atencion medica antes de generar la receta")
-    if atencion.destino_atencion != "FARMACIA":
+    if user:
+        cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id))
+        await validar_autor_clinico(db, tenant_id, cita, user)
+    if atencion.estado != "borrador":
+        raise ValueError("La atención está cerrada; no puede generar documentos nuevos.")
+    if atencion.destino_atencion != "FARMACIA" and "FARMACIA" not in (atencion.prestaciones or []):
         raise ValueError(
-            "El destino de la atencion debe ser FARMACIA para generar una receta"
+            "Seleccione la prestación Farmacia y guarde la atención antes de generar una receta"
         )
 
     existing = await db.execute(
@@ -1593,6 +1666,12 @@ async def create_receta(
     if existing.scalar_one_or_none():
         raise ValueError("Esta atencion ya tiene una receta generada")
 
+    ids = [item.medicamento_id for item in data.items]
+    validos = (await db.scalars(select(Medicamento.id).where(Medicamento.tenant_id == tenant_id, Medicamento.id.in_(ids), Medicamento.is_active == True))).all()
+    if set(validos) != set(ids):
+        raise ValueError("Seleccione medicamentos activos de este hospital.")
+    if any(not (item.indicaciones or "").strip() and (not (item.dosis or "").strip() or not (item.frecuencia or "").strip()) for item in data.items):
+        raise ValueError("Documente dosis y frecuencia o las indicaciones completas de cada medicamento.")
     count = await db.scalar(select(func.count(Receta.id)))
     receta = Receta(
         tenant_id=tenant_id,
@@ -1675,20 +1754,33 @@ async def create_hospitalizacion(
     tenant_id: uuid.UUID,
     cita_id: uuid.UUID,
     data: "HospitalizacionCreate",
+    user=None,
 ) -> dict:
     result = await db.execute(
         select(AtencionMedica).where(
             AtencionMedica.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id
-        )
+        ).with_for_update().execution_options(populate_existing=True)
     )
     atencion = result.scalar_one_or_none()
     if not atencion:
         raise ValueError(
             "Debe registrar la atencion medica antes de generar la hospitalizacion"
         )
-    if atencion.destino_atencion != "HOSPITALIZACION":
+    if user:
+        cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id))
+        await validar_autor_clinico(db, tenant_id, cita, user)
+    if atencion.estado != "borrador":
+        raise ValueError("La atención está cerrada; no puede generar documentos nuevos.")
+    if atencion.destino_atencion != "HOSPITALIZACION" and "HOSPITALIZACION" not in (atencion.prestaciones or []):
         raise ValueError("El destino de la atencion debe ser HOSPITALIZACION")
 
+    if data.diagnostico_ingreso_id:
+        valido = await db.scalar(select(DiagnosticoCIE10.id).where(DiagnosticoCIE10.id == data.diagnostico_ingreso_id, DiagnosticoCIE10.tenant_id == tenant_id, DiagnosticoCIE10.is_active == True))
+        if not valido:
+            raise ValueError("Seleccione un diagnóstico activo de este hospital.")
+
+    if data.especialidad_ingreso_id and not await db.scalar(select(Especialidad.id).where(Especialidad.id == data.especialidad_ingreso_id, Especialidad.tenant_id == tenant_id, Especialidad.is_active == True)):
+        raise ValueError("Seleccione una especialidad activa de este hospital.")
     existing = await db.execute(
         select(Hospitalizacion).where(Hospitalizacion.atencion_medica_id == atencion.id)
     )
@@ -1696,7 +1788,7 @@ async def create_hospitalizacion(
         raise ValueError("Esta atencion ya tiene una hospitalizacion registrada")
 
     cama_result = await db.execute(
-        select(Cama).where(Cama.id == data.cama_id, Cama.tenant_id == tenant_id)
+        select(Cama).where(Cama.id == data.cama_id, Cama.tenant_id == tenant_id).with_for_update().execution_options(populate_existing=True)
     )
     cama = cama_result.scalar_one_or_none()
     if not cama:
@@ -1737,7 +1829,7 @@ async def get_hospitalizacion(
         )
         .where(
             Hospitalizacion.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id
-        )
+        ).with_for_update().execution_options(populate_existing=True)
     )
     row = result.first()
     if not row:
@@ -1768,7 +1860,7 @@ async def dar_alta_hospitalizacion(
         .join(AtencionMedica, AtencionMedica.id == Hospitalizacion.atencion_medica_id)
         .where(
             Hospitalizacion.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id
-        )
+        ).with_for_update().execution_options(populate_existing=True)
     )
     row = result.first()
     if not row:
@@ -1814,6 +1906,7 @@ async def create_orden_laboratorio(
     tenant_id: uuid.UUID,
     cita_id: uuid.UUID,
     data: "OrdenLaboratorioCreate",
+    user=None,
 ) -> dict:
     result = await db.execute(
         select(AtencionMedica)
@@ -1823,8 +1916,13 @@ async def create_orden_laboratorio(
     atencion = result.scalar_one_or_none()
     if not atencion:
         raise ValueError("Debe registrar la atencion medica antes de generar la orden")
-    if atencion.destino_atencion != "LABORATORIO":
-        raise ValueError("El destino de la atencion debe ser LABORATORIO")
+    if user:
+        cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id))
+        await validar_autor_clinico(db, tenant_id, cita, user)
+    if atencion.estado != "borrador":
+        raise ValueError("La atención está cerrada; no puede generar documentos nuevos.")
+    if atencion.destino_atencion != "LABORATORIO" and "LABORATORIO" not in (atencion.prestaciones or []):
+        raise ValueError("Seleccione la prestación LABORATORIO y guarde la atención")
 
     existing = await db.execute(
         select(OrdenLaboratorio).where(
@@ -1873,7 +1971,7 @@ async def get_orden_laboratorio(
         .join(AtencionMedica, AtencionMedica.id == OrdenLaboratorio.atencion_medica_id)
         .where(
             OrdenLaboratorio.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id
-        )
+        ).with_for_update().execution_options(populate_existing=True)
     )
     row = result.first()
     if not row:
@@ -1934,17 +2032,23 @@ async def create_orden_imagen(
     tenant_id: uuid.UUID,
     cita_id: uuid.UUID,
     data: "OrdenImagenCreate",
+    user=None,
 ) -> dict:
     result = await db.execute(
         select(AtencionMedica).where(
             AtencionMedica.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id
-        )
+        ).with_for_update().execution_options(populate_existing=True)
     )
     atencion = result.scalar_one_or_none()
     if not atencion:
         raise ValueError("Debe registrar la atencion medica antes de generar la orden")
-    if atencion.destino_atencion != "IMAGEN":
-        raise ValueError("El destino de la atencion debe ser IMAGEN")
+    if user:
+        cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id))
+        await validar_autor_clinico(db, tenant_id, cita, user)
+    if atencion.estado != "borrador":
+        raise ValueError("La atención está cerrada; no puede generar documentos nuevos.")
+    if atencion.destino_atencion != "IMAGEN" and "IMAGEN" not in (atencion.prestaciones or []):
+        raise ValueError("Seleccione la prestación IMAGEN y guarde la atención")
 
     existing = await db.execute(
         select(OrdenImagen).where(OrdenImagen.atencion_medica_id == atencion.id)
@@ -2012,20 +2116,35 @@ async def create_interconsulta(
     tenant_id: uuid.UUID,
     cita_id: uuid.UUID,
     data: "InterconsultaCreate",
+    user=None,
 ) -> dict:
     result = await db.execute(
         select(AtencionMedica).where(
             AtencionMedica.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id
-        )
+        ).with_for_update().execution_options(populate_existing=True)
     )
     atencion = result.scalar_one_or_none()
     if not atencion:
         raise ValueError(
             "Debe registrar la atencion medica antes de generar la interconsulta"
         )
-    if atencion.destino_atencion != "INTERCONSULTA":
-        raise ValueError("El destino de la atencion debe ser INTERCONSULTA")
+    if user:
+        cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id))
+        await validar_autor_clinico(db, tenant_id, cita, user)
+    if atencion.estado != "borrador":
+        raise ValueError("La atención está cerrada; no puede generar documentos nuevos.")
+    if atencion.destino_atencion != "INTERCONSULTA" and "INTERCONSULTA" not in (atencion.prestaciones or []):
+        raise ValueError("Seleccione la prestación INTERCONSULTA y guarde la atención")
 
+    if data.diagnostico_id:
+        valido = await db.scalar(select(DiagnosticoCIE10.id).where(DiagnosticoCIE10.id == data.diagnostico_id, DiagnosticoCIE10.tenant_id == tenant_id, DiagnosticoCIE10.is_active == True))
+        if not valido:
+            raise ValueError("Seleccione un diagnóstico activo de este hospital.")
+
+    if not data.motivo.strip():
+        raise ValueError("Documente el motivo de la interconsulta.")
+    if not await db.scalar(select(Especialidad.id).where(Especialidad.id == data.especialidad_destino_id, Especialidad.tenant_id == tenant_id, Especialidad.is_active == True)):
+        raise ValueError("Seleccione una especialidad activa de este hospital.")
     existing = await db.execute(
         select(Interconsulta).where(Interconsulta.atencion_medica_id == atencion.id)
     )
@@ -2169,20 +2288,30 @@ async def get_tenants_disponibles(
 
 
 async def create_referencia(
-    db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: "ReferenciaCreate"
+    db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: "ReferenciaCreate", user=None
 ) -> dict:
     result = await db.execute(
         select(AtencionMedica).where(
             AtencionMedica.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id
-        )
+        ).with_for_update().execution_options(populate_existing=True)
     )
     atencion = result.scalar_one_or_none()
     if not atencion:
         raise ValueError(
             "Debe registrar la atencion medica antes de generar la referencia"
         )
-    if atencion.destino_atencion != "REFERENCIA":
+    if user:
+        cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id))
+        await validar_autor_clinico(db, tenant_id, cita, user)
+    if atencion.estado != "borrador":
+        raise ValueError("La atención está cerrada; no puede generar documentos nuevos.")
+    if atencion.destino_atencion != "REFERENCIA" and "REFERENCIA" not in (atencion.prestaciones or []):
         raise ValueError("El destino de la atencion debe ser REFERENCIA")
+
+    if data.diagnostico_id:
+        valido = await db.scalar(select(DiagnosticoCIE10.id).where(DiagnosticoCIE10.id == data.diagnostico_id, DiagnosticoCIE10.tenant_id == tenant_id, DiagnosticoCIE10.is_active == True))
+        if not valido:
+            raise ValueError("Seleccione un diagnóstico activo de este hospital.")
 
     existing = await db.execute(
         select(Referencia).where(Referencia.atencion_medica_id == atencion.id)

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from sqlalchemy import String, Boolean, DateTime, Date, Text, Integer, Float, ForeignKey, UniqueConstraint, Index, text
+from sqlalchemy import String, Boolean, DateTime, Date, Text, Integer, Float, ForeignKey, UniqueConstraint, Index, text, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -134,6 +134,10 @@ class AtencionMedica(Base):
     cita_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("citas.id", ondelete="CASCADE"), unique=True)
 
     motivo_consulta: Mapped[str] = mapped_column(Text)
+    enfermedad_actual: Mapped[str | None] = mapped_column(Text, nullable=True)
+    antecedentes_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    prestaciones: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    cierre_evidencia: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     examen_clinico: Mapped[str | None] = mapped_column(Text, nullable=True)
     plan_tratamiento: Mapped[str | None] = mapped_column(Text, nullable=True)
     observaciones: Mapped[str | None] = mapped_column(Text, nullable=True)

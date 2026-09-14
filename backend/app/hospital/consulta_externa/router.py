@@ -311,7 +311,7 @@ async def obtener_atencion_medica(cita_id: uuid.UUID, request: Request, db: Asyn
 @router.post("/atenciones-medicas/{cita_id}", response_model=AtencionMedicaResponse, status_code=201)
 async def crear_atencion_medica(cita_id: uuid.UUID, data: AtencionMedicaCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
     try:
-        return await create_atencion_medica(db, get_tenant_id(current_user, request), cita_id, data)
+        return await create_atencion_medica(db, get_tenant_id(current_user, request), cita_id, data, current_user)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
 
@@ -319,7 +319,7 @@ async def crear_atencion_medica(cita_id: uuid.UUID, data: AtencionMedicaCreate, 
 @router.patch("/atenciones-medicas/{cita_id}", response_model=AtencionMedicaResponse)
 async def actualizar_atencion_medica(cita_id: uuid.UUID, data: AtencionMedicaUpdate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
     try:
-        atencion = await update_atencion_medica(db, get_tenant_id(current_user, request), cita_id, data)
+        atencion = await update_atencion_medica(db, get_tenant_id(current_user, request), cita_id, data, current_user)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
     if not atencion:
@@ -330,7 +330,7 @@ async def actualizar_atencion_medica(cita_id: uuid.UUID, data: AtencionMedicaUpd
 @router.post("/atenciones-medicas/{cita_id}/firmar", response_model=AtencionMedicaResponse)
 async def firmar_atencion_endpoint(cita_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
     try:
-        atencion = await firmar_atencion_medica(db, get_tenant_id(current_user, request), cita_id)
+        atencion = await firmar_atencion_medica(db, get_tenant_id(current_user, request), cita_id, user=current_user)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
     if not atencion:
@@ -356,7 +356,7 @@ async def obtener_receta(cita_id: uuid.UUID, request: Request, db: AsyncSession 
 @router.post("/farmacia/recetas/{cita_id}", response_model=RecetaResponse, status_code=201)
 async def crear_receta(cita_id: uuid.UUID, data: RecetaCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
     try:
-        return await create_receta(db, get_tenant_id(current_user, request), cita_id, data)
+        return await create_receta(db, get_tenant_id(current_user, request), cita_id, data, user=current_user)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
 
@@ -381,7 +381,7 @@ async def obtener_hospitalizacion(cita_id: uuid.UUID, request: Request, db: Asyn
 @router.post("/hospitalizacion/{cita_id}", response_model=HospitalizacionResponse, status_code=201)
 async def crear_hospitalizacion(cita_id: uuid.UUID, data: HospitalizacionCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
     try:
-        return await create_hospitalizacion(db, get_tenant_id(current_user, request), cita_id, data)
+        return await create_hospitalizacion(db, get_tenant_id(current_user, request), cita_id, data, user=current_user)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
 
@@ -413,7 +413,7 @@ async def obtener_orden_laboratorio(cita_id: uuid.UUID, request: Request, db: As
 @router.post("/laboratorio/ordenes/{cita_id}", response_model=OrdenLaboratorioResponse, status_code=201)
 async def crear_orden_laboratorio(cita_id: uuid.UUID, data: OrdenLaboratorioCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
     try:
-        return await create_orden_laboratorio(db, get_tenant_id(current_user, request), cita_id, data)
+        return await create_orden_laboratorio(db, get_tenant_id(current_user, request), cita_id, data, user=current_user)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
 
@@ -433,7 +433,7 @@ async def obtener_orden_imagen(cita_id: uuid.UUID, request: Request, db: AsyncSe
 @router.post("/imagenologia/ordenes/{cita_id}", response_model=OrdenImagenResponse, status_code=201)
 async def crear_orden_imagen(cita_id: uuid.UUID, data: OrdenImagenCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
     try:
-        return await create_orden_imagen(db, get_tenant_id(current_user, request), cita_id, data)
+        return await create_orden_imagen(db, get_tenant_id(current_user, request), cita_id, data, user=current_user)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
 
@@ -454,7 +454,7 @@ async def obtener_interconsulta(cita_id: uuid.UUID, request: Request, db: AsyncS
 @router.post("/interconsultas/{cita_id}", response_model=InterconsultaResponse, status_code=201)
 async def crear_interconsulta(cita_id: uuid.UUID, data: InterconsultaCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
     try:
-        return await create_interconsulta(db, get_tenant_id(current_user, request), cita_id, data)
+        return await create_interconsulta(db, get_tenant_id(current_user, request), cita_id, data, user=current_user)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
 
@@ -486,7 +486,7 @@ async def obtener_referencia(cita_id: uuid.UUID, request: Request, db: AsyncSess
 @router.post("/referencias/{cita_id}", response_model=ReferenciaResponse, status_code=201)
 async def crear_referencia(cita_id: uuid.UUID, data: ReferenciaCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
     try:
-        return await create_referencia(db, get_tenant_id(current_user, request), cita_id, data)
+        return await create_referencia(db, get_tenant_id(current_user, request), cita_id, data, user=current_user)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
 

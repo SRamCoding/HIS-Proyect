@@ -14,6 +14,7 @@ class UserListItem(BaseModel):
     email: str
     role: str
     panel: str
+    empleado_id: uuid.UUID | None = None
     tenant_id: uuid.UUID | None
     is_active: bool
     created_at: datetime
@@ -31,6 +32,7 @@ class UserCreate(BaseModel):
     # User con panel="sigarh" desde Admin deja una cuenta fantasma que nunca
     # puede iniciar sesión (el login de SIGARH no lee la tabla User).
     panel: Literal["admin", "app", "portal"]
+    empleado_id: uuid.UUID | None = None
     tenant_id: uuid.UUID | None = None
 
     @field_validator("name")
@@ -64,6 +66,8 @@ class UserCreate(BaseModel):
         # Una cuenta del panel admin siempre debe tener el rol real de
         # administrador: es lo único que separa a un superadmin de una
         # cuenta cualquiera (ver get_admin_user en core/dependencies.py).
+        if self.empleado_id and self.panel != "app":
+            raise ValueError("El empleado solo puede vincularse a una cuenta hospitalaria.")
         if self.panel == "admin" and self.role != "administrador":
             raise ValueError("Las cuentas del panel admin deben tener el rol 'administrador'")
         return self
@@ -75,6 +79,7 @@ class UserUpdate(BaseModel):
     password: str | None = None
     role: str | None = None
     panel: Literal["admin", "app", "portal"] | None = None
+    empleado_id: uuid.UUID | None = None
     tenant_id: uuid.UUID | None = None
     is_active: bool | None = None
 

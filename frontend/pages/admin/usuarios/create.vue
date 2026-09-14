@@ -110,6 +110,8 @@
           </div>
         </div>
 
+        <SUsuarioEmpleado v-if="!isAdminView && form.panel === 'app'" v-model="form.empleado_id" :tenant-id="form.tenant_id" />
+
         <div class="form-group full-width">
           <div class="status-toggle">
             <span class="toggle-label">Usuario Activo</span>
@@ -172,6 +174,7 @@ const form = reactive({
   role: 'administrador',
   panel: isAdminView.value ? 'admin' : 'app',
   tenant_id: '',
+  empleado_id: '',
   is_active: true,
 })
 
@@ -216,6 +219,7 @@ const handleCreate = async () => {
       role: form.role,
       panel: isAdminView.value ? 'admin' : form.panel,
       tenant_id: form.tenant_id || null,
+      empleado_id: form.panel === 'app' ? form.empleado_id || null : null,
       is_active: form.is_active,
     }
 
