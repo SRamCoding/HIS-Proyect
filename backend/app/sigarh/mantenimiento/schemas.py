@@ -351,6 +351,15 @@ def esquema_parcial(schema):
     fields = {}
     for name, info in schema.model_fields.items():
         annotation = Annotated[info.annotation, *info.metadata] if info.metadata else info.annotation
+        # Una relación (*_id) obligatoria en el Create (ej. PerfilUsuarioCreate.
+        # rol_sistema_id, UsuarioSigarhCreate.perfil_id) hereda ese tipo estricto
+        # sin "| None" si no se ajusta aquí; el default=None de abajo solo deja
+        # OMITIR el campo, pero un PATCH que manda null explícito (ej. "Sin rol"
+        # en el frontend) sigue rechazado por Pydantic aunque la relación sea
+        # legítimamente limpiable. No se aplica a campos escalares (username,
+        # email, etc.) que nunca deben aceptar null.
+        if name.endswith("_id") and annotation is not type(None):
+            annotation = annotation | None
         fields[name] = (annotation, None)
     return create_model(schema.__name__.replace("Create", "Update"), __base__=Entrada, **fields)
 

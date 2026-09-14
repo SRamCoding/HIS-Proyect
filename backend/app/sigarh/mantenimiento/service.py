@@ -166,30 +166,45 @@ async def validar_relaciones(db, modelo, tenant_id, values):
     if modelo is m.PerfilUsuario:
         from app.tenants.modulos.submodulos import modulo_padre, permiso_incluye
         rol = refs["rol_sistema_id"]
-        habilitados = {module.code for module in await modulos_habilitados(db, tenant_id)}
-        if rol.panel != "sigarh" or (rol.modulo_requerido and rol.modulo_requerido not in habilitados):
-            raise HTTPException(422, "El rol no es válido para SIGARH o su módulo requerido está deshabilitado")
-        # Un código de modulos_acceso puede venir con submódulo (ej.
-        # "sigarh_recursos_humanos.empleados"): es válido si el rol lo cubre
-        # (código exacto o su módulo padre) y ese módulo padre está habilitado
-        # para el hospital. Antes esto era una resta de sets por código exacto,
-        # que rechazaba cualquier submódulo fino aunque el rol lo permitiera.
-        concedidos_rol = set(lista(rol.modulos_permitidos))
-        no_validos = {
-            c for c in values["modulos_acceso"]
-            if not permiso_incluye(concedidos_rol, c) or modulo_padre(c) not in habilitados
-        }
-        if no_validos:
-            raise HTTPException(422, "Los módulos deben estar permitidos por el rol y habilitados en el hospital")
+        # rol_sistema_id es nullable en el modelo ("Sin rol" en el frontend);
+        # sin rol no hay nada que autorice modulos_acceso, así que debe venir
+        # vacío. Sin este chequeo, `rol.panel` explota con AttributeError en
+        # cuanto se permite null aquí (antes era imposible llegar: el esquema
+        # rechazaba el null antes de esto).
+        if rol is None:
+            if values["modulos_acceso"]:
+                raise HTTPException(422, "Un perfil sin rol no puede tener módulos de acceso")
+        else:
+            habilitados = {module.code for module in await modulos_habilitados(db, tenant_id)}
+            if rol.panel != "sigarh" or (rol.modulo_requerido and rol.modulo_requerido not in habilitados):
+                raise HTTPException(422, "El rol no es válido para SIGARH o su módulo requerido está deshabilitado")
+            # Un código de modulos_acceso puede venir con submódulo (ej.
+            # "sigarh_recursos_humanos.empleados"): es válido si el rol lo cubre
+            # (código exacto o su módulo padre) y ese módulo padre está habilitado
+            # para el hospital. Antes esto era una resta de sets por código exacto,
+            # que rechazaba cualquier submódulo fino aunque el rol lo permitiera.
+            concedidos_rol = set(lista(rol.modulos_permitidos))
+            no_validos = {
+                c for c in values["modulos_acceso"]
+                if not permiso_incluye(concedidos_rol, c) or modulo_padre(c) not in habilitados
+            }
+            if no_validos:
+                raise HTTPException(422, "Los módulos deben estar permitidos por el rol y habilitados en el hospital")
     if modelo is m.UsuarioSigarh:
+        # perfil_id es nullable (un usuario puede quedar sin perfil asignado,
+        # el login lo rechaza aparte en contexto_sigarh()); sin este chequeo
+        # `perfil.rol_sistema_id` explota con AttributeError apenas se permite
+        # null aquí (antes era imposible llegar: el esquema rechazaba el null
+        # antes de esto).
         perfil = refs["perfil_id"]
-        rol = await referencia(db, m.RolSistema, perfil.rol_sistema_id, tenant_id, "rol del perfil")
-        if not rol or rol.panel != "sigarh":
-            raise HTTPException(422, "El perfil requiere un rol SIGARH activo")
-        grupos = set(lista(rol.grupos_ocupacionales_permitidos))
-        empleado = refs.get("empleado_id")
-        if grupos and (not empleado or str(empleado.grupo_ocupacional_id) not in grupos):
-            raise HTTPException(422, "Seleccione un empleado del grupo ocupacional permitido por el rol")
+        if perfil is not None:
+            rol = await referencia(db, m.RolSistema, perfil.rol_sistema_id, tenant_id, "rol del perfil")
+            if not rol or rol.panel != "sigarh":
+                raise HTTPException(422, "El perfil requiere un rol SIGARH activo")
+            grupos = set(lista(rol.grupos_ocupacionales_permitidos))
+            empleado = refs.get("empleado_id")
+            if grupos and (not empleado or str(empleado.grupo_ocupacional_id) not in grupos):
+                raise HTTPException(422, "Seleccione un empleado del grupo ocupacional permitido por el rol")
 
 
 async def validar_unicidad(db, modelo, tenant_id, values, item=None):

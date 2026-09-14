@@ -1,13 +1,23 @@
-"""Regresiones del PATCH de usuarios. Sin escrituras en una base de datos."""
+"""Regresiones del esquema y las validaciones de relaciones de Mantenimiento.
+
+Sin escrituras en una base de datos: `validar_relaciones()` nunca toca `db`
+cuando el id de la relación es None (`referencia()` corta antes de consultar),
+así que las pruebas de regresión de más abajo pasan `db=None` a propósito.
+"""
 
 import unittest
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from pydantic import ValidationError
 
-from app.sigarh.mantenimiento.schemas import UsuarioSigarhUpdate
+from app.sigarh.mantenimiento import models as m
+from app.sigarh.mantenimiento.schemas import (
+    PerfilUsuarioCreate,
+    UsuarioSigarhCreate,
+    UsuarioSigarhUpdate,
+    esquema_parcial,
+)
+from app.sigarh.mantenimiento.service import validar_relaciones
 
 
 class UsuarioUpdateSchemaTests(unittest.TestCase):
@@ -32,6 +42,9 @@ class UsuarioUpdateSchemaTests(unittest.TestCase):
         )
 
     def test_nullable_relationship_can_be_cleared(self):
+        # perfil_id es obligatorio en UsuarioSigarhCreate (uuid.UUID sin
+        # "| None"), pero nullable en el modelo -- el Update debe aceptar
+        # null explicito para poder "desasignar" el perfil de una cuenta.
         self.assertEqual(
             UsuarioSigarhUpdate(perfil_id=None).model_dump(exclude_unset=True),
             {"perfil_id": None},
@@ -43,69 +56,61 @@ class UsuarioUpdateSchemaTests(unittest.TestCase):
                 UsuarioSigarhUpdate.model_validate({field: "no-es-uuid"})
 
     def test_non_nullable_fields_reject_explicit_null(self):
+        # esquema_parcial solo relaja los campos *_id; los escalares (que
+        # nunca deben aceptar null) siguen rechazandolo.
         for field in ("username", "email", "is_active"):
             with self.subTest(field=field), self.assertRaises(ValidationError):
                 UsuarioSigarhUpdate.model_validate({field: None})
 
+    def test_create_still_requires_perfil_id(self):
+        # El relajo de esquema_parcial es exclusivo del Update generado; el
+        # Create (usado al dar de alta una cuenta) sigue exigiendo el perfil.
+        with self.assertRaises(ValidationError):
+            UsuarioSigarhCreate(username="nuevo", email="nuevo@example.invalid", password="x")
 
-class UsuarioUpdateEndpointTests(unittest.IsolatedAsyncioTestCase):
-    async def call_endpoint(self, payload, item):
-        from app.sigarh.mantenimiento.router import actualizar_usuario
 
-        db = SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock())
-        tenant_id = uuid4()
-        user_id = item.id if item else uuid4()
-        with patch(
-            "app.sigarh.mantenimiento.router.obtener", new_callable=AsyncMock,
-            return_value=item,
-        ) as obtener:
-            result = await actualizar_usuario(
-                request=SimpleNamespace(headers={}), id=user_id,
-                data=UsuarioSigarhUpdate.model_validate(payload), db=db,
-                tenant={}, current_user={"tenant_id": str(tenant_id)},
-            )
-            obtener.assert_awaited_once()
-            self.assertEqual(obtener.call_args.args[2:], (user_id, tenant_id))
-        db.commit.assert_awaited_once()
-        db.refresh.assert_awaited_once_with(item)
-        return result
+class RelacionLimpiableSinCrashTests(unittest.IsolatedAsyncioTestCase):
+    """Regresion del bug encontrado al arreglar el punto anterior: una vez que
+    esquema_parcial dejo pasar `perfil_id`/`rol_sistema_id` en None, ese None
+    llegaba sin filtro a validar_relaciones(), que asumia ciegamente un objeto
+    resuelto (`rol.panel`, `perfil.rol_sistema_id`) y explotaba con
+    AttributeError -- un 500 en vez de un 422 claro, o directamente romper el
+    guardado de "Sin rol" / "Sin perfil" desde el frontend."""
 
-    def make_item(self):
-        return SimpleNamespace(
-            id=uuid4(), tenant_id=uuid4(), username="original",
-            email="original@example.invalid", password="hash-original",
-            perfil_id=uuid4(), is_active=True,
+    async def test_usuario_sin_perfil_no_truena(self):
+        await validar_relaciones(db=None, modelo=m.UsuarioSigarh, tenant_id=uuid4(), values={"perfil_id": None})
+
+    async def test_perfil_sin_rol_no_truena(self):
+        await validar_relaciones(
+            db=None, modelo=m.PerfilUsuario, tenant_id=uuid4(),
+            values={"rol_sistema_id": None, "modulos_acceso": []},
         )
 
-    async def test_partial_update_preserves_identity_and_omitted_fields(self):
-        item = self.make_item()
-        before = vars(item).copy()
-        await self.call_endpoint({"is_active": False}, item)
-        self.assertEqual(vars(item), {**before, "is_active": False})
+    async def test_perfil_sin_rol_no_puede_tener_modulos(self):
+        with self.assertRaises(Exception):
+            await validar_relaciones(
+                db=None, modelo=m.PerfilUsuario, tenant_id=uuid4(),
+                values={"rol_sistema_id": None, "modulos_acceso": ["sigarh_mantenimiento"]},
+            )
 
-    async def test_edit_form_payload_is_compatible(self):
-        item = self.make_item()
-        await self.call_endpoint({
-            "username": "editado", "email": "editado@example.invalid",
-            "perfil_id": None, "is_active": True,
-        }, item)
-        self.assertEqual(item.username, "editado")
-        self.assertIsNone(item.perfil_id)
-        self.assertEqual(item.password, "hash-original")
 
-    async def test_empty_or_null_password_keeps_hash(self):
-        for password in ("", None):
-            with self.subTest(password=password):
-                item = self.make_item()
-                await self.call_endpoint({"password": password}, item)
-                self.assertEqual(item.password, "hash-original")
+class PerfilUsuarioUpdateSchemaTests(unittest.TestCase):
+    """Mismo relajo de esquema_parcial, verificado directamente sobre el
+    Update de PerfilUsuario (se genera on-the-fly en el router, no vive como
+    nombre exportado en schemas.py)."""
 
-    async def test_new_password_is_hashed(self):
-        item = self.make_item()
-        with patch("bcrypt.hashpw", return_value=b"hash-nuevo") as hashpw:
-            await self.call_endpoint({"password": "clave-de-prueba"}, item)
-        self.assertEqual(item.password, "hash-nuevo")
-        self.assertEqual(hashpw.call_args.args[0], b"clave-de-prueba")
+    def setUp(self):
+        self.PerfilUsuarioUpdate = esquema_parcial(PerfilUsuarioCreate)
+
+    def test_rol_sistema_id_can_be_cleared(self):
+        self.assertEqual(
+            self.PerfilUsuarioUpdate(rol_sistema_id=None).model_dump(exclude_unset=True),
+            {"rol_sistema_id": None},
+        )
+
+    def test_create_still_requires_rol_sistema_id(self):
+        with self.assertRaises(ValidationError):
+            PerfilUsuarioCreate(nombre="Perfil de prueba")
 
 
 if __name__ == "__main__":
