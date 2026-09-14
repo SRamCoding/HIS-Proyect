@@ -159,6 +159,7 @@ async def estructura_asistencial(db, tenant_id):
             select(m.Servicio)
             .where(m.Servicio.tenant_id == tenant_id)
             .order_by(m.Servicio.nombre)
+            .options(selectinload(m.Servicio.departamento), selectinload(m.Servicio.piso))
         )
     ).all()
     links = (
