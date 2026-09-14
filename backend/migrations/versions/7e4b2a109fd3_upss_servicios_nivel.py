@@ -137,6 +137,18 @@ def _seed(bind, tenant_id, level) -> None:
                 "now": now,
             },
         )
+        # sigarh_servicios tiene un unique index por (tenant_id, nombre)
+        # (regla de negocio: nombres de servicio unicos por hospital). Si el
+        # tenant ya tenia un servicio con este nombre antes de esta
+        # migracion, el INSERT de arriba lo salta en silencio por ESE choque
+        # (no por el id) y la fila con el id determinista de arriba nunca se
+        # crea. Resolver el id real por nombre evita referenciar un id
+        # inexistente al vincular UPSS/especialidades mas abajo.
+        sid = bind.execute(
+            sa.text("""SELECT id FROM sigarh_servicios
+            WHERE tenant_id=:tid AND lower(trim(nombre))=lower(trim(:name))"""),
+            {"tid": tenant_id, "name": name},
+        ).scalar() or sid
         for upss_code in upss_codes:
             bind.execute(
                 sa.text("""INSERT INTO sigarh_servicio_upss (servicio_id,upss_id)
