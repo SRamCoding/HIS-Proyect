@@ -308,6 +308,22 @@ async def obtener_atencion_medica(cita_id: uuid.UUID, request: Request, db: Asyn
     return atencion
 
 
+@router.get("/atenciones-medicas/{cita_id}/acceso")
+async def acceso_atencion(cita_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+    from app.hospital.consulta_externa.models import Cita
+    from app.hospital.consulta_externa.service import validar_autor_clinico
+    from sqlalchemy import select
+    tid = get_tenant_id(current_user, request)
+    cita = await db.scalar(select(Cita).where(Cita.id == cita_id, Cita.tenant_id == tid))
+    if not cita:
+        raise HTTPException(404, detail="Cita no encontrada")
+    try:
+        await validar_autor_clinico(db, tid, cita, current_user)
+    except ValueError as exc:
+        return {"permitido": False, "motivo": str(exc)}
+    return {"permitido": True, "motivo": ""}
+
+
 @router.post("/atenciones-medicas/{cita_id}", response_model=AtencionMedicaResponse, status_code=201)
 async def crear_atencion_medica(cita_id: uuid.UUID, data: AtencionMedicaCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
     try:

@@ -56,6 +56,10 @@
           </div>
 
           <!-- Patient Info Card -->
+          <div v-if="!accesoClinico" class="form-card" role="alert" style="padding: 16px; margin-bottom: 16px">
+            <p>{{ motivoAcceso || 'No se pudo verificar el acceso para registrar esta atención.' }}</p>
+            <p>En Admin → Usuarios, configura una cuenta con rol Médico y vincúlala al empleado que figura en la programación. Ingresa con esa cuenta para registrar y cerrar la atención.</p>
+          </div>
           <section class="form-card">
             <div class="card-header">
               <div class="card-header-icon" style="background: var(--teal-soft)">
@@ -197,7 +201,7 @@
             </div>
 
             <div v-if="!firmado" class="form-actions-sub">
-              <button class="btn-secondary" :disabled="guardandoAntecedentes" @click="guardarAntecedentes">
+              <button class="btn-secondary" :disabled="!accesoClinico || guardandoAntecedentes" @click="guardarAntecedentes">
                 <UIcon v-if="guardandoAntecedentes" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
                 <UIcon v-else name="i-heroicons-check" class="w-4 h-4" />
                 {{ guardandoAntecedentes ? 'Guardando...' : 'Guardar Antecedentes' }}
@@ -457,7 +461,7 @@
                 <button
                   v-if="!firmado"
                   class="btn-primary"
-                  :disabled="guardando || firmando"
+                  :disabled="!accesoClinico || guardando || firmando"
                   @click="guardar"
                 >
                   <UIcon v-if="guardando" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
@@ -467,7 +471,7 @@
                 <button
                   v-if="existeAtencion && !firmado"
                   class="btn-firmar"
-                  :disabled="firmando || guardando"
+                  :disabled="!accesoClinico || firmando || guardando"
                   @click="firmarAtencion"
                 >
                   <UIcon v-if="firmando" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
@@ -512,7 +516,7 @@
               </li>
               <li class="info-item">
                 <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
-                <span>Si el destino es Farmacia, podrás generar la receta</span>
+                <span>Si seleccionas la prestación Farmacia, podrás generar la receta</span>
               </li>
               <li class="info-item">
                 <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
@@ -617,6 +621,8 @@ const guardandoAntecedentes = ref(false)
 const error = ref('')
 const exito = ref('')
 const existeAtencion = ref(false)
+const accesoClinico = ref(false)
+const motivoAcceso = ref('')
 const atencion = ref<any>({})
 const patientId = ref('')
 
@@ -743,6 +749,7 @@ function validar(): boolean {
 
 // Funciones
 async function guardarAntecedentes() {
+  if (!accesoClinico.value) { error.value = motivoAcceso.value; return }
   guardandoAntecedentes.value = true
   error.value = ''
   exito.value = ''
@@ -752,14 +759,14 @@ async function guardarAntecedentes() {
     atencion.value = await api(`/app/consulta-externa/atenciones-medicas/${citaId}`, { method: 'PATCH', body: { antecedentes: { ...antecedentes } } })
     exito.value = 'Antecedentes actualizados correctamente'
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al guardar antecedentes'
+    error.value = apiErr(e, 'Error al guardar antecedentes')
   } finally {
     guardandoAntecedentes.value = false
   }
 }
 
 async function guardar() {
-  if (guardando.value || firmando.value || firmado.value || !validar()) return false
+  if (!accesoClinico.value || guardando.value || firmando.value || firmado.value || !validar()) return false
 
   error.value = ''
   exito.value = ''
@@ -772,7 +779,7 @@ async function guardar() {
     setTimeout(() => { exito.value = '' }, 3000)
     return true
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al guardar'
+    error.value = apiErr(e, 'Error al guardar')
     return false
   } finally {
     guardando.value = false
@@ -792,7 +799,7 @@ async function firmarAtencion() {
       navigateTo(link('/app/consulta-externa/atenciones-medicas'))
     }, 2000)
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al firmar'
+    error.value = apiErr(e, 'Error al firmar')
   } finally {
     firmando.value = false
   }
@@ -802,6 +809,9 @@ async function firmarAtencion() {
 onMounted(async () => {
   try {
     const cita = await api(`/app/consulta-externa/citas/${citaId}`)
+    const acceso = await api<{ permitido: boolean; motivo: string }>(`/app/consulta-externa/atenciones-medicas/${citaId}/acceso`)
+    accesoClinico.value = acceso.permitido
+    motivoAcceso.value = acceso.motivo
     patientId.value = cita.patient_id
 
     try {
@@ -869,11 +879,11 @@ onMounted(async () => {
           atencion.value.triaje = triajeData
         } catch { /* sin triaje */ }
       } else {
-        error.value = e?.data?.detail || 'Error al cargar la atención'
+        error.value = apiErr(e, 'Error al cargar la atención')
       }
     }
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al cargar la cita'
+    error.value = apiErr(e, 'Error al cargar la cita')
   } finally {
     cargando.value = false
   }
