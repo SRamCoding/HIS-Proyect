@@ -21,6 +21,7 @@
         </div>
       </div>
 
+      <SAccesosPanelInfo />
       <SFormCard
         title="Datos del Usuario"
         subtitle="Ingresa los datos del nuevo usuario"
@@ -51,7 +52,7 @@
             <UIcon name="i-heroicons-shield-check" class="input-icon" />
             <select v-model="form.perfil_id" class="input-clinical">
               <option value="">Seleccione un perfil</option>
-              <option v-for="p in perfiles" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+              <option v-for="p in perfiles.filter(p => p.is_active)" :key="p.id" :value="p.id">{{ p.nombre }}</option>
             </select>
           </div>
           <p class="field-hint">El rol y los módulos se toman del perfil seleccionado</p>

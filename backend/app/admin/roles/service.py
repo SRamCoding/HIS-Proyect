@@ -12,6 +12,10 @@ async def get_all_system_roles(db: AsyncSession) -> list[SystemRole]:
 
 
 async def create_system_role(db: AsyncSession, data) -> SystemRole:
+    from fastapi import HTTPException
+    from sqlalchemy import func
+    if await db.scalar(select(SystemRole.id).where(func.lower(func.trim(SystemRole.name)) == data.name)):
+        raise HTTPException(409, 'Ya existe un rol con ese código')
     role = SystemRole(
         name=data.name,
         label=data.label,

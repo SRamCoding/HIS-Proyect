@@ -72,6 +72,13 @@ async def guardar_perfil_hospital(data: PerfilHospitalInput, tenant_id: uuid.UUI
     if data.role == "medico" and not set(data.modulos) <= MEDICO_MODULOS:
         raise HTTPException(400, "El perfil médico admite programación en lectura y atenciones médicas")
     async with get_tenant_sessionmaker(hospital.database_name)() as tdb:
+        from sqlalchemy import func
+        duplicado = select(PerfilHospital.id).where(PerfilHospital.tenant_id == tenant_id,
+            func.lower(func.trim(PerfilHospital.nombre)) == data.nombre.strip().lower())
+        if perfil_id:
+            duplicado = duplicado.where(PerfilHospital.id != perfil_id)
+        if await tdb.scalar(duplicado):
+            raise HTTPException(409, "Ya existe un perfil hospitalario con ese nombre")
         perfil = await tdb.scalar(select(PerfilHospital).where(PerfilHospital.id == perfil_id,
             PerfilHospital.tenant_id == tenant_id).with_for_update()) if perfil_id else None
         if perfil_id and not perfil:

@@ -13,11 +13,12 @@
           </div>
           <div>
             <h1 class="page-title">Crear Rol del Sistema</h1>
-            <p class="page-subtitle">Define un nuevo rol con permisos por panel y modulo</p>
+            <p class="page-subtitle">Define permisos para las cuentas de SIGARH</p>
           </div>
         </div>
       </div>
 
+      <SAccesosPanelInfo />
       <SFormCard title="Configuracion del Rol" subtitle="Ingresa los datos del nuevo rol del sistema"
         icon="i-heroicons-cog-6-tooth" icon-bg="var(--navy-soft)" icon-color="var(--navy)" :error="error">
 
@@ -42,7 +43,7 @@
           <div class="input-wrapper">
             <UIcon name="i-heroicons-computer-desktop" class="input-icon" />
             <select v-model="form.panel" class="input-clinical">
-              <option value="app">App</option>
+
               <option value="sigarh">SIGARH</option>
             </select>
           </div>
@@ -232,7 +233,7 @@ const PERMISOS_ACCION = [
 const form = reactive({
   codigo: '',
   nombre: '',
-  panel: 'app',
+  panel: 'sigarh',
   modulo_requerido: '',
   descripcion: '',
   is_active: true,
@@ -324,7 +325,7 @@ const toggleTodosGrupos = () => {
 
 const resetForm = () => {
   Object.assign(form, {
-    codigo: '', nombre: '', panel: 'app', modulo_requerido: '', descripcion: '',
+    codigo: '', nombre: '', panel: 'sigarh', modulo_requerido: '', descripcion: '',
     is_active: true, modulos_permitidos: [], grupos_ocupacionales_permitidos: [],
     permisos_accion: [], alcance_global: false,
   })
@@ -353,7 +354,7 @@ const handleCreate = async (createAnother: boolean) => {
     })
     if (createAnother) { resetForm() }
     else { router.push(`/sigarh/mantenimiento/roles-sistema?tenant=${tenantId.value}`) }
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear el rol' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear el rol') }
   finally { saving.value = false }
 }
 
@@ -370,7 +371,7 @@ onMounted(async () => {
     todosModulos.value = modulos
     gruposOcupacionales.value = grupos
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudieron cargar los catalogos'
+    error.value = apiErr(e, 'No se pudieron cargar los catalogos')
   }
 })
 </script>

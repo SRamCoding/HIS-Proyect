@@ -18,6 +18,7 @@
         </div>
       </div>
 
+      <SAccesosPanelInfo />
       <SFormCard title="Configuracion del Perfil" subtitle="Ingresa los datos del nuevo perfil de usuario"
         icon="i-heroicons-cog-6-tooth" icon-bg="var(--purple-soft)" icon-color="var(--purple)" :error="error">
 
@@ -34,7 +35,7 @@
           <div class="input-wrapper">
             <UIcon name="i-heroicons-shield-check" class="input-icon" />
             <select v-model="form.rol_sistema_id" class="input-clinical">
-              <option value="">Sin rol</option>
+              <option value="">Seleccione un rol SIGARH</option>
               <option v-for="r in rolesDisponibles" :key="r.id" :value="r.id">{{ r.nombre }}</option>
             </select>
           </div>
@@ -117,7 +118,7 @@
     </template>
 
     <template #sidebar>
-      <SWidgetInfo :items="['Los perfiles definen los permisos de usuario', 'Pueden estar asociados a un rol del sistema', 'Los modulos seleccionados determinan el acceso', 'Los perfiles inactivos no se pueden asignar']" />
+      <SWidgetInfo :items="['Los perfiles definen los permisos de usuario', 'Cada perfil requiere un rol SIGARH activo', 'Los modulos seleccionados determinan el acceso', 'Los perfiles inactivos no se pueden asignar']" />
       <SWidgetSummary :items="[
         { label: 'Nombre', value: form.nombre },
         { label: 'Rol', value: rolNombre || 'Sin rol' },
@@ -162,7 +163,7 @@ const form = reactive({
 
 const rolesDisponibles = computed(() =>
   rolesSistema.value.filter(r =>
-    r.is_active && (!r.modulo_requerido || authStore.user?.active_modules?.includes(r.modulo_requerido))
+    r.panel === 'sigarh' && r.is_active && (!r.modulo_requerido || todosModulos.value.some(m => m.code === r.modulo_requerido))
   )
 )
 
@@ -176,7 +177,7 @@ const cubre = (codigos: string[], codigo: string) => {
 }
 
 const modulosDisponibles = computed(() => {
-  const habilitados = todosModulos.value.filter((m: any) => authStore.user?.active_modules?.includes(m.code))
+  const habilitados = todosModulos.value
   const rol = rolesSistema.value.find(r => r.id === form.rol_sistema_id)
   if (!rol || !rol.modulos_permitidos?.length) return []
   return habilitados
@@ -192,7 +193,8 @@ const rolNombre = computed(() => rolesSistema.value.find(r => r.id === form.rol_
 
 watch(() => form.rol_sistema_id, () => {
   const modulos = modulosDisponibles.value
-  form.modulos_acceso = form.modulos_acceso.filter(c => modulos.some((m: any) => cubre([c], m.code) || m.submodulos?.some((s: any) => `${m.code}.${s.code}` === c)))
+  const rol = rolesSistema.value.find(r => r.id === form.rol_sistema_id)
+  form.modulos_acceso = form.modulos_acceso.filter(c => cubre(rol?.modulos_permitidos || [], c) && modulos.some((m: any) => cubre([c], m.code) || m.submodulos?.some((s: any) => `${m.code}.${s.code}` === c)))
 })
 
 // --- Arbol de modulos/submodulos (igual que en Rol del Sistema) ---
@@ -269,10 +271,12 @@ const toggleSub = (mod: any, sub: any) => {
 const todosSeleccionados = computed(() => modulosDisponibles.value.every((m: any) => estadoModulo(m) === 'all'))
 
 const toggleTodosModulos = () => {
-  form.modulos_acceso = todosSeleccionados.value ? [] : modulosDisponibles.value.map((m: any) => m.code)
+  const rol = rolesSistema.value.find(r => r.id === form.rol_sistema_id)
+  form.modulos_acceso = todosSeleccionados.value ? [] : modulosDisponibles.value.flatMap((m: any) => cubre(rol?.modulos_permitidos || [], m.code) ? [m.code] : (m.submodulos || []).map((s: any) => `${m.code}.${s.code}`))
 }
 
 const handleCreate = async (createAnother: boolean) => {
+  if (!form.rol_sistema_id) { error.value = 'Seleccione un rol SIGARH activo'; return }
   if (!form.nombre.trim()) { error.value = 'El nombre del perfil es requerido'; return }
   saving.value = true
   error.value = ''
@@ -293,7 +297,7 @@ const handleCreate = async (createAnother: boolean) => {
     } else {
       router.push(`/sigarh/mantenimiento/perfiles-usuario?tenant=${tenantId.value}`)
     }
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear el perfil' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear el perfil') }
   finally { saving.value = false }
 }
 
@@ -310,7 +314,7 @@ onMounted(async () => {
     rolesSistema.value = roles
     todosModulos.value = modulos
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al cargar catalogos'
+    error.value = apiErr(e, 'Error al cargar catalogos')
   }
 })
 </script>

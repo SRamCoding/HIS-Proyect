@@ -1,5 +1,6 @@
 <template>
   <div class="sigarh-index-container">
+    <SAccesosPanelInfo />
 
     <div class="sigarh-page-header">
       <div class="sigarh-header-left">
@@ -8,7 +9,7 @@
         </div>
         <div>
           <h1 class="page-title">Roles del Sistema</h1>
-          <p class="page-subtitle">Roles y permisos de acceso por panel</p>
+          <p class="page-subtitle">Roles y permisos de acceso de SIGARH</p>
         </div>
       </div>
       <NuxtLink
@@ -214,14 +215,14 @@ const confirmarEliminar = async (item: Item) => {
   try {
     await api(`/sigarh/mantenimiento/roles-sistema/${item.id}`, { method: 'DELETE' })
     items.value = items.value.filter(i => i.id !== item.id)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo eliminar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo eliminar') }
 }
 
 const cargar = async () => {
   loading.value = true
   error.value = ''
   try { items.value = await api<Item[]>('/sigarh/mantenimiento/roles-sistema') }
-  catch (e: any) { error.value = e?.data?.detail || 'Error de conexion' }
+  catch (e: any) { error.value = apiErr(e, 'Error de conexion') }
   finally { loading.value = false }
 }
 

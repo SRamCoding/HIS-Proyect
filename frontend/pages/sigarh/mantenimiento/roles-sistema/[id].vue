@@ -23,7 +23,8 @@
       </div>
 
       <template v-else>
-        <SFormCard title="Configuracion del Rol" subtitle="Actualiza los datos del rol del sistema"
+        <SAccesosPanelInfo />
+      <SFormCard title="Configuracion del Rol" subtitle="Actualiza los datos del rol del sistema"
           icon="i-heroicons-cog-6-tooth" icon-bg="var(--navy-soft)" icon-color="var(--navy)" :error="error">
 
           <div class="form-group">
@@ -47,7 +48,7 @@
             <div class="input-wrapper">
               <UIcon name="i-heroicons-computer-desktop" class="input-icon" />
               <select v-model="form.panel" class="input-clinical">
-                <option value="app">App</option>
+
                 <option value="sigarh">SIGARH</option>
               </select>
             </div>
@@ -241,7 +242,7 @@ const PERMISOS_ACCION = [
 const form = reactive({
   codigo: '',
   nombre: '',
-  panel: 'app',
+  panel: 'sigarh',
   modulo_requerido: '',
   descripcion: '',
   is_active: true,
@@ -341,7 +342,7 @@ const handleSave = async () => {
       },
     })
     router.push(`/sigarh/mantenimiento/roles-sistema?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar el rol' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar el rol') }
   finally { saving.value = false }
 }
 
@@ -360,7 +361,7 @@ onMounted(async () => {
     gruposOcupacionales.value = grupos
     form.codigo = data.codigo || ''
     form.nombre = data.nombre
-    form.panel = data.panel
+    form.panel = 'sigarh'
     form.modulo_requerido = data.modulo_requerido || ''
     form.descripcion = data.descripcion || ''
     form.is_active = data.is_active
@@ -369,7 +370,7 @@ onMounted(async () => {
     form.permisos_accion = data.permisos_accion || []
     form.alcance_global = !!data.alcance_global
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo cargar el rol'
+    error.value = apiErr(e, 'No se pudo cargar el rol')
   } finally {
     loading.value = false
   }
