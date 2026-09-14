@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Nueva Ración' })
-const { $api } = useNuxtApp()
+const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
 const tenant = route.query.tenant as string
@@ -10,7 +10,7 @@ const error = ref('')
 async function guardar() {
   saving.value = true; error.value = ''
   try {
-    await $api('/sigarh/nutricion/raciones', { method: 'POST', tenant, body: form })
+    await api('/sigarh/nutricion/raciones', { method: 'POST', tenant, body: form })
     router.push(`/sigarh/nutricion/raciones?tenant=${tenant}`)
   } catch (e: any) { error.value = e?.data?.detail || 'Error al guardar' } finally { saving.value = false }
 }

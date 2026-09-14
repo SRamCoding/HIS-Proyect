@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Reportes de Nutrición' })
-const { $api } = useNuxtApp()
+const { api } = useApi()
 const route = useRoute()
 const tenant = route.query.tenant as string
 const fecha = ref(new Date().toISOString().split('T')[0])
@@ -9,7 +9,7 @@ const loading = ref(false)
 
 async function generarReporte() {
   loading.value = true
-  try { reporte.value = await $api(`/sigarh/nutricion/reportes?fecha=${fecha.value}`, { tenant }) }
+  try { reporte.value = await api(`/sigarh/nutricion/reportes?fecha=${fecha.value}`, { tenant }) }
   finally { loading.value = false }
 }
 onMounted(generarReporte)

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Editar Examen de Imagenología' })
-const { $api } = useNuxtApp()
+const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
 const tenant = route.query.tenant as string
@@ -8,11 +8,11 @@ const id = route.params.id as string
 const form = reactive({ nombre: '', codigo: '', modalidad: '', region_anatomica: '', tiempo_resultado: '', precio: 0, descripcion: '', requiere_contraste: false, is_active: true })
 const saving = ref(false)
 const error = ref('')
-onMounted(async () => { Object.assign(form, await $api(`/sigarh/imagenologia/examenes/${id}`, { tenant })) })
+onMounted(async () => { Object.assign(form, await api(`/sigarh/imagenologia/examenes/${id}`, { tenant })) })
 async function guardar() {
   saving.value = true; error.value = ''
   try {
-    await $api(`/sigarh/imagenologia/examenes/${id}`, { method: 'PATCH', tenant, body: form })
+    await api(`/sigarh/imagenologia/examenes/${id}`, { method: 'PATCH', tenant, body: form })
     router.push(`/sigarh/imagenologia/examenes?tenant=${tenant}`)
   } catch (e: any) { error.value = e?.data?.detail || 'Error al guardar' } finally { saving.value = false }
 }

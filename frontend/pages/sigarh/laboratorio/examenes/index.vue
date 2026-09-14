@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Exámenes de Laboratorio' })
-const { $api } = useNuxtApp()
+const { api } = useApi()
 const route = useRoute()
 const tenant = route.query.tenant as string
 const lista = ref<any[]>([])
@@ -8,7 +8,7 @@ const loading = ref(true)
 const busqueda = ref('')
 const filtroCategoria = ref('')
 
-onMounted(async () => { lista.value = await $api('/sigarh/laboratorio/examenes', { tenant }); loading.value = false })
+onMounted(async () => { lista.value = await api('/sigarh/laboratorio/examenes', { tenant }); loading.value = false })
 
 const listaFiltrada = computed(() => lista.value.filter(e => {
   const matchBusqueda = !busqueda.value || e.nombre.toLowerCase().includes(busqueda.value.toLowerCase()) || e.codigo?.includes(busqueda.value)
