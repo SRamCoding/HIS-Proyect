@@ -195,6 +195,7 @@ export const useSigarhNav = () => {
         { label: 'Guardias Valorizadas',  path: '/sigarh/mantenimiento/guardias-valorizadas',  icon: 'i-heroicons-star', sub: 'guardias_valorizadas' },
         { label: 'Roles del Sistema',     path: '/sigarh/mantenimiento/roles-sistema',         icon: 'i-heroicons-key', sub: 'roles_sistema' },
         { label: 'Perfiles de Usuario',   path: '/sigarh/mantenimiento/perfiles-usuario',      icon: 'i-heroicons-user-circle', sub: 'perfiles_usuario' },
+        { label: 'Profesiones', path: '/sigarh/mantenimiento/profesiones', icon: 'i-heroicons-academic-cap', sub: 'profesiones' },
         { label: 'Grupos Ocupacionales',    path: '/sigarh/mantenimiento/grupos-ocupacionales',  icon: 'i-heroicons-users', sub: 'grupos_ocupacionales' },
       ]
     },

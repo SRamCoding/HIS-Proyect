@@ -201,13 +201,12 @@
                   <div class="input-wrapper">
                     <UIcon name="i-heroicons-flag" class="input-icon" />
                     <select v-model="form.estado" class="input-clinical">
-  <option value="separada">Separada</option>
-  <option value="atendida">Atendida</option>
-  <option value="cancelada">Cancelada</option>
-  <option value="no_asistio">No Asistió</option>
+  <option :value="cita.estado">{{ formatEstado(cita.estado) }}</option>
+  <option v-if="['separada', 'confirmada'].includes(cita.estado)" value="cancelada">Cancelada</option>
+  <option v-if="['separada', 'confirmada'].includes(cita.estado)" value="no_asistio">No asistió</option>
 </select>
                   </div>
-                  <p class="field-hint">Cambia el estado de la cita según corresponda</p>
+                  <p class="field-hint">Usa Confirmar Cita para pasar a Triaje. La atención médica registra el estado Atendida.</p>
                 </div>
               </div>
             </div>
@@ -252,7 +251,7 @@
                   v-if="cita.estado === 'separada'"
                   class="btn-primary"
                   style="background: var(--blue)"
-                  :disabled="confirmando"
+                  :disabled="confirmando || guardando"
                   @click="confirmarCita"
                 >
                   <UIcon v-if="confirmando" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
@@ -261,7 +260,7 @@
                 </button>
                 <button
                   class="btn-primary"
-                  :disabled="guardando"
+                  :disabled="guardando || confirmando"
                   @click="guardar"
                 >
                   <UIcon v-if="guardando" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
@@ -487,7 +486,7 @@ const formatEstado = (estado: string) => {
 
 const formatFecha = (fecha: string) => {
   if (!fecha) return '—'
-  const d = new Date(fecha)
+  const d = new Date(`${fecha.slice(0, 10)}T00:00:00`)
   return d.toLocaleDateString('es-PE', {
     day: '2-digit',
     month: '2-digit',

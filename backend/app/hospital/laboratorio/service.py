@@ -445,7 +445,9 @@ async def movement_pdf(db, tid, mid, kind):
     d = await movement_detail(db, tid, mid)
     if kind == "resultados" and d["estado"] != "atendido":
         raise HTTPException(409, detail="El informe se emite después de validar todos los resultados")
-    hospital = await db.scalar(select(Tenant.name).where(Tenant.id == tid))
+    from app.core.tenant_db import get_tenant_by_id
+    tenant = await get_tenant_by_id(tid)
+    hospital = tenant.name if tenant else None
     o = d["orden"]
     birth, taken = o["fecha_nacimiento"], d["fecha"]
     age = taken.year - birth.year - ((taken.month, taken.day) < (birth.month, birth.day))
@@ -478,7 +480,9 @@ async def covid_pdf(db, tid, cid):
     obj = await own(db, LabFichaCovid, tid, cid)
     p = await own(db, Patient, tid, obj.patient_id)
     hc = await db.scalar(select(ClinicalRecord.record_number).where(ClinicalRecord.patient_id == p.id))
-    hospital = await db.scalar(select(Tenant.name).where(Tenant.id == tid))
+    from app.core.tenant_db import get_tenant_by_id
+    tenant = await get_tenant_by_id(tid)
+    hospital = tenant.name if tenant else None
     return pdf_document("Ficha Covid", hospital or "Hospital", [
         ("Registro de prueba", ["Campo", "Valor"], [
             ["Paciente", p.full_name], ["Documento", p.dni], ["Historia", hc], ["Fecha", obj.fecha],

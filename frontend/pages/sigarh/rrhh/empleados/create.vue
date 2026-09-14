@@ -8,6 +8,8 @@ const tenantId = computed(() => route.query.tenant as string || '')
 const pasos = ['Datos Personales', 'Datos Laborales', 'Especialidades', 'Datos Bancarios', 'Ubicación']
 const stepActual = ref(0)
 const saving = ref(false)
+const vinculoValido = ref(true)
+const esMedico = ref(false)
 const error = ref('')
 const registroManual = ref(false)
 const dniCargado = ref(false)
@@ -18,6 +20,8 @@ const dniVerificado = ref(false)
 const dniMsg = ref('')
 const dniError = ref(false)
 let dniTimer: any
+let dniSolicitud = 0
+onBeforeUnmount(() => { clearTimeout(dniTimer); dniSolicitud++ })
 
 const gruposSanguineos = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
 const bancosPeru = [
@@ -31,6 +35,7 @@ const ubigeoDists = ref<{ id: string; nombre: string }[]>([])
 
 const tiposTrabajador = ref<any[]>([])
 const nivelesRemunerativos = ref<any[]>([])
+const profesionesCatalogo = ref<any[]>([])
 const gruposOcupacionales = ref<any[]>([])
 const departamentos = ref<any[]>([])
 const servicios = ref<any[]>([])
@@ -44,9 +49,19 @@ const errors = reactive<Record<string, string>>({
 })
 
 const form = reactive({
+  numero_legajo: '',
+  jornada_mensual_horas: '' as number | string, jornada_sustento: '',
+  titulo_profesional: '',
+  institucion_formacion: '',
+  documento_vinculo_laboral: '',
+  contacto_emergencia_nombre: '',
+  contacto_emergencia_telefono: '',
+  fecha_titulo: '',
+
+  vinculo_laboral_codigo: '',
   dni: '', nombres: '', apellido_paterno: '', apellido_materno: '', fecha_nacimiento: '',
   sexo: '', estado_civil: '', grupo_sanguineo: '', celular: '', telefono_fijo: '', correo: '',
-  is_active: true,
+  is_active: true, profesion_id: '', numero_colegiatura: '', habilitado_colegio: false,
   tipo_trabajador_id: '', nivel_remunerativo_id: '', grupo_ocupacional_id: '',
   departamento_id: '', servicio_id: '', cargo_laboral: '', es_jefe_servicio: false, modalidad: '',
   codigo_minsa: '', numero_cmp: '', fecha_ingreso: '', fecha_nombramiento: '', fecha_cese: '',
@@ -55,6 +70,27 @@ const form = reactive({
   banco: '', ruc: '', numero_cuenta: '', numero_cci: '', tipo_cuenta: '',
   departamento_ubigeo: '', provincia_ubigeo: '', distrito_ubigeo: '', direccion: '',
 })
+const serviciosCompatibles = computed(() => servicios.value.filter(s => !form.departamento_id || s.departamento_id === form.departamento_id))
+watch(() => form.departamento_id, () => {
+  if (form.servicio_id && !serviciosCompatibles.value.some(s => s.id === form.servicio_id)) form.servicio_id = ''
+})
+watch(() => form.servicio_id, () => {
+  const servicio = servicios.value.find(s => s.id === form.servicio_id)
+  if (servicio?.departamento_id) form.departamento_id = servicio.departamento_id
+})
+const tiposCompatibles = computed(() => tiposTrabajador.value.filter(t => !t.vinculos_codigos?.length || !form.vinculo_laboral_codigo || t.vinculos_codigos.includes(form.vinculo_laboral_codigo)))
+const nivelesCompatibles = computed(() => {
+  const codigo = profesionesCatalogo.value.find(p => p.id === form.profesion_id)?.codigo
+  return nivelesRemunerativos.value.filter(n => !n.profesion_codigo || n.profesion_codigo === codigo)
+})
+watch(() => form.profesion_id, () => {
+  if (form.nivel_remunerativo_id && !nivelesCompatibles.value.some(n => n.id === form.nivel_remunerativo_id)) form.nivel_remunerativo_id = ''
+})
+watch(() => form.vinculo_laboral_codigo, () => {
+  if (tiposCompatibles.value.length === 1) form.tipo_trabajador_id = tiposCompatibles.value[0].id
+  else if (!tiposCompatibles.value.some(t => t.id === form.tipo_trabajador_id)) form.tipo_trabajador_id = ''
+})
+
 
 const fullName = computed(() => [form.nombres, form.apellido_paterno, form.apellido_materno].filter(Boolean).join(' '))
 const espCount = computed(() => form.especialidades.filter(e => e.especialidad_id).length)
@@ -98,20 +134,25 @@ const formatApiError = (e: any, fallback: string): string => apiErr(e, fallback)
 const checkDni = async () => {
   if (!/^\d{8}$/.test(form.dni)) { dniExiste.value = false; dniVerificado.value = false; return }
   verificandoDni.value = true
+  const solicitud = ++dniSolicitud
+  const dni = form.dni
   try {
-    const existente = await api<any>(`/sigarh/rrhh/empleados/buscar-dni/${form.dni}`)
+    const existente = await api<any>(`/sigarh/rrhh/empleados/buscar-dni/${dni}`, { tenant: tenantId.value })
+    if (solicitud !== dniSolicitud) return
     dniExiste.value = !!(existente && existente.id)
     if (dniExiste.value) errors.dni = `Ya existe un empleado registrado con el DNI ${form.dni}`
     dniVerificado.value = true
   } catch {
+    if (solicitud !== dniSolicitud) return
     dniExiste.value = false
     dniVerificado.value = false
   } finally {
-    verificandoDni.value = false
+    if (solicitud === dniSolicitud) verificandoDni.value = false
   }
 }
 
 watch(() => form.dni, (v) => {
+  dniSolicitud++
   errors.dni = ''
   dniExiste.value = false
   dniVerificado.value = false
@@ -130,11 +171,14 @@ watch(() => form.dni, (v) => {
 // nombres. Solo disponible cuando NO es registro manual (el casillero de arriba).
 const consultarDni = async () => {
   if (registroManual.value || form.dni.length !== 8) return
+  const dni = form.dni
   consultandoDni.value = true; dniMsg.value = ''; dniError.value = false
   try {
     await checkDni()
+    if (form.dni !== dni) return
     if (dniExiste.value) return  // el error ya se muestra bajo el campo
-    const d = await api<any>(`/sigarh/rrhh/dni-lookup/${form.dni}`)
+    const d = await api<any>(`/sigarh/rrhh/dni-lookup/${dni}`, { tenant: tenantId.value })
+    if (form.dni !== dni || registroManual.value) return
     form.nombres = d.nombres || form.nombres
     form.apellido_paterno = d.apellido_paterno || form.apellido_paterno
     form.apellido_materno = d.apellido_materno || form.apellido_materno
@@ -188,7 +232,7 @@ const validateStep = (step: number): boolean => {
     errors.apellido_materno = errNombre(form.apellido_materno, 'El apellido materno')
     errors.sexo = !form.sexo ? 'El sexo es requerido' : ''
     errors.estado_civil = !form.estado_civil ? 'El estado civil es requerido' : ''
-    errors.grupo_sanguineo = !form.grupo_sanguineo ? 'El grupo sanguíneo es requerido' : ''
+    errors.grupo_sanguineo = ''
     errors.celular = !form.celular ? 'El celular es requerido' : !/^\d{9}$/.test(form.celular) ? 'El celular debe tener 9 dígitos' : ''
     errors.correo = !form.correo ? 'El correo es requerido' : !RE_CORREO.test(form.correo) ? 'El correo no tiene un formato válido' : ''
     errors.fecha_nacimiento = !form.fecha_nacimiento ? 'La fecha de nacimiento es requerida'
@@ -197,12 +241,12 @@ const validateStep = (step: number): boolean => {
     return !['dni', 'nombres', 'apellido_paterno', 'apellido_materno', 'sexo', 'estado_civil', 'grupo_sanguineo', 'celular', 'correo', 'fecha_nacimiento'].some(k => errors[k])
   }
   if (step === 1) {
-    errors.tipo_trabajador_id = !form.tipo_trabajador_id ? 'El tipo de trabajador es requerido' : ''
-    errors.nivel_remunerativo_id = !form.nivel_remunerativo_id ? 'El nivel remunerativo es requerido' : ''
+    errors.tipo_trabajador_id = ''
+    errors.nivel_remunerativo_id = ''
     errors.grupo_ocupacional_id = !form.grupo_ocupacional_id ? 'El grupo ocupacional es requerido' : ''
     errors.servicio_id = !form.servicio_id ? 'El servicio es requerido' : ''
     errors.cargo_laboral = !form.cargo_laboral ? 'El cargo laboral es requerido' : ''
-    errors.modalidad = !form.modalidad ? 'La modalidad es requerida' : ''
+    errors.modalidad = ''
     errors.fecha_ingreso = !form.fecha_ingreso ? 'La fecha de ingreso es requerida'
       : form.fecha_nacimiento && new Date(form.fecha_ingreso) <= new Date(form.fecha_nacimiento) ? 'Debe ser posterior a la fecha de nacimiento'
       : form.fecha_cese && new Date(form.fecha_cese) < new Date(form.fecha_ingreso) ? 'La fecha de cese es anterior a la de ingreso'
@@ -224,6 +268,7 @@ const nextStep = async () => {
 }
 
 const handleCreate = async () => {
+  if (!vinculoValido.value) { error.value = 'Selecciona la condición del régimen laboral elegido.'; return }
   clearTimeout(dniTimer)
   await checkDni()
   for (const s of [0, 1]) {
@@ -234,6 +279,19 @@ const handleCreate = async () => {
     const { especialidades: _esp, ...campos } = form
     const payload = {
       ...campos,
+      especialidades: form.especialidades.filter(e => e.especialidad_id).map(e => ({ especialidad_id: e.especialidad_id, numero_rne: e.numero_rne || null, validado: e.validado })),
+      profesion_id: form.profesion_id || null,
+      numero_colegiatura: form.numero_colegiatura || null,
+      numero_legajo: form.numero_legajo || null,
+      jornada_mensual_horas: form.jornada_mensual_horas ? Number(form.jornada_mensual_horas) : null,
+      jornada_sustento: form.jornada_sustento || null,
+      titulo_profesional: form.titulo_profesional || null,
+      institucion_formacion: form.institucion_formacion || null,
+      documento_vinculo_laboral: form.documento_vinculo_laboral || null,
+      contacto_emergencia_nombre: form.contacto_emergencia_nombre || null,
+      contacto_emergencia_telefono: form.contacto_emergencia_telefono || null,
+      fecha_titulo: form.fecha_titulo || null,
+      vinculo_laboral_codigo: form.vinculo_laboral_codigo || null,
       tipo_trabajador_id: form.tipo_trabajador_id || null,
       nivel_remunerativo_id: form.nivel_remunerativo_id || null,
       grupo_ocupacional_id: form.grupo_ocupacional_id || null,
@@ -244,15 +302,7 @@ const handleCreate = async () => {
       fecha_nombramiento: form.fecha_nombramiento || null,
       fecha_cese: form.fecha_cese || null,
     }
-    const created = await api<any>('/sigarh/rrhh/empleados', { method: 'POST', body: payload })
-    for (const esp of form.especialidades) {
-      if (esp.especialidad_id) {
-        await api(`/sigarh/rrhh/empleados/${created.id}/especialidades`, {
-          method: 'POST',
-          body: { especialidad_id: esp.especialidad_id, numero_rne: esp.numero_rne || null, validado: esp.validado },
-        })
-      }
-    }
+    await api<any>('/sigarh/rrhh/empleados', { method: 'POST', tenant: tenantId.value, body: payload })
     router.push(`/sigarh/rrhh/empleados?tenant=${tenantId.value}`)
   } catch (e: any) {
     error.value = formatApiError(e, 'No se pudo crear el empleado')
@@ -261,14 +311,10 @@ const handleCreate = async () => {
 
 onMounted(async () => {
   try {
-    const [tt, nr, go, dep, ser, esp] = await Promise.all([
-      api<any[]>('/sigarh/mantenimiento/tipos-trabajador'),
-      api<any[]>('/sigarh/mantenimiento/niveles-remunerativos'),
-      api<any[]>('/sigarh/mantenimiento/grupos-ocupacionales'),
-      api<any[]>('/sigarh/mantenimiento/departamentos'),
-      api<any[]>('/sigarh/mantenimiento/servicios'),
-      api<any[]>('/sigarh/rrhh/especialidades'),
-    ])
+    const refs = await api<any>('/sigarh/rrhh/empleados/catalogos', { tenant: tenantId.value })
+    profesionesCatalogo.value = refs.profesiones
+    const tt = refs.tipos_trabajador, nr = refs.niveles_remunerativos, go = refs.grupos_ocupacionales, dep = refs.departamentos, ser = refs.servicios
+    const esp = await api<any[]>('/sigarh/rrhh/especialidades?active_only=true', { tenant: tenantId.value }).catch(() => [])
     tiposTrabajador.value = tt; nivelesRemunerativos.value = nr; gruposOcupacionales.value = go
     departamentos.value = dep; servicios.value = ser; especialidades.value = esp
   } catch (e: any) { error.value = apiErr(e, 'Error al cargar catálogos') }
@@ -413,21 +459,25 @@ onMounted(async () => {
         <div class="form-group">
           <label class="form-label">Tipo de Trabajador <span class="required">*</span></label>
           <div class="input-wrapper"><UIcon name="i-heroicons-user-group" class="input-icon" />
-            <select v-model="form.tipo_trabajador_id" class="input-clinical" :class="{ 'input-error': errors.tipo_trabajador_id }"><option value="">Seleccione</option><option v-for="t in tiposTrabajador" :key="t.id" :value="t.id">{{ t.nombre }}</option></select>
+            <select v-model="form.tipo_trabajador_id" class="input-clinical" :class="{ 'input-error': errors.tipo_trabajador_id }"><option value="">Seleccione</option><option v-for="t in tiposCompatibles" :key="t.id" :value="t.id">{{ t.nombre }}</option></select>
           </div>
           <span v-if="errors.tipo_trabajador_id" class="error-message">{{ errors.tipo_trabajador_id }}</span>
         </div>
+        <SClasificacionProfesional v-model:profesion-id="form.profesion_id" v-model:numero-colegiatura="form.numero_colegiatura" v-model:habilitado="form.habilitado_colegio" @grupo="form.grupo_ocupacional_id = $event" @medico="esMedico = $event" />
         <div class="form-group">
-          <label class="form-label">Nivel Remunerativo <span class="required">*</span></label>
+          <label class="form-label">Nivel Remunerativo</label>
           <div class="input-wrapper"><UIcon name="i-heroicons-currency-dollar" class="input-icon" />
-            <select v-model="form.nivel_remunerativo_id" class="input-clinical" :class="{ 'input-error': errors.nivel_remunerativo_id }"><option value="">Seleccione</option><option v-for="n in nivelesRemunerativos" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
+            <select :disabled="!form.profesion_id" v-model="form.nivel_remunerativo_id" class="input-clinical" :class="{ 'input-error': errors.nivel_remunerativo_id }"><option value="">{{ form.profesion_id ? 'Seleccione' : 'Seleccione primero la profesión' }}</option><option v-for="n in nivelesCompatibles" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
           </div>
           <span v-if="errors.nivel_remunerativo_id" class="error-message">{{ errors.nivel_remunerativo_id }}</span>
         </div>
+        <SJornadaMedica v-model="form" />
+        <SEmpleadoLegajo v-model="form" />
+        <SVinculoLaboral v-model="form.vinculo_laboral_codigo" @valido="vinculoValido = $event" />
         <div class="form-group">
           <label class="form-label">Grupo Ocupacional <span class="required">*</span></label>
           <div class="input-wrapper"><UIcon name="i-heroicons-chart-bar" class="input-icon" />
-            <select v-model="form.grupo_ocupacional_id" class="input-clinical" :class="{ 'input-error': errors.grupo_ocupacional_id }"><option value="">Seleccione</option><option v-for="g in gruposOcupacionales" :key="g.id" :value="g.id">{{ g.nombre }}</option></select>
+            <select v-model="form.grupo_ocupacional_id" class="input-clinical" :disabled="!!form.profesion_id" :class="{ 'input-error': errors.grupo_ocupacional_id }"><option value="">Seleccione</option><option v-for="g in gruposOcupacionales" :key="g.id" :value="g.id">{{ g.nombre }}</option></select>
           </div>
           <span v-if="errors.grupo_ocupacional_id" class="error-message">{{ errors.grupo_ocupacional_id }}</span>
         </div>
@@ -440,7 +490,7 @@ onMounted(async () => {
         <div class="form-group">
           <label class="form-label">Servicio / Área <span class="required">*</span></label>
           <div class="input-wrapper"><UIcon name="i-heroicons-folder" class="input-icon" />
-            <select v-model="form.servicio_id" class="input-clinical" :class="{ 'input-error': errors.servicio_id }"><option value="">Seleccione</option><option v-for="s in servicios" :key="s.id" :value="s.id">{{ s.nombre }}</option></select>
+            <select v-model="form.servicio_id" class="input-clinical" :class="{ 'input-error': errors.servicio_id }"><option value="">Seleccione</option><option v-for="s in serviciosCompatibles" :key="s.id" :value="s.id">{{ s.nombre }}</option></select>
           </div>
           <span v-if="errors.servicio_id" class="error-message">{{ errors.servicio_id }}</span>
         </div>
@@ -525,7 +575,7 @@ onMounted(async () => {
           </div>
         </div>
         <div class="form-group full-width">
-          <button type="button" class="btn-outline" @click="form.especialidades.push({ especialidad_id: '', numero_rne: '', validado: false })">
+          <button type="button" class="btn-outline" :disabled="!esMedico" @click="form.especialidades.push({ especialidad_id: '', numero_rne: '', validado: false })">
             <UIcon name="i-heroicons-plus" class="w-4 h-4" /> Agregar Especialidad
           </button>
         </div>

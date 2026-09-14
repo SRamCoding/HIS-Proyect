@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.sigarh.mantenimiento import service as svc
-from app.sigarh.mantenimiento.schemas import esquema_parcial
+from app.sigarh.mantenimiento.schemas import esquema_parcial, ServicioEstructuraUpdate
 from app.sigarh.mantenimiento.security import es_admin_erp, exigir_permiso
 from app.tenants.hospitales.models import Tenant, TenantModule
 
@@ -50,17 +50,33 @@ async def autorizar(request, db, user, recurso, escritura=False):
         elif escritura:
             exigir_permiso(user, "administrar_mantenimiento")
         if escritura or recurso in svc.SEGURIDAD:
-            from app.tenants.modulos.submodulos import modulo_padre
-            tiene_mantenimiento = any(
-                modulo_padre(c) == "sigarh_mantenimiento" for c in user.get("active_modules", [])
-            )
-            if not tiene_mantenimiento:
-                raise HTTPException(403, "Su perfil no permite Mantenimiento")
+            from app.tenants.modulos.submodulos import permiso_incluye
+            required = "sigarh_mantenimiento." + recurso.replace("-", "_")
+            if not permiso_incluye(user.get("active_modules", []), required):
+                raise HTTPException(403, "Su perfil no permite este catalogo")
     return tid
 
 
 def ip(request):
     return request.client.host if request.client else None
+
+
+@router.get("/estructura-asistencial")
+async def estructura(request: Request, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+    tid = await autorizar(request, db, user, "servicios")
+    return await svc.estructura_asistencial(db, tid)
+
+
+@router.patch("/upss/{id}/estado")
+async def estado_upss(request: Request, id: uuid.UUID, is_active: bool, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+    tid = await autorizar(request, db, user, "servicios", True)
+    return await svc.cambiar_estado_upss(db, tid, id, is_active)
+
+
+@router.put("/servicios/{id}/estructura")
+async def servicio_estructura(request: Request, id: uuid.UUID, data: ServicioEstructuraUpdate, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+    tid = await autorizar(request, db, user, "servicios", True)
+    return await svc.configurar_servicio(db, tid, id, data)
 
 
 # Rutas auxiliares antes de los identificadores dinámicos.

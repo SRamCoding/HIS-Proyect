@@ -54,8 +54,8 @@
               <label class="form-label">Servicio <span class="required">*</span></label>
               <div class="input-wrapper">
                 <UIcon name="i-heroicons-building-office" class="input-icon" />
-                <select v-model="form.servicio_id" class="input-clinical" :class="{ 'input-error': errors.servicio_id }">
-                  <option value="">Seleccionar...</option>
+                <select v-model="form.servicio_id" class="input-clinical" :class="{ 'input-error': errors.servicio_id }" @change="onServicioChange">
+                  <option value="">Seleccionar servicio...</option>
                   <option v-for="s in servicios" :key="s.id" :value="s.id">{{ s.nombre }}</option>
                 </select>
               </div>
@@ -67,8 +67,8 @@
               <label class="form-label">Especialidad <span class="required">*</span></label>
               <div class="input-wrapper">
                 <UIcon name="i-heroicons-star" class="input-icon" />
-                <select v-model="form.especialidad_id" class="input-clinical" :class="{ 'input-error': errors.especialidad_id }" @change="onEspecialidadChange">
-                  <option value="">Seleccionar...</option>
+                <select v-model="form.especialidad_id" class="input-clinical" :class="{ 'input-error': errors.especialidad_id }" :disabled="!form.servicio_id" @change="onEspecialidadChange">
+                  <option value="">{{ form.servicio_id ? 'Seleccionar especialidad...' : 'Selecciona un servicio primero' }}</option>
                   <option v-for="e in especialidades" :key="e.id" :value="e.id">{{ e.nombre }}</option>
                 </select>
               </div>
@@ -429,11 +429,23 @@ const formatFecha = (fecha: string) => {
 onMounted(async () => {
   try {
     servicios.value = await api('/app/consulta-externa/programacion-medica/servicios')
-    especialidades.value = await api('/app/consulta-externa/programacion-medica/especialidades')
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al cargar catálogos'
   }
 })
+
+async function onServicioChange() {
+  form.especialidad_id = ''
+  form.medico_id = ''
+  especialidades.value = []
+  medicos.value = []
+  if (!form.servicio_id) return
+  try {
+    especialidades.value = await api(`/app/consulta-externa/programacion-medica/especialidades?servicio_id=${form.servicio_id}`)
+  } catch (e: any) {
+    error.value = e?.data?.detail || 'Error al cargar especialidades del servicio'
+  }
+}
 
 async function onEspecialidadChange() {
   form.medico_id = ''

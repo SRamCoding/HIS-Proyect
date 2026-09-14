@@ -160,7 +160,7 @@ const handleCreate = async (createAnother: boolean) => {
 onMounted(async () => {
   try {
     const [esp, ps] = await Promise.all([
-      api<any[]>('/sigarh/rrhh/especialidades').catch(() => []),
+      api<any[]>('/sigarh/rrhh/especialidades?active_only=true').catch(() => []),
       api<any[]>('/sigarh/infraestructura-hosp/pisos').catch(() => []),
     ])
     especialidades.value = esp

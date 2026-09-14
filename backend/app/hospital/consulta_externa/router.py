@@ -45,8 +45,8 @@ async def listar_servicios(request: Request, db: AsyncSession = Depends(get_db),
 
 
 @router.get("/programacion-medica/especialidades", response_model=list[EspecialidadOut])
-async def listar_especialidades(request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
-    return await get_especialidades(db, get_tenant_id(current_user, request))
+async def listar_especialidades(request: Request, servicio_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+    return await get_especialidades(db, get_tenant_id(current_user, request), servicio_id)
 
 
 @router.get("/programacion-medica/medicos/{especialidad_id}", response_model=list[MedicoOut])
@@ -240,7 +240,10 @@ async def crear_cita(data: CitaCreate, request: Request, db: AsyncSession = Depe
 
 @router.patch("/citas/{cita_id}", response_model=CitaResponse)
 async def actualizar_cita(cita_id: uuid.UUID, data: CitaUpdate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
-    cita = await update_cita(db, get_tenant_id(current_user, request), cita_id, data)
+    try:
+        cita = await update_cita(db, get_tenant_id(current_user, request), cita_id, data)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
     if not cita:
         raise HTTPException(404, detail="Cita no encontrada")
     return cita

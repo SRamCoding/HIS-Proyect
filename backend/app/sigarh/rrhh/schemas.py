@@ -1,7 +1,8 @@
 import re
 import uuid
 from datetime import datetime, date
-from pydantic import BaseModel, field_validator, model_validator
+from typing import Literal
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ─── Validadores reutilizables para Empleado ─────────────────────────────────
 
@@ -40,6 +41,14 @@ class EmpleadoEspecialidadCreate(BaseModel):
     certificado_url: str | None = None
     validado: bool = False
 
+    @field_validator("numero_rne")
+    @classmethod
+    def limpiar_rne(cls, v):
+        v = _limpiar(v)
+        if v and len(v) > 20:
+            raise ValueError("El RNE no debe superar 20 caracteres")
+        return v
+
 
 class EmpleadoEspecialidadResponse(EmpleadoEspecialidadCreate):
     id: uuid.UUID
@@ -57,21 +66,32 @@ class _EmpleadoCampos(BaseModel):
     """
     # Datos Personales
     dni: str | None = None
-    nombres: str | None = None
-    apellido_paterno: str | None = None
-    apellido_materno: str | None = None
+    nombres: str | None = Field(None, max_length=150)
+    apellido_paterno: str | None = Field(None, max_length=100)
+    apellido_materno: str | None = Field(None, max_length=100)
     fecha_nacimiento: date | None = None
     sexo: str | None = None
     estado_civil: str | None = None
     grupo_sanguineo: str | None = None
     celular: str | None = None
     telefono_fijo: str | None = None
-    correo: str | None = None
+    correo: str | None = Field(None, max_length=255)
 
     # Datos Laborales
+    vinculo_laboral_codigo: str | None = None
+    jornada_mensual_horas: int | None = Field(None, ge=1, le=150)
+    jornada_sustento: str | None = Field(None, max_length=255)
+    numero_legajo: str | None = Field(None, max_length=50)
+    titulo_profesional: str | None = Field(None, max_length=255)
+    institucion_formacion: str | None = Field(None, max_length=255)
+    documento_vinculo_laboral: str | None = Field(None, max_length=255)
+    contacto_emergencia_nombre: str | None = Field(None, max_length=150)
+    contacto_emergencia_telefono: str | None = Field(None, max_length=20)
+    fecha_titulo: date | None = None
     tipo_trabajador_id: uuid.UUID | None = None
     nivel_remunerativo_id: uuid.UUID | None = None
     grupo_ocupacional_id: uuid.UUID | None = None
+    profesion_id: uuid.UUID | None = None
     departamento_id: uuid.UUID | None = None
     servicio_id: uuid.UUID | None = None
     cargo_laboral: str | None = None
@@ -79,6 +99,8 @@ class _EmpleadoCampos(BaseModel):
     modalidad: str | None = None
     codigo_minsa: str | None = None
     numero_cmp: str | None = None
+    numero_colegiatura: str | None = None
+    habilitado_colegio: bool = False
     fecha_ingreso: date | None = None
     fecha_nombramiento: date | None = None
     fecha_cese: date | None = None
@@ -86,16 +108,16 @@ class _EmpleadoCampos(BaseModel):
     resolucion_cese: str | None = None
 
     # Datos Bancarios
-    banco: str | None = None
+    banco: str | None = Field(None, max_length=100)
     ruc: str | None = None
     numero_cuenta: str | None = None
     numero_cci: str | None = None
     tipo_cuenta: str | None = None
 
     # Ubicacion
-    departamento_ubigeo: str | None = None
-    provincia_ubigeo: str | None = None
-    distrito_ubigeo: str | None = None
+    departamento_ubigeo: str | None = Field(None, max_length=2)
+    provincia_ubigeo: str | None = Field(None, max_length=4)
+    distrito_ubigeo: str | None = Field(None, max_length=6)
     direccion: str | None = None
 
     # ── Validaciones de campo ───────────────────────────────────────────────
@@ -148,7 +170,7 @@ class _EmpleadoCampos(BaseModel):
     def _v_ruc(cls, v):
         return _solo_digitos(v, 11, "El RUC")
 
-    @field_validator("numero_cmp", "codigo_minsa")
+    @field_validator("numero_cmp", "numero_colegiatura", "codigo_minsa")
     @classmethod
     def _v_cod_corto(cls, v):
         v = _limpiar(v)
@@ -192,6 +214,19 @@ class _EmpleadoCampos(BaseModel):
         if v is not None and len(v) > 200:
             raise ValueError("La dirección no debe superar 200 caracteres")
         return v
+
+    @field_validator("numero_cci")
+    @classmethod
+    def validar_cci(cls, v):
+        return _solo_digitos(v, 20, "El CCI")
+
+    @field_validator("tipo_cuenta")
+    @classmethod
+    def validar_tipo_cuenta(cls, v):
+        v = _limpiar(v)
+        if v and v.lower() not in {"ahorros", "corriente"}:
+            raise ValueError("El tipo de cuenta debe ser ahorros o corriente")
+        return v.lower() if v else None
 
     @field_validator("correo")
     @classmethod
@@ -251,7 +286,8 @@ class _EmpleadoCampos(BaseModel):
         if fn:
             if fn >= hoy:
                 raise ValueError("La fecha de nacimiento debe ser anterior a hoy")
-            if (hoy - fn).days < 18 * 365:
+            edad = hoy.year - fn.year - ((hoy.month, hoy.day) < (fn.month, fn.day))
+            if edad < 18:
                 raise ValueError("El empleado debe ser mayor de edad")
             if (hoy - fn).days > 80 * 366:
                 raise ValueError("La edad no puede superar los 80 años")
@@ -266,14 +302,23 @@ class _EmpleadoCampos(BaseModel):
 
 class EmpleadoCreate(_EmpleadoCampos):
     dni: str
-    nombres: str
-    apellido_paterno: str
-    apellido_materno: str
+    nombres: str = Field(max_length=150)
+    apellido_paterno: str = Field(max_length=100)
+    apellido_materno: str = Field(max_length=100)
     is_active: bool = True
+    especialidades: list[EmpleadoEspecialidadCreate] = Field(default_factory=list)
 
 
 class EmpleadoUpdate(_EmpleadoCampos):
     is_active: bool | None = None
+    especialidades: list[EmpleadoEspecialidadCreate] | None = None
+
+    @field_validator("is_active")
+    @classmethod
+    def estado_no_nulo(cls, v):
+        if v is None:
+            raise ValueError("El estado del empleado no puede ser nulo")
+        return v
 
 
 class EmpleadoResponse(BaseModel):
@@ -291,9 +336,20 @@ class EmpleadoResponse(BaseModel):
     celular: str | None
     telefono_fijo: str | None
     correo: str | None
+    vinculo_laboral_codigo: str | None = None
+    jornada_mensual_horas: int | None = Field(None, ge=1, le=150)
+    jornada_sustento: str | None = Field(None, max_length=255)
+    numero_legajo: str | None = Field(None, max_length=50)
+    titulo_profesional: str | None = Field(None, max_length=255)
+    institucion_formacion: str | None = Field(None, max_length=255)
+    documento_vinculo_laboral: str | None = Field(None, max_length=255)
+    contacto_emergencia_nombre: str | None = Field(None, max_length=150)
+    contacto_emergencia_telefono: str | None = Field(None, max_length=20)
+    fecha_titulo: date | None = None
     tipo_trabajador_id: uuid.UUID | None
     nivel_remunerativo_id: uuid.UUID | None
     grupo_ocupacional_id: uuid.UUID | None
+    profesion_id: uuid.UUID | None
     departamento_id: uuid.UUID | None
     servicio_id: uuid.UUID | None
     cargo_laboral: str | None
@@ -301,6 +357,8 @@ class EmpleadoResponse(BaseModel):
     modalidad: str | None
     codigo_minsa: str | None
     numero_cmp: str | None
+    numero_colegiatura: str | None
+    habilitado_colegio: bool
     fecha_ingreso: date | None
     fecha_nombramiento: date | None
     fecha_cese: date | None
@@ -344,6 +402,16 @@ class EspecialidadCreate(BaseModel):
     codigo: str | None = None
     descripcion: str | None = None
     is_active: bool = True
+    tipo: Literal["especialidad", "subespecialidad"] = "especialidad"
+    parent_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _v_jerarquia(self):
+        if self.tipo == "subespecialidad" and not self.parent_id:
+            raise ValueError("Selecciona la especialidad principal")
+        if self.tipo == "especialidad":
+            self.parent_id = None
+        return self
 
     @field_validator("nombre")
     @classmethod
@@ -391,6 +459,17 @@ class EspecialidadResponse(BaseModel):
     is_active: bool
     medicos_asignados: int = 0
     created_at: datetime
+    catalogo_id: uuid.UUID | None = None
+    tipo: str = "especialidad"
+    parent_id: uuid.UUID | None = None
+    parent_nombre: str | None = None
+    requisitos: str | None = None
+    fuente: str | None = None
+    norma: str | None = None
+    fuente_url: str | None = None
+    es_oficial: bool = False
+    recomendada_nivel: bool = False
+    hospital_level: str | None = None
 
     model_config = {"from_attributes": True}
 

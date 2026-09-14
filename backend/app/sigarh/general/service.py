@@ -1,7 +1,6 @@
 import uuid
-from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.sigarh.general.models import DiagnosticoCIE10, Paquete, PaqueteItem, TiempoProcedimiento
@@ -23,18 +22,29 @@ async def listar_cie10(
     tenant_id: uuid.UUID,
     search: str | None = None,
     capitulo: str | None = None,
-) -> list[DiagnosticoCIE10]:
+    page: int = 1,
+    page_size: int = 25,
+) -> dict:
     query = select(DiagnosticoCIE10).where(DiagnosticoCIE10.tenant_id == tenant_id)
     if capitulo:
         query = query.where(DiagnosticoCIE10.capitulo == capitulo)
     if search:
-        query = query.where(
-            DiagnosticoCIE10.codigo_cie10.ilike(f"%{search}%") |
-            DiagnosticoCIE10.descripcion.ilike(f"%{search}%")
-        )
-    query = query.order_by(DiagnosticoCIE10.codigo_cie10)
+        term = f"%{search.strip()}%"
+        query = query.where(or_(
+            DiagnosticoCIE10.codigo_cie10.ilike(term),
+            DiagnosticoCIE10.descripcion.ilike(term),
+            DiagnosticoCIE10.categoria.ilike(term),
+        ))
+    total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    query = query.order_by(DiagnosticoCIE10.codigo_cie10).offset(
+        (page - 1) * page_size
+    ).limit(page_size)
     result = await db.execute(query)
-    return result.scalars().all()
+    return {
+        "items": list(result.scalars().all()), "total": total,
+        "page": page, "page_size": page_size,
+        "pages": max(1, (total + page_size - 1) // page_size),
+    }
 
 
 async def obtener_cie10(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID) -> DiagnosticoCIE10 | None:

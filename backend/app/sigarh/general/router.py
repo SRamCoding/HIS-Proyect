@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -7,6 +7,7 @@ from app.core.dependencies import get_current_user
 from app.tenants.entitlements import require_module_jwt
 from app.sigarh.general.schemas import (
     DiagnosticoCIE10Create, DiagnosticoCIE10Update, DiagnosticoCIE10Response,
+    DiagnosticoCIE10Page,
     PaqueteCreate, PaqueteUpdate, PaqueteResponse,
     TiempoProcedimientoCreate, TiempoProcedimientoUpdate, TiempoProcedimientoResponse,
 )
@@ -29,14 +30,19 @@ def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
 
 # ─── CIE-10 ───────────────────────────────────────────────────────────────────
 
-@router.get("/cie10", response_model=list[DiagnosticoCIE10Response])
+@router.get("/cie10", response_model=DiagnosticoCIE10Page)
 async def listar_cie10(
     request: Request, q: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=10, le=100),
     db: AsyncSession = Depends(get_db),
     tenant=Depends(_MOD_CIE10),
     current_user: dict = Depends(get_current_user),
 ):
-    return await service.listar_cie10(db, get_tenant_id(current_user, request), q)
+    return await service.listar_cie10(
+        db, get_tenant_id(current_user, request), q,
+        page=page, page_size=page_size,
+    )
 
 
 @router.post("/cie10", response_model=DiagnosticoCIE10Response, status_code=201)

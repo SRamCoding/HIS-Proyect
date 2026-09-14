@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from sqlalchemy import String, Boolean, DateTime, Date, Integer, Text, Float, ForeignKey
+from sqlalchemy import String, Boolean, DateTime, Date, Integer, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -9,12 +9,15 @@ from app.core.database import Base
 class DiagnosticoCIE10(Base):
     """Catalogo de diagnosticos CIE-10."""
     __tablename__ = "sigarh_diagnosticos_cie10"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "codigo_cie10", name="uq_cie10_tenant_codigo"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
-    capitulo: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    grupo: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    categoria: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    capitulo: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    grupo: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    categoria: Mapped[str | None] = mapped_column(String(255), nullable=True)
     codigo_cie10: Mapped[str] = mapped_column(String(20), index=True)
     codigo_cie9: Mapped[str | None] = mapped_column(String(20), nullable=True)
     descripcion: Mapped[str] = mapped_column(Text)

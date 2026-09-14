@@ -145,7 +145,7 @@ const handleCreate = async (createAnother: boolean) => {
   if (!form.sustento.trim()) { error.value = 'El sustento es requerido'; return }
   saving.value = true; error.value = ''
   try {
-    await api('/sigarh/mantenimiento/guardias-valorizadas', { method: 'POST', body: {
+    await api('/sigarh/mantenimiento/guardias-valorizadas', { method: 'POST', tenant: tenantId.value, body: {
       tipo_guardia_id: form.tipo_guardia_id || null,
       grupo_ocupacional_id: form.grupo_ocupacional_id || null,
       nivel_remunerativo_id: form.nivel_remunerativo_id || null,
@@ -158,11 +158,13 @@ const handleCreate = async (createAnother: boolean) => {
   finally { saving.value = false }
 }
 onMounted(async () => {
+  try {
   const [tg, go, nr] = await Promise.all([
-    api<any[]>('/sigarh/mantenimiento/tipos-guardia'),
-    api<any[]>('/sigarh/mantenimiento/grupos-ocupacionales'),
-    api<any[]>('/sigarh/mantenimiento/niveles-remunerativos'),
+    api<any[]>('/sigarh/mantenimiento/tipos-guardia', { tenant: tenantId.value }),
+    api<any[]>('/sigarh/mantenimiento/grupos-ocupacionales', { tenant: tenantId.value }),
+    api<any[]>('/sigarh/mantenimiento/niveles-remunerativos', { tenant: tenantId.value }),
   ])
   tiposGuardia.value = tg; gruposOcupacionales.value = go; nivelesRemunerativos.value = nr
+  } catch (e: any) { error.value = apiErr(e, 'No se pudieron cargar los catálogos de guardias') }
 })
 </script>

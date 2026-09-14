@@ -8,6 +8,8 @@ const id = computed(() => route.params.id as string)
 
 const loading = ref(true)
 const saving = ref(false)
+const vinculoValido = ref(true)
+const esMedico = ref(false)
 const error = ref('')
 
 const gruposSanguineos = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
@@ -35,6 +37,7 @@ const loadDistritos = async (provId: string) => {
 
 const tiposTrabajador = ref<any[]>([])
 const nivelesRemunerativos = ref<any[]>([])
+const profesionesCatalogo = ref<any[]>([])
 const gruposOcupacionales = ref<any[]>([])
 const departamentos = ref<any[]>([])
 const servicios = ref<any[]>([])
@@ -45,9 +48,19 @@ const errors = reactive<Record<string, string>>({
 })
 
 const form = reactive({
+  numero_legajo: '',
+  jornada_mensual_horas: '' as number | string, jornada_sustento: '',
+  titulo_profesional: '',
+  institucion_formacion: '',
+  documento_vinculo_laboral: '',
+  contacto_emergencia_nombre: '',
+  contacto_emergencia_telefono: '',
+  fecha_titulo: '',
+
+  vinculo_laboral_codigo: '',
   dni: '', nombres: '', apellido_paterno: '', apellido_materno: '', fecha_nacimiento: '',
   sexo: '', estado_civil: '', grupo_sanguineo: '', celular: '', telefono_fijo: '', correo: '',
-  is_active: true,
+  is_active: true, profesion_id: '', numero_colegiatura: '', habilitado_colegio: false,
   tipo_trabajador_id: '', nivel_remunerativo_id: '', grupo_ocupacional_id: '',
   departamento_id: '', servicio_id: '', cargo_laboral: '', es_jefe_servicio: false, modalidad: '',
   codigo_minsa: '', numero_cmp: '', fecha_ingreso: '', fecha_nombramiento: '', fecha_cese: '',
@@ -56,6 +69,27 @@ const form = reactive({
   banco: '', ruc: '', numero_cuenta: '', numero_cci: '', tipo_cuenta: '',
   departamento_ubigeo: '', provincia_ubigeo: '', distrito_ubigeo: '', direccion: '',
 })
+const serviciosCompatibles = computed(() => servicios.value.filter(s => !form.departamento_id || s.departamento_id === form.departamento_id))
+watch(() => form.departamento_id, () => {
+  if (form.servicio_id && !serviciosCompatibles.value.some(s => s.id === form.servicio_id)) form.servicio_id = ''
+})
+watch(() => form.servicio_id, () => {
+  const servicio = servicios.value.find(s => s.id === form.servicio_id)
+  if (servicio?.departamento_id) form.departamento_id = servicio.departamento_id
+})
+const tiposCompatibles = computed(() => tiposTrabajador.value.filter(t => !t.vinculos_codigos?.length || !form.vinculo_laboral_codigo || t.vinculos_codigos.includes(form.vinculo_laboral_codigo)))
+const nivelesCompatibles = computed(() => {
+  const codigo = profesionesCatalogo.value.find(p => p.id === form.profesion_id)?.codigo
+  return nivelesRemunerativos.value.filter(n => !n.profesion_codigo || n.profesion_codigo === codigo)
+})
+watch(() => form.profesion_id, () => {
+  if (form.nivel_remunerativo_id && !nivelesCompatibles.value.some(n => n.id === form.nivel_remunerativo_id)) form.nivel_remunerativo_id = ''
+})
+watch(() => form.vinculo_laboral_codigo, () => {
+  if (tiposCompatibles.value.length === 1) form.tipo_trabajador_id = tiposCompatibles.value[0].id
+  else if (!tiposCompatibles.value.some(t => t.id === form.tipo_trabajador_id)) form.tipo_trabajador_id = ''
+})
+
 
 watch(() => form.departamento_ubigeo, (dep) => {
   if (!ubigeoReady) return
@@ -148,16 +182,30 @@ const eliminarEmpleado = async () => {
 }
 
 const handleSave = async () => {
+  if (!vinculoValido.value) { error.value = 'Selecciona la condición del régimen laboral elegido.'; return }
   if (!validate()) { error.value = 'Revisa los campos marcados en rojo.'; return }
   saving.value = true; error.value = ''
   try {
     await api(`/sigarh/rrhh/empleados/${id.value}`, {
       method: 'PATCH',
+      tenant: tenantId.value,
       body: {
+        especialidades: form.especialidades.filter(e => e.especialidad_id).map(e => ({ especialidad_id: e.especialidad_id, numero_rne: e.numero_rne || null, validado: e.validado })),
         nombres: form.nombres, apellido_paterno: form.apellido_paterno, apellido_materno: form.apellido_materno,
         fecha_nacimiento: form.fecha_nacimiento || null, sexo: form.sexo || null, estado_civil: form.estado_civil || null,
         grupo_sanguineo: form.grupo_sanguineo || null, celular: form.celular || null, telefono_fijo: form.telefono_fijo || null,
         correo: form.correo || null, is_active: form.is_active,
+        profesion_id: form.profesion_id || null, numero_colegiatura: form.numero_colegiatura || null, habilitado_colegio: form.habilitado_colegio,
+      numero_legajo: form.numero_legajo || null,
+      jornada_mensual_horas: form.jornada_mensual_horas ? Number(form.jornada_mensual_horas) : null,
+      jornada_sustento: form.jornada_sustento || null,
+      titulo_profesional: form.titulo_profesional || null,
+      institucion_formacion: form.institucion_formacion || null,
+      documento_vinculo_laboral: form.documento_vinculo_laboral || null,
+      contacto_emergencia_nombre: form.contacto_emergencia_nombre || null,
+      contacto_emergencia_telefono: form.contacto_emergencia_telefono || null,
+      fecha_titulo: form.fecha_titulo || null,
+      vinculo_laboral_codigo: form.vinculo_laboral_codigo || null,
         tipo_trabajador_id: form.tipo_trabajador_id || null, nivel_remunerativo_id: form.nivel_remunerativo_id || null,
         grupo_ocupacional_id: form.grupo_ocupacional_id || null, departamento_id: form.departamento_id || null,
         servicio_id: form.servicio_id || null, cargo_laboral: form.cargo_laboral || null, es_jefe_servicio: form.es_jefe_servicio, modalidad: form.modalidad || null,
@@ -170,14 +218,6 @@ const handleSave = async () => {
         distrito_ubigeo: form.distrito_ubigeo || null, direccion: form.direccion || null,
       },
     })
-    for (const esp of form.especialidades) {
-      if (esp.nueva && esp.especialidad_id) {
-        await api(`/sigarh/rrhh/empleados/${id.value}/especialidades`, {
-          method: 'POST',
-          body: { especialidad_id: esp.especialidad_id, numero_rne: esp.numero_rne || null, validado: esp.validado },
-        })
-      }
-    }
     router.push(`/sigarh/rrhh/empleados?tenant=${tenantId.value}`)
   } catch (e: any) {
     error.value = formatApiError(e, 'No se pudo guardar el empleado')
@@ -186,16 +226,23 @@ const handleSave = async () => {
 
 onMounted(async () => {
   try {
-    const [data, tt, nr, go, dep, ser, esp] = await Promise.all([
-      api<any>(`/sigarh/rrhh/empleados/${id.value}`),
-      api<any[]>('/sigarh/mantenimiento/tipos-trabajador'),
-      api<any[]>('/sigarh/mantenimiento/niveles-remunerativos'),
-      api<any[]>('/sigarh/mantenimiento/grupos-ocupacionales'),
-      api<any[]>('/sigarh/mantenimiento/departamentos'),
-      api<any[]>('/sigarh/mantenimiento/servicios'),
-      api<any[]>('/sigarh/rrhh/especialidades'),
-    ])
+    const data = await api<any>(`/sigarh/rrhh/empleados/${id.value}`, { tenant: tenantId.value })
+    const refs = await api<any>('/sigarh/rrhh/empleados/catalogos', { tenant: tenantId.value })
+    profesionesCatalogo.value = refs.profesiones
+    const tt = refs.tipos_trabajador, nr = refs.niveles_remunerativos, go = refs.grupos_ocupacionales, dep = refs.departamentos, ser = refs.servicios
+    const esp = await api<any[]>('/sigarh/rrhh/especialidades?active_only=true', { tenant: tenantId.value }).catch(() => [])
     Object.assign(form, {
+      numero_legajo: data.numero_legajo || '',
+      jornada_mensual_horas: data.jornada_mensual_horas || '', jornada_sustento: data.jornada_sustento || '',
+      titulo_profesional: data.titulo_profesional || '',
+      institucion_formacion: data.institucion_formacion || '',
+      documento_vinculo_laboral: data.documento_vinculo_laboral || '',
+      contacto_emergencia_nombre: data.contacto_emergencia_nombre || '',
+      contacto_emergencia_telefono: data.contacto_emergencia_telefono || '',
+      fecha_titulo: data.fecha_titulo || '',
+
+      vinculo_laboral_codigo: data.vinculo_laboral_codigo || '',
+      profesion_id: data.profesion_id || '', numero_colegiatura: data.numero_colegiatura || data.numero_cmp || '', habilitado_colegio: !!data.habilitado_colegio,
       dni: data.dni || '', nombres: data.nombres || '', apellido_paterno: data.apellido_paterno || '', apellido_materno: data.apellido_materno || '',
       fecha_nacimiento: data.fecha_nacimiento || '', sexo: data.sexo || '', estado_civil: data.estado_civil || '', grupo_sanguineo: data.grupo_sanguineo || '',
       celular: data.celular || '', telefono_fijo: data.telefono_fijo || '', correo: data.correo || '', is_active: data.is_active,
@@ -321,19 +368,23 @@ onMounted(async () => {
           <div class="form-group">
             <label class="form-label">Tipo de Trabajador</label>
             <div class="input-wrapper"><UIcon name="i-heroicons-user-group" class="input-icon" />
-              <select v-model="form.tipo_trabajador_id" class="input-clinical"><option value="">Seleccione</option><option v-for="t in tiposTrabajador" :key="t.id" :value="t.id">{{ t.nombre }}</option></select>
+              <select v-model="form.tipo_trabajador_id" class="input-clinical"><option value="">Seleccione</option><option v-for="t in tiposCompatibles" :key="t.id" :value="t.id">{{ t.nombre }}</option></select>
             </div>
           </div>
-          <div class="form-group">
+          <SClasificacionProfesional v-model:profesion-id="form.profesion_id" v-model:numero-colegiatura="form.numero_colegiatura" v-model:habilitado="form.habilitado_colegio" @grupo="form.grupo_ocupacional_id = $event" @medico="esMedico = $event" />
+        <div class="form-group">
             <label class="form-label">Nivel Remunerativo</label>
             <div class="input-wrapper"><UIcon name="i-heroicons-currency-dollar" class="input-icon" />
-              <select v-model="form.nivel_remunerativo_id" class="input-clinical"><option value="">Seleccione</option><option v-for="n in nivelesRemunerativos" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
+              <select :disabled="!form.profesion_id" v-model="form.nivel_remunerativo_id" class="input-clinical"><option value="">{{ form.profesion_id ? 'Seleccione' : 'Seleccione primero la profesión' }}</option><option v-for="n in nivelesCompatibles" :key="n.id" :value="n.id">{{ n.nombre }}</option></select>
             </div>
           </div>
-          <div class="form-group">
+        <SJornadaMedica v-model="form" />
+        <SEmpleadoLegajo v-model="form" />
+        <SVinculoLaboral v-model="form.vinculo_laboral_codigo" @valido="vinculoValido = $event" />
+        <div class="form-group">
             <label class="form-label">Grupo Ocupacional</label>
             <div class="input-wrapper"><UIcon name="i-heroicons-chart-bar" class="input-icon" />
-              <select v-model="form.grupo_ocupacional_id" class="input-clinical"><option value="">Seleccione</option><option v-for="g in gruposOcupacionales" :key="g.id" :value="g.id">{{ g.nombre }}</option></select>
+              <select v-model="form.grupo_ocupacional_id" class="input-clinical" :disabled="!!form.profesion_id"><option value="">Seleccione</option><option v-for="g in gruposOcupacionales" :key="g.id" :value="g.id">{{ g.nombre }}</option></select>
             </div>
           </div>
           <div class="form-group">
@@ -345,7 +396,7 @@ onMounted(async () => {
           <div class="form-group">
             <label class="form-label">Servicio / Área</label>
             <div class="input-wrapper"><UIcon name="i-heroicons-folder" class="input-icon" />
-              <select v-model="form.servicio_id" class="input-clinical"><option value="">Seleccione</option><option v-for="s in servicios" :key="s.id" :value="s.id">{{ s.nombre }}</option></select>
+              <select v-model="form.servicio_id" class="input-clinical"><option value="">Seleccione</option><option v-for="s in serviciosCompatibles" :key="s.id" :value="s.id">{{ s.nombre }}</option></select>
             </div>
           </div>
           <div class="form-group">
@@ -418,7 +469,7 @@ onMounted(async () => {
             </div>
           </div>
           <div class="form-group full-width">
-            <button type="button" class="btn-outline" @click="form.especialidades.push({ id: null, especialidad_id: '', numero_rne: '', validado: false, nueva: true })">
+            <button type="button" class="btn-outline" :disabled="!esMedico" @click="form.especialidades.push({ id: null, especialidad_id: '', numero_rne: '', validado: false, nueva: true })">
               <UIcon name="i-heroicons-plus" class="w-4 h-4" /> Agregar Especialidad
             </button>
           </div>

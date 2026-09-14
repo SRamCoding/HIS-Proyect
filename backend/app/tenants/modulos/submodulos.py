@@ -101,6 +101,7 @@ SUBMODULOS_POR_MODULO: dict[str, list[dict[str, str]]] = {
         {"code": "guardias_valorizadas", "label": "Guardias Valorizadas"},
         {"code": "roles_sistema", "label": "Roles del Sistema"},
         {"code": "perfiles_usuario", "label": "Perfiles de Usuario"},
+        {"code": "profesiones", "label": "Profesiones"},
         {"code": "grupos_ocupacionales", "label": "Grupos Ocupacionales"},
     ],
 }

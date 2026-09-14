@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from sqlalchemy import String, Boolean, DateTime, Date, Text, Float, ForeignKey, Integer
+from sqlalchemy import String, Boolean, DateTime, Date, Text, ForeignKey, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -32,9 +32,20 @@ class Empleado(Base):
     correo: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # ─── Datos Laborales ──────────────────────────────────────────────────────
+    vinculo_laboral_codigo: Mapped[str | None] = mapped_column(String(30), ForeignKey("catalogo_vinculos_laborales.codigo", ondelete="RESTRICT"), nullable=True)
+    jornada_mensual_horas: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    jornada_sustento: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    numero_legajo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    titulo_profesional: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    institucion_formacion: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    documento_vinculo_laboral: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contacto_emergencia_nombre: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    contacto_emergencia_telefono: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    fecha_titulo: Mapped[date | None] = mapped_column(Date, nullable=True)
     tipo_trabajador_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_tipos_trabajador.id", ondelete="SET NULL"), nullable=True)
     nivel_remunerativo_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_niveles_remunerativos.id", ondelete="SET NULL"), nullable=True)
     grupo_ocupacional_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_grupos_ocupacionales.id", ondelete="SET NULL"), nullable=True)
+    profesion_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_profesiones.id", ondelete="SET NULL"), nullable=True)
     departamento_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_departamentos.id", ondelete="SET NULL"), nullable=True)
     servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="SET NULL"), nullable=True)
     cargo_laboral: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -44,6 +55,8 @@ class Empleado(Base):
     modalidad: Mapped[str | None] = mapped_column(String(100), nullable=True)
     codigo_minsa: Mapped[str | None] = mapped_column(String(50), nullable=True)
     numero_cmp: Mapped[str | None] = mapped_column(String(50), nullable=True)      # Colegio Médico del Perú
+    numero_colegiatura: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    habilitado_colegio: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     # Resoluciones y fechas
     fecha_ingreso: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -92,20 +105,50 @@ class Empleado(Base):
         return f"<Empleado {self.nombre_completo} ({self.dni})>"
 
 
+class CatalogoEspecialidad(Base):
+    """Nomenclatura nacional replicada en todas las bases hospitalarias."""
+    __tablename__ = "catalogo_especialidades_salud"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(30), unique=True)
+    nombre: Mapped[str] = mapped_column(String(255))
+    tipo: Mapped[str] = mapped_column(String(20))
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("catalogo_especialidades_salud.id", ondelete="RESTRICT"), nullable=True
+    )
+    requisitos: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fuente: Mapped[str] = mapped_column(String(100))
+    norma: Mapped[str] = mapped_column(String(255))
+    fuente_url: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class Especialidad(Base):
     """
     Catálogo de especialidades médicas.
     Se configura en Mantenimiento y se asigna a empleados.
     """
     __tablename__ = "sigarh_especialidades"
+    __table_args__ = (UniqueConstraint("tenant_id", "catalogo_id", name="uq_especialidad_tenant_catalogo"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    catalogo_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("catalogo_especialidades_salud.id", ondelete="RESTRICT"), nullable=True
+    )
+    tipo: Mapped[str] = mapped_column(String(20), default="especialidad")
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sigarh_especialidades.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     nombre: Mapped[str] = mapped_column(String(255))
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    catalogo: Mapped["CatalogoEspecialidad | None"] = relationship(lazy="selectin")
 
     def __repr__(self) -> str:
         return f"<Especialidad {self.nombre}>"
@@ -253,3 +296,15 @@ class Justificacion(Base):
 
     def __repr__(self) -> str:
         return f"<Justificacion {self.empleado_id} {self.fecha_inicio}>"
+
+
+class VinculoLaboral(Base):
+    """Combinaciones comunes de regimen y condicion laboral con fuente oficial."""
+    __tablename__ = "catalogo_vinculos_laborales"
+    codigo: Mapped[str] = mapped_column(String(30), primary_key=True)
+    regimen_codigo: Mapped[str] = mapped_column(String(10))
+    regimen_nombre: Mapped[str] = mapped_column(String(150))
+    condicion_nombre: Mapped[str] = mapped_column(String(100))
+    norma: Mapped[str] = mapped_column(String(255))
+    fuente_url: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)

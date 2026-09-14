@@ -27,7 +27,7 @@
         </div>
         <div class="stat-content">
           <span class="stat-value">{{ programaciones.length }}</span>
-          <span class="stat-label">Total Programaciones</span>
+          <span class="stat-label">Programaciones del período</span>
         </div>
       </div>
 
@@ -83,6 +83,7 @@
               </div>
               <div class="input-wrapper-small" style="min-width: 130px">
                 <select v-model.number="mes" class="input-clinical-small" style="padding-left: 0.625rem" @change="cargar">
+                  <option :value="0">Todos los meses</option>
                   <option v-for="(m, i) in MESES" :key="i" :value="i + 1">{{ m }}</option>
                 </select>
               </div>
@@ -242,8 +243,8 @@
       <div class="empty-icon" style="background: var(--mist)">
         <UIcon name="i-heroicons-calendar-days" class="w-12 h-12" style="color: var(--ink-soft)" />
       </div>
-      <h3 style="color: var(--ink)">No hay programaciones registradas</h3>
-      <p style="color: var(--ink-soft)">Crea y aprueba un rol con actividad de Consulta Externa en SIGARH.</p>
+      <h3 style="color: var(--ink)">No hay programaciones para {{ mes ? MESES[mes - 1] : 'el año' }} {{ anio }} con estos filtros</h3>
+      <p style="color: var(--ink-soft)">Selecciona otro mes o usa Todos los meses. Las agendas aparecen cuando se aprueba un rol de Consulta Externa en SIGARH.</p>
      
     </div>
   </div>
@@ -267,7 +268,7 @@ const filtroServicio = ref('')
 const filtroEstado = ref('')
 const filtroCodigo = ref('')
 const anio = ref(hoy.getFullYear())
-const mes = ref(hoy.getMonth() + 1)
+const mes = ref(0)
 const cargando = ref(false)
 const error = ref('')
 
@@ -275,7 +276,7 @@ let codigoTimer: any
 const onCodigoInput = () => { clearTimeout(codigoTimer); codigoTimer = setTimeout(cargar, 400) }
 const limpiarFiltros = () => {
   filtroEspecialidad.value = ''; filtroServicio.value = ''; filtroEstado.value = ''; filtroCodigo.value = ''
-  anio.value = hoy.getFullYear(); mes.value = hoy.getMonth() + 1
+  anio.value = hoy.getFullYear(); mes.value = 0
   cargar()
 }
 
@@ -343,7 +344,7 @@ const getTurnoIcon = (turno: string) => {
 
 const formatFecha = (fecha: string) => {
   if (!fecha) return '—'
-  const d = new Date(fecha)
+  const d = new Date(`${fecha.slice(0, 10)}T00:00:00`)
   return d.toLocaleDateString('es-PE', {
     day: '2-digit',
     month: '2-digit',

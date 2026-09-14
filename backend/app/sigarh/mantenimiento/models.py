@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
 from decimal import Decimal
-from sqlalchemy import String, Boolean, DateTime, Integer, Text, ForeignKey, Float, Numeric, Date
+from sqlalchemy import String, Boolean, DateTime, Integer, Text, ForeignKey, Float, Numeric, Date, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -27,6 +27,22 @@ class Departamento(Base):
         return f"<Departamento {self.nombre}>"
 
 
+class UPSS(Base):
+    """Unidad Productora de Servicios de Salud configurada por hospital."""
+    __tablename__ = "sigarh_upss"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    codigo: Mapped[str] = mapped_column(String(30))
+    nombre: Mapped[str] = mapped_column(String(255))
+    tipo_atencion: Mapped[str] = mapped_column(String(30))
+    fuente: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    norma: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    fuente_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recomendada_nivel: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class Servicio(Base):
     """Servicios del hospital – equivalente a Service en Laravel."""
     __tablename__ = "sigarh_servicios"
@@ -41,6 +57,7 @@ class Servicio(Base):
     # Minutos por paciente en consulta externa; usado para calcular cupos al
     # sincronizar la programación médica de App Hospitalario. NULL -> 15 por defecto.
     tiempo_atencion_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    es_base: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -49,6 +66,18 @@ class Servicio(Base):
     piso: Mapped[Optional["Piso"]] = relationship()
     def __repr__(self) -> str:
         return f"<Servicio {self.nombre}>"
+
+
+class ServicioUPSS(Base):
+    __tablename__ = "sigarh_servicio_upss"
+    servicio_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="CASCADE"), primary_key=True)
+    upss_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_upss.id", ondelete="CASCADE"), primary_key=True)
+
+
+class ServicioEspecialidad(Base):
+    __tablename__ = "sigarh_servicio_especialidades"
+    servicio_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="CASCADE"), primary_key=True)
+    especialidad_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="CASCADE"), primary_key=True)
 
 
 class TipoTrabajador(Base):
@@ -63,6 +92,7 @@ class TipoTrabajador(Base):
     # Etapa de formación (residentes/internos) que este tipo de trabajador
     # identifica de forma inequívoca, para validar personal en Creación de Roles.
     # NULL = no determina por sí solo la categoría del rol (ej. Nombrado, CAS).
+    vinculos_codigos: Mapped[list | None] = mapped_column(JSON, nullable=True)
     categoria_personal: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -100,6 +130,8 @@ class NivelRemunerativo(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     nombre: Mapped[str] = mapped_column(String(255))
     codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    profesion_codigo: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    fuente_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -150,6 +182,30 @@ class GrupoOcupacional(Base):
 
     def __repr__(self) -> str:
         return f"<GrupoOcupacional {self.nombre}>"
+
+
+class Profesion(Base):
+    __tablename__ = "sigarh_profesiones"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    grupo_ocupacional_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sigarh_grupos_ocupacionales.id", ondelete="RESTRICT")
+    )
+    nombre: Mapped[str] = mapped_column(String(255))
+    codigo: Mapped[str] = mapped_column(String(20))
+    descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    codigo_colegio: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    colegio_profesional: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    categoria_personal: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    fuente: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    fuente_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    es_base: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    grupo_ocupacional: Mapped["GrupoOcupacional"] = relationship()
 
 
 class TipoActividad(Base):
@@ -292,6 +348,7 @@ class UsuarioSigarh(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     empleado_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="SET NULL"), nullable=True
     )

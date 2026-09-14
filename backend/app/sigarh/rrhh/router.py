@@ -2,8 +2,9 @@ import uuid
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
-from app.core.database import get_db
+from app.core.database import get_db, get_db_central
 from app.core.dependencies import get_current_user
 from app.tenants.entitlements import require_module_jwt
 from app.sigarh.rrhh.schemas import (
@@ -31,8 +32,23 @@ _MOD_ASISTENCIA = require_module_jwt("sigarh_recursos_humanos.asistencia")
 _MOD_JUSTIFICACIONES = require_module_jwt("sigarh_recursos_humanos.justificaciones")
 
 
+async def _referencia_especialidades(request: Request, current_user=Depends(get_current_user)):
+    codes = ("sigarh_recursos_humanos.especialidades", "sigarh_recursos_humanos.empleados",
+             "sigarh_mantenimiento.servicios", "sigarh_infraestructura.consultorios")
+    for code in codes:
+        try:
+            return await require_module_jwt(code)(request=request, current_user=current_user)
+        except HTTPException as error:
+            if error.status_code != 403:
+                raise
+    raise HTTPException(403, "Su perfil no permite consultar especialidades")
+
+
 def _tid(current_user: dict, request: Request) -> uuid.UUID:
-    tid = current_user.get("tenant_id") or request.headers.get("X-Tenant-ID")
+    from app.sigarh.mantenimiento.security import es_admin_erp
+    tid = current_user.get("tenant_id")
+    if es_admin_erp(current_user):
+        tid = request.headers.get("X-Tenant-ID") or tid
     if not tid:
         raise HTTPException(403, detail="Sin tenant asignado")
     return uuid.UUID(str(tid))
@@ -48,6 +64,27 @@ def _rn(e: svc.ReglaNegocioError):
 
 # ─── Empleados ────────────────────────────────────────────────────────────────
 
+@router.get("/empleados/catalogos")
+async def catalogos_empleado(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS)):
+    from sqlalchemy import select
+    from app.sigarh.mantenimiento.models import TipoTrabajador, NivelRemunerativo, GrupoOcupacional, Departamento, Servicio, Profesion
+    tid = _tid(tenant, request)
+    result = {}
+    for key, model in (("tipos_trabajador", TipoTrabajador), ("niveles_remunerativos", NivelRemunerativo), ("grupos_ocupacionales", GrupoOcupacional), ("departamentos", Departamento), ("servicios", Servicio), ("profesiones", Profesion)):
+        items = (await db.scalars(select(model).where(model.tenant_id == tid, model.is_active.is_(True)).order_by(model.nombre))).all()
+        result[key] = [svc._cols(i) for i in items]
+    return result
+
+
+@router.get("/vinculos-laborales")
+async def vinculos_laborales(db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS)):
+    from sqlalchemy import select
+    from app.sigarh.rrhh.models import VinculoLaboral
+    items = (await db.scalars(select(VinculoLaboral).where(VinculoLaboral.is_active.is_(True)).order_by(VinculoLaboral.regimen_codigo, VinculoLaboral.condicion_nombre))).all()
+    return [{"codigo": i.codigo, "regimen_codigo": i.regimen_codigo, "regimen_nombre": i.regimen_nombre,
+             "condicion_nombre": i.condicion_nombre, "norma": i.norma, "fuente_url": i.fuente_url} for i in items]
+
+
 @router.get("/empleados", response_model=list[EmpleadoListItem])
 async def listar(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     return await svc.listar_empleados(db, _tid(current_user, request))
@@ -60,6 +97,9 @@ async def crear(request: Request, data: EmpleadoCreate, db: AsyncSession = Depen
         raise HTTPException(400, detail=f"Ya existe un empleado con DNI {data.dni}")
     try:
         return await svc.crear_empleado(db, tid, data)
+    except IntegrityError as e:
+        await db.rollback()
+        raise HTTPException(409, "El empleado contiene datos duplicados o referencias no válidas") from e
     except svc.ReglaNegocioError as e:
         raise _rn(e) from e
 
@@ -85,19 +125,19 @@ async def dni_lookup(dni: str, tenant=Depends(_MOD_EMPLEADOS), current_user: dic
 
 
 @router.get("/ubigeo/departamentos", summary="Catálogo ubigeo: departamentos")
-async def ubigeo_departamentos(db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
+async def ubigeo_departamentos(db: AsyncSession = Depends(get_db_central), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     from app.shared.ubigeo.service import get_departamentos
     return [{"id": d.id, "nombre": d.nombre} for d in await get_departamentos(db)]
 
 
 @router.get("/ubigeo/provincias/{departamento_id}", summary="Catálogo ubigeo: provincias de un departamento")
-async def ubigeo_provincias(departamento_id: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
+async def ubigeo_provincias(departamento_id: str, db: AsyncSession = Depends(get_db_central), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     from app.shared.ubigeo.service import get_provincias
     return [{"id": p.id, "nombre": p.nombre} for p in await get_provincias(db, departamento_id)]
 
 
 @router.get("/ubigeo/distritos/{provincia_id}", summary="Catálogo ubigeo: distritos de una provincia")
-async def ubigeo_distritos(provincia_id: str, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
+async def ubigeo_distritos(provincia_id: str, db: AsyncSession = Depends(get_db_central), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     from app.shared.ubigeo.service import get_distritos
     return [{"id": d.id, "nombre": d.nombre} for d in await get_distritos(db, provincia_id)]
 
@@ -114,6 +154,9 @@ async def obtener(request: Request, id: uuid.UUID, db: AsyncSession = Depends(ge
 async def actualizar(request: Request, id: uuid.UUID, data: EmpleadoUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
     try:
         emp = await svc.actualizar_empleado(db, id, _tid(current_user, request), data)
+    except IntegrityError as e:
+        await db.rollback()
+        raise HTTPException(409, "El empleado contiene datos duplicados o referencias no válidas") from e
     except svc.ReglaNegocioError as e:
         raise _rn(e) from e
     if not emp:
@@ -133,12 +176,17 @@ async def eliminar(request: Request, id: uuid.UUID, db: AsyncSession = Depends(g
 
 @router.post("/empleados/{empleado_id}/especialidades", response_model=EmpleadoEspecialidadResponse, status_code=201)
 async def agregar_esp(request: Request, empleado_id: uuid.UUID, data: EmpleadoEspecialidadCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
-    return await svc.agregar_especialidad(db, empleado_id, data)
+    if not await svc.obtener_empleado(db, empleado_id, _tid(current_user, request)):
+        raise HTTPException(404, detail="Empleado no encontrado")
+    try:
+        return await svc.agregar_especialidad(db, empleado_id, data)
+    except svc.ReglaNegocioError as e:
+        raise _rn(e) from e
 
 
 @router.delete("/empleados/{empleado_id}/especialidades/{id}")
 async def eliminar_esp(request: Request, empleado_id: uuid.UUID, id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_EMPLEADOS), current_user: dict = Depends(get_current_user)):
-    if not await svc.eliminar_especialidad(db, id):
+    if not await svc.eliminar_especialidad(db, id, empleado_id, _tid(current_user, request)):
         raise HTTPException(404, detail="Especialidad no encontrada")
     return {"ok": True}
 
@@ -146,13 +194,16 @@ async def eliminar_esp(request: Request, empleado_id: uuid.UUID, id: uuid.UUID, 
 # ─── Catálogo de Especialidades ───────────────────────────────────────────────
 
 @router.get("/especialidades", response_model=list[EspecialidadResponse])
-async def listar_esp(request: Request, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ESPECIALIDADES), current_user: dict = Depends(get_current_user)):
-    return await svc.listar_especialidades(db, _tid(current_user, request))
+async def listar_esp(request: Request, active_only: bool = False, db: AsyncSession = Depends(get_db), tenant=Depends(_referencia_especialidades), current_user: dict = Depends(get_current_user)):
+    return await svc.listar_especialidades(db, _tid(current_user, request), active_only)
 
 
 @router.post("/especialidades", response_model=EspecialidadResponse, status_code=201)
 async def crear_esp(request: Request, data: EspecialidadCreate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ESPECIALIDADES), current_user: dict = Depends(get_current_user)):
-    return await svc.crear_especialidad(db, _tid(current_user, request), data)
+    try:
+        return await svc.crear_especialidad(db, _tid(current_user, request), data)
+    except svc.ReglaNegocioError as e:
+        raise _rn(e) from e
 
 
 @router.get("/especialidades/{id}", response_model=EspecialidadResponse)
@@ -167,7 +218,10 @@ async def obtener_esp(request: Request, id: uuid.UUID, db: AsyncSession = Depend
 
 @router.patch("/especialidades/{id}", response_model=EspecialidadResponse)
 async def actualizar_esp(request: Request, id: uuid.UUID, data: EspecialidadUpdate, db: AsyncSession = Depends(get_db), tenant=Depends(_MOD_ESPECIALIDADES), current_user: dict = Depends(get_current_user)):
-    esp = await svc.actualizar_especialidad(db, id, _tid(current_user, request), data)
+    try:
+        esp = await svc.actualizar_especialidad(db, id, _tid(current_user, request), data)
+    except svc.ReglaNegocioError as e:
+        raise _rn(e) from e
     if not esp:
         raise HTTPException(404, detail="Especialidad no encontrada")
     return esp

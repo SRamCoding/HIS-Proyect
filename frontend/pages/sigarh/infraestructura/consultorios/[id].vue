@@ -167,7 +167,7 @@ onMounted(async () => {
   try {
     const [data, esp, ps] = await Promise.all([
       api<any>(`/sigarh/infraestructura/consultorios/${id.value}`),
-      api<any[]>('/sigarh/rrhh/especialidades').catch(() => []),
+      api<any[]>('/sigarh/rrhh/especialidades?active_only=true').catch(() => []),
       api<any[]>('/sigarh/infraestructura-hosp/pisos').catch(() => []),
     ])
     form.nombre = data.nombre

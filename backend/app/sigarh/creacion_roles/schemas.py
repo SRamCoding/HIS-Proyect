@@ -172,6 +172,7 @@ class RolListItem(BaseModel):
 
 class RolDetail(RolListItem):
     empleados: list[RolEmpleadoOut] = []
+    valorizacion_guardias: dict | None = None
 
 
 class SolicitudModificacionResponse(BaseModel):

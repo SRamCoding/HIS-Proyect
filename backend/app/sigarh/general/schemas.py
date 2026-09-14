@@ -143,3 +143,11 @@ class TiempoProcedimientoResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DiagnosticoCIE10Page(BaseModel):
+    items: list[DiagnosticoCIE10Response]
+    total: int
+    page: int
+    page_size: int
+    pages: int

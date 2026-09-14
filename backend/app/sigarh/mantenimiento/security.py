@@ -80,7 +80,7 @@ async def contexto_sigarh(db, usuario, hospital=None):
         and modulo_padre(c) in habilitados
     )
     return {
-        "sub": str(usuario.id), "email": usuario.email, "name": usuario.username,
+        "sub": str(usuario.id), "email": usuario.email, "name": usuario.name or usuario.username,
         "role": "sigarh", "panel": "sigarh", "tenant_id": str(usuario.tenant_id),
         "active_modules": modulos, "perfil_id": str(perfil.id),
         "empleado_id": str(empleado.id) if empleado else None,

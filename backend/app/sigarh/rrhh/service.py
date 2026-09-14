@@ -6,13 +6,15 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.sigarh.rrhh.models import (
-    Empleado, Especialidad, EmpleadoEspecialidad,
+    Empleado, Especialidad, CatalogoEspecialidad, EmpleadoEspecialidad,
     DiasFeriado, MotivoJustificacion, Tolerancia,
     RegistroAsistencia, Justificacion,
 )
 from app.sigarh.mantenimiento.models import (
     TipoTrabajador, GrupoOcupacional, Dependencia, HorarioGuardia,
 )
+from app.sigarh.rrhh.especialidades_catalogo import RECOMENDADAS_POR_NIVEL, oferta_id
+from app.tenants.hospitales.models import Tenant
 
 
 class ReglaNegocioError(Exception):
@@ -49,7 +51,7 @@ async def listar_empleados(db: AsyncSession, tenant_id: uuid.UUID) -> list[Emple
 
 async def obtener_empleado(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID) -> Empleado | None:
     result = await db.execute(
-        select(Empleado).options(*_EMP_OPTS).where(Empleado.id == id, Empleado.tenant_id == tenant_id)
+        select(Empleado).options(*_EMP_OPTS).where(Empleado.id == id, Empleado.tenant_id == tenant_id).execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
 
@@ -73,8 +75,14 @@ async def _correo_duplicado(db: AsyncSession, tenant_id: uuid.UUID, correo: str,
 async def crear_empleado(db: AsyncSession, tenant_id: uuid.UUID, data) -> Empleado:
     if data.correo and await _correo_duplicado(db, tenant_id, data.correo):
         raise ReglaNegocioError(f"Ya existe un empleado con el correo {data.correo}.")
-    empleado = Empleado(tenant_id=tenant_id, **data.model_dump())
+    await validar_vinculo_laboral(db, data.model_dump())
+    await validar_referencias_empleado(db, tenant_id, data.model_dump())
+    await validar_tipo_nivel_empleado(db, data.model_dump())
+    await _validar_profesion_empleado(db, tenant_id, data.model_dump())
+    empleado = Empleado(tenant_id=tenant_id, **data.model_dump(exclude={"especialidades"}))
     db.add(empleado)
+    await db.flush()
+    await sincronizar_especialidades_empleado(db, empleado, data.especialidades)
     await db.commit()
     return await obtener_empleado(db, empleado.id, tenant_id)
 
@@ -84,10 +92,22 @@ async def actualizar_empleado(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.U
     if not empleado:
         return None
     cambios = data.model_dump(exclude_unset=True)
+    especialidades = cambios.pop("especialidades", None)
+    from app.sigarh.rrhh.vigencia_laboral import validar_fechas_laborales
+    error_fechas = validar_fechas_laborales(cambios, empleado)
+    if error_fechas:
+        raise ReglaNegocioError(error_fechas)
+    await validar_vinculo_laboral(db, cambios)
+    await validar_referencias_empleado(db, tenant_id, cambios, empleado)
+    await validar_tipo_nivel_empleado(db, cambios, empleado)
+    await _validar_profesion_empleado(db, tenant_id, cambios, empleado)
     if cambios.get("correo") and await _correo_duplicado(db, tenant_id, cambios["correo"], excluir=id):
         raise ReglaNegocioError(f"Ya existe un empleado con el correo {cambios['correo']}.")
     for f, v in cambios.items():
         setattr(empleado, f, v)
+    if especialidades is not None:
+        from app.sigarh.rrhh.schemas import EmpleadoEspecialidadCreate
+        await sincronizar_especialidades_empleado(db, empleado, [EmpleadoEspecialidadCreate(**e) for e in especialidades])
     await db.commit()
     return await obtener_empleado(db, id, tenant_id)
 
@@ -104,6 +124,20 @@ async def eliminar_empleado(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUI
 # ─── Especialidades del empleado ──────────────────────────────────────────────
 
 async def agregar_especialidad(db: AsyncSession, empleado_id: uuid.UUID, data) -> EmpleadoEspecialidad:
+    from app.sigarh.mantenimiento.models import Profesion
+    empleado = await db.get(Empleado, empleado_id)
+    profesion = await db.get(Profesion, empleado.profesion_id) if empleado and empleado.profesion_id else None
+    if not profesion or profesion.codigo != "MED":
+        raise ReglaNegocioError("Selecciona la profesion Medico Cirujano para asignar especialidades CONAREME.")
+    especialidad = await db.get(Especialidad, data.especialidad_id)
+    if not especialidad or especialidad.tenant_id != empleado.tenant_id or not especialidad.is_active:
+        raise ReglaNegocioError("La especialidad no existe o esta inactiva en este hospital.")
+    duplicate = await db.scalar(select(EmpleadoEspecialidad.id).where(
+        EmpleadoEspecialidad.empleado_id == empleado_id,
+        EmpleadoEspecialidad.especialidad_id == data.especialidad_id,
+    ))
+    if duplicate:
+        raise ReglaNegocioError("La especialidad ya esta asignada al empleado.")
     esp = EmpleadoEspecialidad(empleado_id=empleado_id, **data.model_dump())
     db.add(esp)
     await db.commit()
@@ -115,13 +149,39 @@ async def agregar_especialidad(db: AsyncSession, empleado_id: uuid.UUID, data) -
     return res.scalar_one()
 
 
-async def eliminar_especialidad(db: AsyncSession, id: uuid.UUID) -> bool:
-    esp = await db.scalar(select(EmpleadoEspecialidad).where(EmpleadoEspecialidad.id == id))
+async def eliminar_especialidad(db: AsyncSession, id: uuid.UUID, empleado_id: uuid.UUID, tenant_id: uuid.UUID) -> bool:
+    esp = await db.scalar(select(EmpleadoEspecialidad).join(Empleado).where(
+        EmpleadoEspecialidad.id == id, EmpleadoEspecialidad.empleado_id == empleado_id, Empleado.tenant_id == tenant_id))
     if not esp:
         return False
     await db.delete(esp)
     await db.commit()
     return True
+
+
+async def sincronizar_especialidades_empleado(db, empleado, datos):
+    """Valida el conjunto completo antes de modificarlo; el llamante hace commit."""
+    from app.sigarh.mantenimiento.models import Profesion
+    profesion = await db.get(Profesion, empleado.profesion_id) if empleado.profesion_id else None
+    if datos and (not profesion or profesion.codigo != "MED"):
+        raise ReglaNegocioError("Solo Medico Cirujano puede registrar especialidades CONAREME.")
+    ids = [d.especialidad_id for d in datos]
+    if len(ids) != len(set(ids)):
+        raise ReglaNegocioError("No se puede repetir una especialidad del empleado.")
+    for d in datos:
+        esp = await db.get(Especialidad, d.especialidad_id)
+        if not esp or esp.tenant_id != empleado.tenant_id or not esp.is_active:
+            raise ReglaNegocioError("La especialidad no existe o esta inactiva en este hospital.")
+    existentes = {e.especialidad_id: e for e in (await db.scalars(select(EmpleadoEspecialidad).where(EmpleadoEspecialidad.empleado_id == empleado.id))).all()}
+    for d in datos:
+        item = existentes.pop(d.especialidad_id, None)
+        if item:
+            for key, value in d.model_dump(exclude={"especialidad_id"}).items():
+                setattr(item, key, value)
+        else:
+            db.add(EmpleadoEspecialidad(empleado_id=empleado.id, **d.model_dump()))
+    for item in existentes.values():
+        await db.delete(item)
 
 
 # ─── Catálogo de Especialidades ───────────────────────────────────────────────
@@ -135,13 +195,39 @@ async def _serializar_especialidades(db: AsyncSession, tenant_id: uuid.UUID, ite
         .where(Empleado.tenant_id == tenant_id)
         .group_by(EmpleadoEspecialidad.especialidad_id)
     )).all())
-    return [{**_cols(e), "medicos_asignados": conteos.get(e.id, 0)} for e in items]
+    catalogs = {c.id: c for c in (await db.scalars(select(CatalogoEspecialidad))).all()}
+    offers = {e.id: e for e in (await db.scalars(
+        select(Especialidad).where(Especialidad.tenant_id == tenant_id)
+    )).all()}
+    from app.core.tenant_db import get_tenant_by_id
+    hospital = await get_tenant_by_id(tenant_id)
+    hospital_level = hospital.hospital_level if hospital else None
+    recommended = RECOMENDADAS_POR_NIVEL.get(hospital_level, set())
+    result = []
+    for e in items:
+        cat = catalogs.get(e.catalogo_id)
+        parent_offer = offers.get(e.parent_id)
+        result.append({
+            **_cols(e), "medicos_asignados": conteos.get(e.id, 0),
+            "tipo": e.tipo,
+            "parent_id": e.parent_id,
+            "parent_nombre": parent_offer.nombre if parent_offer else None,
+            "requisitos": cat.requisitos if cat else None,
+            "fuente": cat.fuente if cat else None,
+            "norma": cat.norma if cat else None,
+            "fuente_url": cat.fuente_url if cat else None,
+            "es_oficial": bool(cat),
+            "recomendada_nivel": bool(cat and cat.tipo == "especialidad" and cat.nombre in recommended),
+            "hospital_level": hospital_level,
+        })
+    return result
 
 
-async def listar_especialidades(db: AsyncSession, tenant_id: uuid.UUID) -> list[dict]:
-    items = (await db.execute(
-        select(Especialidad).where(Especialidad.tenant_id == tenant_id).order_by(Especialidad.nombre)
-    )).scalars().all()
+async def listar_especialidades(db: AsyncSession, tenant_id: uuid.UUID, active_only: bool = False) -> list[dict]:
+    query = select(Especialidad).where(Especialidad.tenant_id == tenant_id)
+    if active_only:
+        query = query.where(Especialidad.is_active.is_(True))
+    items = (await db.execute(query.order_by(Especialidad.nombre))).scalars().all()
     return await _serializar_especialidades(db, tenant_id, items)
 
 
@@ -150,18 +236,40 @@ async def _esp_orm(db, id, tenant_id):
 
 
 async def crear_especialidad(db: AsyncSession, tenant_id: uuid.UUID, data) -> dict:
-    esp = Especialidad(tenant_id=tenant_id, **data.model_dump())
+    payload = data.model_dump()
+    parent_id = payload.get("parent_id")
+    if payload["tipo"] == "subespecialidad":
+        parent = await _esp_orm(db, parent_id, tenant_id)
+        if not parent or parent.tipo != "especialidad":
+            raise ReglaNegocioError("La especialidad principal no existe en este hospital.")
+    duplicate = await db.scalar(select(Especialidad.id).where(
+        Especialidad.tenant_id == tenant_id,
+        func.lower(Especialidad.nombre) == payload["nombre"].lower(),
+        Especialidad.tipo == payload["tipo"],
+    ))
+    if duplicate:
+        raise ReglaNegocioError("Ya existe un registro del mismo tipo con ese nombre.")
+    esp = Especialidad(tenant_id=tenant_id, **payload)
     db.add(esp)
     await db.commit()
-    await db.refresh(esp)
-    return {**_cols(esp), "medicos_asignados": 0}
+    return (await _serializar_especialidades(db, tenant_id, [esp]))[0]
 
 
 async def actualizar_especialidad(db: AsyncSession, id: uuid.UUID, tenant_id: uuid.UUID, data) -> dict | None:
     esp = await _esp_orm(db, id, tenant_id)
     if not esp:
         return None
-    for f, v in data.model_dump(exclude_unset=True).items():
+    cambios = data.model_dump(exclude_unset=True)
+    if esp.catalogo_id:
+        cambios = {f: v for f, v in cambios.items() if f in {"is_active", "descripcion"}}
+    elif cambios.get("tipo") == "subespecialidad" or (
+        "tipo" not in cambios and esp.tipo == "subespecialidad"
+    ):
+        parent_id = cambios.get("parent_id", esp.parent_id)
+        parent = await _esp_orm(db, parent_id, tenant_id)
+        if not parent or parent.tipo != "especialidad" or parent.id == esp.id:
+            raise ReglaNegocioError("Selecciona una especialidad principal válida.")
+    for f, v in cambios.items():
         setattr(esp, f, v)
     await db.commit()
     return (await _serializar_especialidades(db, tenant_id, [await _esp_orm(db, id, tenant_id)]))[0]
@@ -171,12 +279,44 @@ async def eliminar_especialidad_catalogo(db: AsyncSession, id: uuid.UUID, tenant
     esp = await _esp_orm(db, id, tenant_id)
     if not esp:
         return False
+    if esp.catalogo_id:
+        raise ReglaNegocioError("Las especialidades oficiales no se eliminan; puedes desactivarlas de la cartera del hospital.")
+    children = await db.scalar(select(func.count()).select_from(Especialidad).where(
+        Especialidad.parent_id == id
+    ))
+    if children:
+        raise ReglaNegocioError(
+            f"No se puede eliminar: contiene {children} subespecialidad(es)."
+        )
     usada = await db.scalar(select(func.count()).select_from(EmpleadoEspecialidad).where(EmpleadoEspecialidad.especialidad_id == id))
     if usada:
         raise ReglaNegocioError(f"No se puede eliminar: la especialidad está asignada a {usada} empleado(s).")
     await db.delete(esp)
     await db.commit()
     return True
+
+
+async def asegurar_oferta_especialidades(db: AsyncSession, tenant_id: uuid.UUID, hospital_level: str | None) -> None:
+    """Crea la configuración hospitalaria con IDs deterministas sin duplicar datos."""
+    existing = set((await db.scalars(select(Especialidad.catalogo_id).where(
+        Especialidad.tenant_id == tenant_id, Especialidad.catalogo_id.is_not(None)
+    ))).all())
+    recommended = RECOMENDADAS_POR_NIVEL.get(hospital_level, set())
+    catalogs = (await db.scalars(select(CatalogoEspecialidad).where(
+        CatalogoEspecialidad.is_active.is_(True)
+    ).order_by(CatalogoEspecialidad.tipo, CatalogoEspecialidad.nombre))).all()
+    for cat in catalogs:
+        if cat.id in existing:
+            continue
+        active = cat.tipo == "especialidad" and cat.nombre in recommended
+        db.add(Especialidad(
+            id=oferta_id(tenant_id, cat.id), tenant_id=tenant_id, catalogo_id=cat.id,
+            tipo=cat.tipo,
+            parent_id=oferta_id(tenant_id, cat.parent_id) if cat.parent_id else None,
+            nombre=cat.nombre, codigo=cat.codigo,
+            descripcion="Recomendada por categoría" if active else None, is_active=active,
+        ))
+    await db.flush()
 
 
 # ─── Días Feriados ────────────────────────────────────────────────────────────
@@ -472,9 +612,8 @@ async def _serializar_justificaciones(db: AsyncSession, tenant_id: uuid.UUID, it
     motivos = dict((await db.execute(
         select(MotivoJustificacion.id, MotivoJustificacion.nombre).where(MotivoJustificacion.tenant_id == tenant_id)
     )).all())
-    tipos = dict((await db.execute(
-        select(TipoTrabajador.id, TipoTrabajador.nombre).where(TipoTrabajador.tenant_id == tenant_id)
-    )).all())
+    from app.sigarh.rrhh.models import VinculoLaboral
+    regimenes = dict((await db.execute(select(VinculoLaboral.codigo, VinculoLaboral.regimen_nombre))).all())
     out = []
     for j in items:
         emp = emps.get(j.empleado_id)
@@ -483,7 +622,7 @@ async def _serializar_justificaciones(db: AsyncSession, tenant_id: uuid.UUID, it
             **_cols(j),
             "empleado_nombre": emp.nombre_completo if emp else None,
             "empleado_dni": emp.dni if emp else None,
-            "empleado_regimen": tipos.get(emp.tipo_trabajador_id) if emp else None,
+            "empleado_regimen": regimenes.get(emp.vinculo_laboral_codigo) if emp else None,
             "empleado_cargo": emp.cargo_laboral if emp else None,
             "motivo_nombre": motivos.get(j.motivo_id),
             "dias": max(dias, 0),
@@ -603,3 +742,68 @@ async def eliminar_justificacion(db: AsyncSession, id: uuid.UUID, tenant_id: uui
     await db.delete(j)
     await db.commit()
     return True
+
+
+async def _validar_profesion_empleado(db, tenant_id, values, empleado=None):
+    from app.sigarh.mantenimiento.models import Profesion
+
+    profession_id = values.get("profesion_id", getattr(empleado, "profesion_id", None))
+    group_id = values.get("grupo_ocupacional_id", getattr(empleado, "grupo_ocupacional_id", None))
+    if not profession_id:
+        if values.get("habilitado_colegio", getattr(empleado, "habilitado_colegio", False)) or (empleado and empleado.especialidades):
+            raise ReglaNegocioError("No se puede retirar la profesion mientras existen habilitacion o especialidades registradas.")
+        return
+    profession = await db.scalar(select(Profesion).where(
+        Profesion.id == profession_id, Profesion.tenant_id == tenant_id,
+        Profesion.is_active.is_(True),
+    ))
+    if not profession:
+        raise ReglaNegocioError("La profesion no existe o esta inactiva.")
+    if group_id != profession.grupo_ocupacional_id:
+        raise ReglaNegocioError("El grupo ocupacional no corresponde a la profesion seleccionada.")
+    habilitado = values.get("habilitado_colegio", getattr(empleado, "habilitado_colegio", False))
+    numero = values.get("numero_colegiatura", getattr(empleado, "numero_colegiatura", None))
+    if habilitado and (not profession.colegio_profesional or not numero):
+        raise ReglaNegocioError("Para registrar habilitacion verificada se requiere colegio y numero de colegiatura.")
+    if empleado and empleado.especialidades and profession.codigo != "MED":
+        raise ReglaNegocioError("Retira las especialidades medicas antes de cambiar la profesion.")
+
+
+async def validar_vinculo_laboral(db, values):
+    from app.sigarh.rrhh.models import VinculoLaboral
+    codigo = values.get("vinculo_laboral_codigo")
+    if codigo is None:
+        return
+    vinculo = await db.get(VinculoLaboral, codigo)
+    if not vinculo or not vinculo.is_active:
+        raise ReglaNegocioError("Seleccione un regimen y condicion laboral vigentes del catalogo.")
+
+
+async def validar_referencias_empleado(db, tenant_id, values, empleado=None):
+    from app.sigarh.mantenimiento.models import TipoTrabajador, NivelRemunerativo, GrupoOcupacional, Departamento, Servicio
+    for field, model in (("tipo_trabajador_id", TipoTrabajador), ("nivel_remunerativo_id", NivelRemunerativo), ("grupo_ocupacional_id", GrupoOcupacional), ("departamento_id", Departamento), ("servicio_id", Servicio)):
+        if field not in values or values[field] is None:
+            continue
+        item = await db.get(model, values[field])
+        if not item or item.tenant_id != tenant_id or not item.is_active:
+            raise ReglaNegocioError(f"El catalogo {field} no existe, esta inactivo o pertenece a otro hospital.")
+    servicio_id = values.get("servicio_id", getattr(empleado, "servicio_id", None))
+    departamento_id = values.get("departamento_id", getattr(empleado, "departamento_id", None))
+    if servicio_id and departamento_id:
+        servicio = await db.get(Servicio, servicio_id)
+        if servicio and servicio.departamento_id and servicio.departamento_id != departamento_id:
+            raise ReglaNegocioError("El servicio no pertenece al departamento seleccionado.")
+
+
+async def validar_tipo_nivel_empleado(db, values, empleado=None):
+    from app.sigarh.mantenimiento.models import TipoTrabajador, NivelRemunerativo, Profesion
+    def value(key): return values.get(key, getattr(empleado, key, None))
+    tipo = await db.get(TipoTrabajador, value("tipo_trabajador_id")) if value("tipo_trabajador_id") else None
+    vinculo = value("vinculo_laboral_codigo")
+    if tipo and tipo.vinculos_codigos and vinculo not in tipo.vinculos_codigos:
+        raise ReglaNegocioError("El tipo de trabajador no corresponde al vinculo laboral registrado.")
+    nivel = await db.get(NivelRemunerativo, value("nivel_remunerativo_id")) if value("nivel_remunerativo_id") else None
+    if nivel and nivel.profesion_codigo:
+        profesion = await db.get(Profesion, value("profesion_id")) if value("profesion_id") else None
+        if not profesion or profesion.codigo != nivel.profesion_codigo:
+            raise ReglaNegocioError("El nivel remunerativo no corresponde a la profesion del trabajador.")

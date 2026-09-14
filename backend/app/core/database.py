@@ -40,25 +40,25 @@ async def _bd_fisica_sigarh(request: Request) -> str | None:
     import uuid as _uuid
     from app.core.security import verify_token
 
-    tenant_id_raw = None
+    from fastapi import HTTPException
     auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer "):
-        payload = verify_token(auth.removeprefix("Bearer ").strip())
-        if payload:
-            tenant_id_raw = payload.get("tenant_id")
-    if not tenant_id_raw:
-        tenant_id_raw = request.headers.get("X-Tenant-ID")
-    if not tenant_id_raw:
-        return None
+    payload = verify_token(auth.removeprefix("Bearer ").strip()) if auth.startswith("Bearer ") else None
+    if not payload or payload.get("type") != "access":
+        raise HTTPException(401, "Token invalido o expirado")
+    is_admin = payload.get("panel") == "admin" and payload.get("role") == "administrador"
+    tenant_id_raw = payload.get("tenant_id")
+    if is_admin:
+        tenant_id_raw = request.headers.get("X-Tenant-ID") or tenant_id_raw
     try:
         tenant_id = _uuid.UUID(str(tenant_id_raw))
     except (ValueError, TypeError):
-        return None
-
+        raise HTTPException(403, "Seleccione un hospital valido")
     from app.tenants.hospitales.models import Tenant
     async with AsyncSessionLocal() as central:
         tenant = await central.get(Tenant, tenant_id)
-    return tenant.database_name if tenant else None
+    if not tenant or not tenant.is_active:
+        raise HTTPException(403, "Hospital inactivo o inexistente")
+    return tenant.database_name
 
 
 async def get_db_central() -> AsyncSession:
@@ -77,17 +77,9 @@ async def get_db_central() -> AsyncSession:
 
 
 async def get_db(request: Request) -> AsyncSession:
-    """
-    Dependency de FastAPI — equivalente al DB::transaction de Laravel.
-    Uso: db: AsyncSession = Depends(get_db)
-
-    Los módulos SIGARH viven en la BD física del hospital cuando este la
-    tiene (mismo criterio que el login: auth/router.py y
-    sigarh/mantenimiento/security.py::usuario_actual). Todo lo demás (admin,
-    app, auth) sigue igual, siempre contra la BD central.
-    """
+    """SIGARH y APP comparten la base hospitalaria; admin usa la central."""
     session_factory = AsyncSessionLocal
-    if request.url.path.startswith("/sigarh/"):
+    if request.url.path.startswith(("/sigarh/", "/app/")):
         database_name = await _bd_fisica_sigarh(request)
         if database_name:
             from app.core.tenant_db import get_tenant_sessionmaker

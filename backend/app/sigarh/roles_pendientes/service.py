@@ -11,7 +11,7 @@ from app.sigarh.creacion_roles.models import (
 from app.sigarh.creacion_roles.service import (
     ReglaNegocioError, PermisoError, obtener_rol_orm, serializar_uno,
     diagnosticar_rol, errores_bloqueantes, _empleados_en_otro_rol_ordinario,
-    puede_aprobar_roles,
+    puede_aprobar_roles, bloquear_personal_rol,
 )
 from app.sigarh.mantenimiento.models import Servicio, Actividad, HorarioGuardia
 from app.sigarh.rrhh.models import Empleado
@@ -36,6 +36,7 @@ async def aprobar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID,
         raise ReglaNegocioError("El rol antiguo requiere identificar a su elaborador antes de aprobarse.")
     if str(rol.created_by_id) == str(current_user.get("sub")):
         raise ReglaNegocioError("Quien elaboró el rol no puede aprobarlo; debe revisarlo otra persona.")
+    await bloquear_personal_rol(db, rol)
     errores = errores_bloqueantes(await diagnosticar_rol(db, tenant_id, rol))
     if errores:
         raise ReglaNegocioError("No se puede aprobar el rol: " + " · ".join(errores[:8]))
@@ -43,8 +44,13 @@ async def aprobar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID,
     rol.reviewed_by = revisor
     rol.reviewed_at = datetime.utcnow()
     rol.rejection_reason = None
-    await db.commit()
-    await sincronizar_programacion_sigarh(db, tenant_id, rol.mes, rol.anio)
+    try:
+        await db.flush()
+        await sincronizar_programacion_sigarh(db, tenant_id, rol.mes, rol.anio, commit=False)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
     return await serializar_uno(db, tenant_id, await obtener_rol_orm(db, rol_id, tenant_id))
 
 
@@ -187,8 +193,13 @@ async def aprobar_solicitud(db: AsyncSession, tenant_id: uuid.UUID, sol_id: uuid
     sol.status = "aprobado"
     sol.reviewed_by = revisor
     sol.reviewed_at = datetime.utcnow()
-    await db.commit()
-    await sincronizar_programacion_sigarh(db, tenant_id, rol.mes, rol.anio)
+    try:
+        await db.flush()
+        await sincronizar_programacion_sigarh(db, tenant_id, rol.mes, rol.anio, commit=False)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
     return await _serializa_solicitud(db, tenant_id, await _sol_orm(db, tenant_id, sol_id))
 
 

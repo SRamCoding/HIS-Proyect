@@ -1,69 +1,30 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
-const { api } = useApi()
-const route = useRoute()
-const router = useRouter()
-const tenantId = computed(() => route.query.tenant as string || '')
-const saving = ref(false)
-const error = ref('')
-const form = reactive({ nombre: '', codigo: '', descripcion: '', is_active: true })
-
-const handleCreate = async (otro: boolean) => {
-  if (!form.nombre.trim()) { error.value = 'El nombre es requerido'; return }
-  saving.value = true; error.value = ''
+definePageMeta({ layout:'sigarh', middleware:['auth'] })
+const { api } = useApi(), router = useRouter(), route = useRoute()
+const saving = ref(false), loading = ref(true), error = ref('')
+const bases = ref<any[]>([])
+const form = reactive({ nombre:'', codigo:'', descripcion:'', tipo:'especialidad', parent_id:'', is_active:true })
+async function guardar() {
+  saving.value=true; error.value=''
   try {
-    await api('/sigarh/rrhh/especialidades', { method: 'POST', body: { nombre: form.nombre, codigo: form.codigo || null, descripcion: form.descripcion || null, is_active: form.is_active } })
-    if (otro) Object.assign(form, { nombre: '', codigo: '', descripcion: '', is_active: true })
-    else router.push(`/sigarh/rrhh/especialidades?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear') }
-  finally { saving.value = false }
+    await api('/sigarh/rrhh/especialidades', { method:'POST', body:{ ...form, codigo:form.codigo||null, descripcion:form.descripcion||null, parent_id:form.tipo==='subespecialidad'?form.parent_id:null } })
+    router.push('/sigarh/rrhh/especialidades')
+  } catch(e:any) { error.value=apiErr(e,'No se pudo crear') } finally { saving.value=false }
 }
+onMounted(async() => { try {
+  bases.value=(await api<any[]>('/sigarh/rrhh/especialidades')).filter(e=>e.tipo==='especialidad')
+  if(route.query.tipo==='subespecialidad'){form.tipo='subespecialidad';form.parent_id=String(route.query.parent_id||'')}
+} catch(e:any) { error.value=apiErr(e,'No se pudo cargar las especialidades base') } finally { loading.value=false } })
 </script>
-
-<template>
-  <SFormLayout>
-    <template #main>
-      <div class="mb-8">
-        <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
-          <NuxtLink :to="`/sigarh/rrhh/especialidades?tenant=${tenantId}`" class="hover:underline" style="color: var(--ink-soft)">Especialidades</NuxtLink>
-          <UIcon name="i-heroicons-chevron-right" class="w-3 h-3" /><span style="color: var(--ink)">Nueva</span>
-        </div>
-        <div class="flex items-center gap-4">
-          <div class="page-header-icon" style="background: var(--purple-soft)"><UIcon name="i-heroicons-academic-cap" class="w-6 h-6" style="color: var(--purple)" /></div>
-          <div><h1 class="page-title">Crear Especialidad</h1><p class="page-subtitle">Define una especialidad médica</p></div>
-        </div>
-      </div>
-
-      <SFormCard title="Datos de la Especialidad" subtitle="Ingresa los datos de la nueva especialidad"
-        icon="i-heroicons-cog-6-tooth" icon-bg="var(--purple-soft)" icon-color="var(--purple)" :error="error">
-        <div class="form-group full-width">
-          <label class="form-label">Nombre <span class="required">*</span></label>
-          <div class="input-wrapper"><UIcon name="i-heroicons-academic-cap" class="input-icon" /><input v-model="form.nombre" class="input-clinical" maxlength="100" placeholder="Ej: Cardiología" @focus="error = ''" /></div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Código interno</label>
-          <div class="input-wrapper"><UIcon name="i-heroicons-barcode" class="input-icon" /><input v-model="form.codigo" class="input-clinical font-mono-data" maxlength="20" placeholder="Ej: CARD" /></div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Estado</label>
-          <div class="status-toggle"><span class="toggle-label">Especialidad Activa</span>
-            <button type="button" @click="form.is_active = !form.is_active" class="toggle-switch" :class="{ 'toggle-active': form.is_active }"><span class="toggle-slider" /></button>
-          </div>
-        </div>
-        <div class="form-group full-width">
-          <label class="form-label">Descripción / Notas</label>
-          <div class="input-wrapper"><UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" /><textarea v-model="form.descripcion" class="input-clinical" rows="3" placeholder="Alcance de la especialidad..." /></div>
-        </div>
-        <template #actions>
-          <SFormActions :saving="saving" save-text="Crear" saving-text="Creando..."
-            :cancel-to="`/sigarh/rrhh/especialidades?tenant=${tenantId}`" :show-create-another="true"
-            @save="handleCreate(false)" @save-another="handleCreate(true)" />
-        </template>
-      </SFormCard>
-    </template>
-    <template #sidebar>
-      <SWidgetInfo :items="['Una persona puede tener varias especialidades', 'Se asignan en la ficha del empleado y en Consultorios', 'Solo las especialidades activas aparecen en los selectores', 'El listado muestra cuántos empleados tienen cada especialidad']" />
-      <SWidgetTip text="Usa nombres estandarizados (RENAES) para facilitar reportes y la asignación de médicos a consultorios." />
-    </template>
-  </SFormLayout>
-</template>
+<template><SFormLayout><template #main>
+  <div class="mb-8"><NuxtLink to="/sigarh/rrhh/especialidades" class="text-sm hover:underline" style="color:var(--ink-soft)">← Especialidades y subespecialidades</NuxtLink><h1 class="page-title mt-3">Nuevo registro hospitalario</h1><p class="page-subtitle">Agrega una especialidad propia o una subespecialidad vinculada</p></div>
+  <SFormCard title="Datos del registro" subtitle="Los registros propios complementan el catálogo oficial CONAREME" icon="i-heroicons-plus-circle" icon-bg="var(--purple-soft)" icon-color="var(--purple)" :error="error">
+    <div class="form-group"><label class="form-label">Tipo <span class="required">*</span></label><select v-model="form.tipo" class="input-clinical" @change="form.parent_id=''" :disabled="loading"><option value="especialidad">Especialidad</option><option value="subespecialidad">Subespecialidad</option></select></div>
+    <div v-if="form.tipo==='subespecialidad'" class="form-group"><label class="form-label">Especialidad principal <span class="required">*</span></label><select v-model="form.parent_id" class="input-clinical" required><option value="">Seleccione...</option><option v-for="base in bases" :key="base.id" :value="base.id">{{ base.nombre }}</option></select></div>
+    <div class="form-group full-width"><label class="form-label">Nombre <span class="required">*</span></label><input v-model="form.nombre" class="input-clinical" maxlength="100" placeholder="Nombre de la especialidad" /></div>
+    <div class="form-group"><label class="form-label">Código interno</label><input v-model="form.codigo" class="input-clinical font-mono-data" maxlength="20" placeholder="Ej. ESP-LOCAL-01" /></div>
+    <div class="form-group"><label class="form-label">Estado</label><div class="status-toggle"><span class="toggle-label">Disponible en SIGARH y APP</span><button type="button" class="toggle-switch" :class="{'toggle-active':form.is_active}" @click="form.is_active=!form.is_active"><span class="toggle-slider" /></button></div></div>
+    <div class="form-group full-width"><label class="form-label">Descripción / notas</label><textarea v-model="form.descripcion" class="input-clinical" rows="3" /></div>
+    <template #actions><SFormActions :saving="saving" save-text="Crear registro" saving-text="Creando..." cancel-to="/sigarh/rrhh/especialidades" @save="guardar" /></template>
+  </SFormCard>
+</template><template #sidebar><SWidgetInfo :items="['El catálogo oficial se conserva sin cambios', 'Una subespecialidad siempre pertenece a una especialidad principal', 'Los registros activos aparecen en RR. HH. y APP', 'Puedes desactivar un registro sin perder su historial']" /></template></SFormLayout></template>

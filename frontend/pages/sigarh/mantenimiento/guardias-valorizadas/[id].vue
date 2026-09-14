@@ -12,8 +12,8 @@
             <UIcon name="i-heroicons-currency-dollar" class="w-6 h-6" style="color: var(--amber)" />
           </div>
           <div>
-            <h1 class="page-title">Editar Guardia Valorizada</h1>
-            <p class="page-subtitle">Actualiza el valor de la guardia</p>
+            <h1 class="page-title">Consultar Guardia Valorizada</h1>
+            <p class="page-subtitle">Importe, ámbito de aplicación y sustento de la tarifa</p>
           </div>
         </div>
       </div>
@@ -21,6 +21,7 @@
         <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--amber)" />
       </div>
       <template v-else>
+        <p v-if="iniciada" class="text-sm text-slate-600 mb-4">Esta tarifa ya inició su vigencia. Para cambiar el importe, cierra su período y crea una nueva tarifa con el sustento correspondiente.</p>
         <SFormCard title="Datos de la Guardia" subtitle="Actualiza los datos de la guardia valorizada"
           icon="i-heroicons-currency-dollar" icon-bg="var(--amber-soft)" icon-color="var(--amber)" :error="error">
 
@@ -28,7 +29,7 @@
             <label class="form-label">Tipo de Guardia <span class="required">*</span></label>
             <div class="input-wrapper">
               <UIcon name="i-heroicons-shield-check" class="input-icon" />
-              <select v-model="form.tipo_guardia_id" class="input-clinical">
+              <select v-model="form.tipo_guardia_id" class="input-clinical" :disabled="iniciada">
                 <option value="">Seleccione un tipo</option>
                 <option v-for="t in tiposGuardia" :key="t.id" :value="t.id">{{ t.nombre }}</option>
               </select>
@@ -39,7 +40,7 @@
             <label class="form-label">Valor (S/) <span class="required">*</span></label>
             <div class="input-wrapper">
               <UIcon name="i-heroicons-currency-dollar" class="input-icon" />
-              <input v-model.number="form.valor" type="number" step="0.01" min="0" class="input-clinical font-mono-data" placeholder="0.00" />
+              <input v-model.number="form.valor" type="number" step="0.01" min="0" class="input-clinical font-mono-data" placeholder="0.00" :disabled="iniciada" />
             </div>
           </div>
 
@@ -47,7 +48,7 @@
             <label class="form-label">Grupo Ocupacional</label>
             <div class="input-wrapper">
               <UIcon name="i-heroicons-user-group" class="input-icon" />
-              <select v-model="form.grupo_ocupacional_id" class="input-clinical">
+              <select v-model="form.grupo_ocupacional_id" class="input-clinical" :disabled="iniciada">
                 <option value="">Sin grupo</option>
                 <option v-for="g in gruposOcupacionales" :key="g.id" :value="g.id">{{ g.nombre }}</option>
               </select>
@@ -58,7 +59,7 @@
             <label class="form-label">Nivel Remunerativo</label>
             <div class="input-wrapper">
               <UIcon name="i-heroicons-banknotes" class="input-icon" />
-              <select v-model="form.nivel_remunerativo_id" class="input-clinical">
+              <select v-model="form.nivel_remunerativo_id" class="input-clinical" :disabled="iniciada">
                 <option value="">Sin nivel</option>
                 <option v-for="n in nivelesRemunerativos" :key="n.id" :value="n.id">{{ n.nombre }}</option>
               </select>
@@ -69,7 +70,7 @@
             <label class="form-label">Vigente desde <span class="required">*</span></label>
             <div class="input-wrapper">
               <UIcon name="i-heroicons-calendar" class="input-icon" />
-              <input v-model="form.vigencia_desde" type="date" class="input-clinical font-mono-data" />
+              <input v-model="form.vigencia_desde" type="date" class="input-clinical font-mono-data" :disabled="iniciada" />
             </div>
           </div>
 
@@ -86,7 +87,7 @@
             <label class="form-label">Sustento <span class="required">*</span></label>
             <div class="input-wrapper">
               <UIcon name="i-heroicons-document-text" class="input-icon" style="top: 0.75rem; transform: none;" />
-              <textarea v-model="form.sustento" class="input-clinical" rows="2" placeholder="Base normativa o documento que sustenta este importe" />
+              <textarea v-model="form.sustento" class="input-clinical" rows="5" placeholder="Base normativa o documento que sustenta este importe" :readonly="iniciada" />
             </div>
           </div>
 
@@ -94,7 +95,7 @@
             <label class="form-label">Estado</label>
             <div class="status-toggle">
               <span class="toggle-label">Guardia Activa</span>
-              <button type="button" @click="form.is_active = !form.is_active" class="toggle-switch" :class="{ 'toggle-active': form.is_active }">
+              <button type="button" @click="form.is_active = !form.is_active" class="toggle-switch" :class="{ 'toggle-active': form.is_active }" :disabled="iniciada">
                 <span class="toggle-slider" />
               </button>
             </div>
@@ -134,6 +135,7 @@ const router = useRouter()
 const tenantId = computed(() => route.query.tenant as string || '')
 const id = computed(() => route.params.id as string)
 const loading = ref(true)
+const iniciada = ref(false)
 const saving = ref(false)
 const error = ref('')
 const tiposGuardia = ref<any[]>([])
@@ -150,7 +152,7 @@ const handleSave = async () => {
   if (!form.sustento.trim()) { error.value = 'El sustento es requerido'; return }
   saving.value = true; error.value = ''
   try {
-    await api(`/sigarh/mantenimiento/guardias-valorizadas/${id.value}`, { method: 'PATCH', body: {
+    await api(`/sigarh/mantenimiento/guardias-valorizadas/${id.value}`, { method: 'PATCH', tenant: tenantId.value, body: iniciada.value ? { vigencia_hasta: form.vigencia_hasta || null } : {
       tipo_guardia_id: form.tipo_guardia_id || null,
       grupo_ocupacional_id: form.grupo_ocupacional_id || null,
       nivel_remunerativo_id: form.nivel_remunerativo_id || null,
@@ -164,10 +166,10 @@ const handleSave = async () => {
 onMounted(async () => {
   try {
     const [data, tg, go, nr] = await Promise.all([
-      api<any>(`/sigarh/mantenimiento/guardias-valorizadas/${id.value}`),
-      api<any[]>('/sigarh/mantenimiento/tipos-guardia'),
-      api<any[]>('/sigarh/mantenimiento/grupos-ocupacionales'),
-      api<any[]>('/sigarh/mantenimiento/niveles-remunerativos'),
+      api<any>(`/sigarh/mantenimiento/guardias-valorizadas/${id.value}`, { tenant: tenantId.value }),
+      api<any[]>('/sigarh/mantenimiento/tipos-guardia', { tenant: tenantId.value }),
+      api<any[]>('/sigarh/mantenimiento/grupos-ocupacionales', { tenant: tenantId.value }),
+      api<any[]>('/sigarh/mantenimiento/niveles-remunerativos', { tenant: tenantId.value }),
     ])
     form.tipo_guardia_id = data.tipo_guardia_id || ''
     form.grupo_ocupacional_id = data.grupo_ocupacional_id || ''
@@ -177,6 +179,7 @@ onMounted(async () => {
     form.vigencia_hasta = data.vigencia_hasta || ''
     form.sustento = data.sustento || ''
     form.is_active = data.is_active
+    iniciada.value = !!data.vigencia_desde && data.vigencia_desde <= new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' })
     tiposGuardia.value = tg; gruposOcupacionales.value = go; nivelesRemunerativos.value = nr
   } catch (e: any) { error.value = apiErr(e, 'No se pudo cargar') }
   finally { loading.value = false }

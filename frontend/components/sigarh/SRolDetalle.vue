@@ -41,6 +41,23 @@
       </div>
     </div>
     <div v-if="!rol.empleados.length" class="srd-empty">Este rol no tiene personal.</div>
+    <details v-if="rol.valorizacion_guardias" class="srd-emp">
+      <summary class="cursor-pointer font-semibold">Guardias programadas: S/ {{ rol.valorizacion_guardias.total_estimado }}
+        <span class="text-sm font-normal"> · {{ rol.valorizacion_guardias.pendientes }} pendientes de revisión</span>
+      </summary>
+      <p class="text-sm text-slate-500 my-3">{{ rol.valorizacion_guardias.nota }}</p>
+      <div class="overflow-x-auto max-h-96">
+        <table class="sigarh-table">
+          <thead><tr><th>Empleado / fecha</th><th>Horario</th><th>Estimación</th><th>Asistencia / revisión</th></tr></thead>
+          <tbody><tr v-for="(g, i) in rol.valorizacion_guardias.detalle" :key="i">
+            <td>{{ g.empleado }}<br>{{ g.fecha }}</td><td>{{ g.horario }}<br>{{ g.tipo }}</td>
+            <td><span v-if="g.valor">S/ {{ g.valor }}</span><span v-else>Pendiente</span>
+              <details v-if="g.sustento"><summary class="cursor-pointer text-xs">Sustento</summary><p class="text-xs">{{ g.sustento }}</p></details>
+            </td><td>{{ g.pendiente || g.asistencia }}</td>
+          </tr></tbody>
+        </table>
+      </div>
+    </details>
   </div>
 </template>
 
