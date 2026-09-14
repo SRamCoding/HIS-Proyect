@@ -243,6 +243,8 @@
 definePageMeta({ layout: 'app', middleware: ['auth'] })
 
 const { api } = useApi()
+const { link } = useHospitalNav()
+const route = useRoute()
 
 // Estado
 const especialidades = ref<any[]>([])
@@ -253,7 +255,7 @@ const error = ref('')
 
 // Filtros
 const filtros = reactive({
-  fecha: new Date().toISOString().slice(0, 10),
+  fecha: (typeof route.query.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(route.query.fecha) ? route.query.fecha : new Date().toLocaleDateString('en-CA')),
   especialidad_id: '',
   servicio_id: '',
 })
@@ -262,7 +264,7 @@ const filtros = reactive({
 const pendientesTriaje = computed(() => items.value.filter(i => !i.paso_triaje).length)
 const triajeCompletado = computed(() => items.value.filter(i => i.paso_triaje).length)
 const especialidadesCount = computed(() => {
-  const unique = new Set(items.value.map(i => i.especialidad_id || i.servicio_id))
+  const unique = new Set(items.value.map(i => i.especialidad_nombre || i.servicio_nombre))
   return unique.size
 })
 
@@ -315,7 +317,7 @@ const getEspecialidadColor = (name: string) => {
 
 // Funciones
 function limpiarFiltros() {
-  filtros.fecha = new Date().toISOString().slice(0, 10)
+  filtros.fecha = (typeof route.query.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(route.query.fecha) ? route.query.fecha : new Date().toLocaleDateString('en-CA'))
   filtros.especialidad_id = ''
   filtros.servicio_id = ''
   cargar()
@@ -340,11 +342,11 @@ async function cargar() {
 
 
 function abrirTriaje(item: any) {
-  navigateTo(`/app/consulta-externa/triaje/create?cita=${item.cita_id}`)
+  navigateTo(link(`/app/consulta-externa/triaje/create?cita=${item.cita_id}`))
 }
 
 function verTriaje(item: any) {
-  navigateTo(`/app/consulta-externa/triaje/${item.cita_id}`)
+  navigateTo(link(`/app/consulta-externa/triaje/${item.cita_id}`))
 }
 
 // Lifecycle

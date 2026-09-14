@@ -22,7 +22,6 @@ export const useHospitalNav = () => {
         { label: 'Pacientes', path: '/app/admision/pacientes', icon: 'i-heroicons-user' },
         { label: 'Altas', path: '/app/admision/altas-pacientes', icon: 'i-heroicons-arrow-right-on-rectangle' },
         { label: 'Agendamiento', path: '/app/admision/agendamiento', icon: 'i-heroicons-calendar-days' },
-        { label: 'Citas por Confirmar', path: '/app/admision/agendamiento/pendientes', icon: 'i-heroicons-clock' },
         { label: 'Anuncios', path: '/app/admision/anuncios', icon: 'i-heroicons-speaker-wave' },
         { label: 'Programacion Medica', path: '/app/admision/programacion-medica', icon: 'i-heroicons-clipboard-document-list' },
         { label: 'Lista Espera', path: '/app/admision/lista-espera', icon: 'i-heroicons-clock' },
@@ -47,6 +46,7 @@ export const useHospitalNav = () => {
       modulo: 'consulta_externa',
       icon: 'i-heroicons-clipboard-document-check',
       items: [
+        { label: 'Citas por Confirmar', path: '/app/consulta-externa/citas-por-confirmar', icon: 'i-heroicons-clock' },
         { label: 'Registro de Triaje', path: '/app/consulta-externa/triaje', icon: 'i-heroicons-heart' },
         { label: 'Registro de atenciones', path: '/app/consulta-externa/atenciones-medicas', icon: 'i-heroicons-clipboard-document-check' },
         { label: 'Ficha Covid', path: '/app/consulta-externa/ficha-covid', icon: 'i-heroicons-document-text' },

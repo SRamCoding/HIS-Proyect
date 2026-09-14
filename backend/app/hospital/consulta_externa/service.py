@@ -1239,7 +1239,7 @@ async def create_triaje(
     db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: TriajeCreate
 ) -> dict:
     result = await db.execute(
-        select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id)
+        select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id).with_for_update().execution_options(populate_existing=True)
     )
     cita = result.scalar_one_or_none()
     if not cita:
@@ -1270,6 +1270,11 @@ async def get_triaje_by_cita(
 async def update_triaje(
     db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: "TriajeUpdate"
 ) -> Triaje | None:
+    cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id).with_for_update().execution_options(populate_existing=True))
+    if not cita:
+        return None
+    if cita.estado != "confirmada":
+        raise ValueError("Solo puede editar el triaje mientras la cita está confirmada, antes de la atención médica.")
     result = await db.execute(
         select(Triaje).where(Triaje.tenant_id == tenant_id, Triaje.cita_id == cita_id)
     )

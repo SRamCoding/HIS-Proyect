@@ -199,18 +199,18 @@ class CitaResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class TriajeCreate(BaseModel):
-    pulso: int | None = None
-    temperatura: float | None = None
-    presion_sistolica: int | None = None
-    presion_diastolica: int | None = None
-    frecuencia_cardiaca: int | None = None
-    frecuencia_respiratoria: int | None = None
-    peso: float | None = None
-    talla: float | None = None
-    perimetro_abdominal: float | None = None
-    perimetro_cefalico: float | None = None
-    saturacion_o2: float | None = None
+class TriajeCampos(BaseModel):
+    pulso: int | None = Field(default=None, ge=0)
+    temperatura: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    presion_sistolica: int | None = Field(default=None, ge=0)
+    presion_diastolica: int | None = Field(default=None, ge=0)
+    frecuencia_cardiaca: int | None = Field(default=None, ge=0)
+    frecuencia_respiratoria: int | None = Field(default=None, ge=0)
+    peso: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    talla: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    perimetro_abdominal: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    perimetro_cefalico: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    saturacion_o2: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
 
     @model_validator(mode="before")
     @classmethod
@@ -218,6 +218,15 @@ class TriajeCreate(BaseModel):
         if isinstance(data, dict):
             return {k: (None if v == "" else v) for k, v in data.items()}
         return data
+
+
+class TriajeCreate(TriajeCampos):
+    pulso: int = Field(ge=0)
+    temperatura: float = Field(gt=0, allow_inf_nan=False)
+    presion_sistolica: int = Field(ge=0)
+    presion_diastolica: int = Field(ge=0)
+    frecuencia_cardiaca: int = Field(ge=0)
+    frecuencia_respiratoria: int = Field(ge=0)
 
 
 class TriajeResponse(BaseModel):
@@ -255,18 +264,13 @@ class CitaTriajeItem(BaseModel):
     paso_triaje: bool
 
 
-class TriajeUpdate(BaseModel):
-    pulso: int | None = None
-    temperatura: float | None = None
-    presion_sistolica: int | None = None
-    presion_diastolica: int | None = None
-    frecuencia_cardiaca: int | None = None
-    frecuencia_respiratoria: int | None = None
-    peso: float | None = None
-    talla: float | None = None
-    perimetro_abdominal: float | None = None
-    perimetro_cefalico: float | None = None
-    saturacion_o2: float | None = None
+class TriajeUpdate(TriajeCampos):
+    @model_validator(mode="after")
+    def conservar_obligatorios(self):
+        for campo in ("pulso", "temperatura", "presion_sistolica", "presion_diastolica", "frecuencia_cardiaca", "frecuencia_respiratoria"):
+            if campo in self.model_fields_set and getattr(self, campo) is None:
+                raise ValueError("No puede borrar una medición obligatoria: " + campo)
+        return self
 
 
 

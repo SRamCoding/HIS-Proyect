@@ -269,7 +269,10 @@ async def reprogramar_bloque_endpoint(data: CitasReprogramarBloque, request: Req
 
 @router.patch("/triaje/{cita_id}", response_model=TriajeResponse)
 async def actualizar_triaje(cita_id: uuid.UUID, data: TriajeUpdate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
-    triaje = await update_triaje(db, get_tenant_id(current_user, request), cita_id, data)
+    try:
+        triaje = await update_triaje(db, get_tenant_id(current_user, request), cita_id, data)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
     if not triaje:
         raise HTTPException(404, detail="No hay triaje registrado para esta cita")
     return triaje

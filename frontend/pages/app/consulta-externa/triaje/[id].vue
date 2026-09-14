@@ -99,7 +99,7 @@
                   />
                 </div>
                 <span v-if="errors.pulso" class="error-message">{{ errors.pulso }}</span>
-                <p class="field-hint">Rango normal: 60 a 100 lpm</p>
+                <p class="field-hint">Registra el valor medido; la interpretación depende de la edad y el contexto.</p>
               </div>
 
               <!-- Frecuencia Respiratoria -->
@@ -117,7 +117,7 @@
                   />
                 </div>
                 <span v-if="errors.frecuencia_respiratoria" class="error-message">{{ errors.frecuencia_respiratoria }}</span>
-                <p class="field-hint">Rango normal: 30 a 60 rpm</p>
+                <p class="field-hint">Registra el valor medido; la interpretación depende de la edad y el contexto.</p>
               </div>
 
               <!-- Temperatura -->
@@ -136,7 +136,7 @@
                   />
                 </div>
                 <span v-if="errors.temperatura" class="error-message">{{ errors.temperatura }}</span>
-                <p class="field-hint">Rango normal: 36.1 a 37.7 °C</p>
+                <p class="field-hint">Registra el valor medido; la interpretación depende de la edad y el contexto.</p>
               </div>
 
               <!-- Peso -->
@@ -184,7 +184,7 @@
                 </div>
                 <span v-if="errors.presion_sistolica" class="error-message">{{ errors.presion_sistolica }}</span>
                 <span v-if="errors.presion_diastolica" class="error-message">{{ errors.presion_diastolica }}</span>
-                <p class="field-hint">Rango normal: 120/80 mmHg</p>
+                <p class="field-hint">Registra el valor medido; la interpretación depende de la edad y el contexto.</p>
               </div>
 
               <!-- Talla -->
@@ -218,7 +218,7 @@
                   />
                 </div>
                 <span v-if="errors.frecuencia_cardiaca" class="error-message">{{ errors.frecuencia_cardiaca }}</span>
-                <p class="field-hint">Rango normal: 80 a 205 lpm</p>
+                <p class="field-hint">Registra el valor medido; la interpretación depende de la edad y el contexto.</p>
               </div>
 
               <!-- Perímetro Cefálico -->
@@ -266,7 +266,7 @@
                     placeholder="%"
                   />
                 </div>
-                <p class="field-hint">Rango normal: 95-100%</p>
+                <p class="field-hint">Registra el valor medido; la interpretación depende de la edad y el contexto.</p>
               </div>
             </div>
 
@@ -327,7 +327,7 @@
               </li>
               <li class="info-item">
                 <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--blue)" />
-                <span>Los rangos normales se muestran como referencia</span>
+                <span>Registra las mediciones reales, incluso si están alteradas</span>
               </li>
               <li class="info-item">
                 <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--blue)" />
@@ -525,67 +525,23 @@ const getIMCStyle = (imcValue: number) => {
 // Validación
 function validar(): boolean {
   let valid = true
-
-  if (!form.pulso && form.pulso !== 0) {
-    errors.pulso = 'El pulso es requerido'
-    valid = false
-  } else if (form.pulso !== null && (form.pulso < 60 || form.pulso > 100)) {
-    errors.pulso = 'El pulso debe estar entre 60 y 100'
-    valid = false
-  } else {
-    errors.pulso = ''
+  const obligatorios = ['pulso', 'frecuencia_respiratoria', 'temperatura', 'presion_sistolica', 'presion_diastolica', 'frecuencia_cardiaca']
+  for (const [campo, valor] of Object.entries(form)) {
+    const vacio = valor === null || valor === undefined || valor === ''
+    let mensaje = ''
+    if (vacio && obligatorios.includes(campo)) mensaje = 'Registra la medición realizada'
+    else if (!vacio && (!Number.isFinite(Number(valor)) || Number(valor) < 0)) mensaje = 'Ingresa un número válido sin valores negativos'
+    else if (!vacio && ['peso', 'talla', 'temperatura', 'perimetro_abdominal', 'perimetro_cefalico'].includes(campo) && Number(valor) === 0) mensaje = 'La medición debe ser mayor que cero'
+    else if (campo === 'saturacion_o2' && !vacio && Number(valor) > 100) mensaje = 'La saturación debe estar entre 0 y 100 %'
+    ;(errors as any)[campo] = mensaje
+    if (mensaje) valid = false
   }
-
-  if (!form.frecuencia_respiratoria && form.frecuencia_respiratoria !== 0) {
-    errors.frecuencia_respiratoria = 'La frecuencia respiratoria es requerida'
-    valid = false
-  } else if (form.frecuencia_respiratoria !== null && (form.frecuencia_respiratoria < 30 || form.frecuencia_respiratoria > 60)) {
-    errors.frecuencia_respiratoria = 'Debe estar entre 30 y 60'
-    valid = false
-  } else {
-    errors.frecuencia_respiratoria = ''
-  }
-
-  if (!form.temperatura && form.temperatura !== 0) {
-    errors.temperatura = 'La temperatura es requerida'
-    valid = false
-  } else if (form.temperatura !== null && (form.temperatura < 36.1 || form.temperatura > 37.7)) {
-    errors.temperatura = 'Debe estar entre 36.1 y 37.7 °C'
-    valid = false
-  } else {
-    errors.temperatura = ''
-  }
-
-  if (!form.presion_sistolica && form.presion_sistolica !== 0) {
-    errors.presion_sistolica = 'La presión sistólica es requerida'
-    valid = false
-  } else {
-    errors.presion_sistolica = ''
-  }
-
-  if (!form.presion_diastolica && form.presion_diastolica !== 0) {
-    errors.presion_diastolica = 'La presión diastólica es requerida'
-    valid = false
-  } else {
-    errors.presion_diastolica = ''
-  }
-
-  if (!form.frecuencia_cardiaca && form.frecuencia_cardiaca !== 0) {
-    errors.frecuencia_cardiaca = 'La frecuencia cardiaca es requerida'
-    valid = false
-  } else if (form.frecuencia_cardiaca !== null && (form.frecuencia_cardiaca < 80 || form.frecuencia_cardiaca > 205)) {
-    errors.frecuencia_cardiaca = 'Debe estar entre 80 y 205'
-    valid = false
-  } else {
-    errors.frecuencia_cardiaca = ''
-  }
-
   return valid
 }
 
 // Funciones
 async function guardar() {
-  if (!validar()) return
+  if (guardando.value || !validar()) return
 
   error.value = ''
   exito.value = ''
@@ -598,7 +554,7 @@ async function guardar() {
     imc.value = actualizado.imc
     exito.value = 'Triaje actualizado correctamente'
     setTimeout(() => {
-      navigateTo(link('/app/consulta-externa/triaje'))
+      navigateTo(link(`/app/consulta-externa/triaje?fecha=${cita.value?.fecha || ''}`))
     }, 1500)
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al guardar cambios'

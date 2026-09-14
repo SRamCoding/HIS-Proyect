@@ -7,7 +7,7 @@ from app.core.database import engine
 from app.core.tenant_db import get_tenant_sessionmaker, _tenant_engines
 import app.shared.ubigeo.models
 from app.hospital.consulta_externa import service
-from app.hospital.consulta_externa.schemas import CitaUpdate
+from app.hospital.consulta_externa.schemas import CitaUpdate, TriajeCreate, TriajeUpdate
 
 TID = uuid.UUID("55540838-24a6-4e78-843b-f9b93e57733a")
 
@@ -36,6 +36,25 @@ async def main():
                     pendientes = await service.list_citas_para_triaje(db, TID, fecha=cita["fecha"])
                     assert any(c["cita_id"] == cita["id"] for c in pendientes)
                     print("confirmacion_y_triaje: OK")
+                    triaje = await service.create_triaje(db, TID, cita["id"], TriajeCreate(
+                        pulso=110, temperatura=39.2, frecuencia_respiratoria=18,
+                        frecuencia_cardiaca=110, presion_sistolica=150, presion_diastolica=95,
+                        peso=70, talla=170, saturacion_o2=96))
+                    assert round(triaje.imc, 1) == 24.2
+                    actualizado = await service.update_triaje(db, TID, cita["id"], TriajeUpdate(peso=72))
+                    assert round(actualizado.imc, 1) == 24.9
+                    assert await service.get_triaje_by_cita(db, uuid.uuid4(), cita["id"]) is None
+                    pendientes = await service.list_citas_para_triaje(db, TID, fecha=cita["fecha"])
+                    assert any(c["cita_id"] == cita["id"] and c["paso_triaje"] for c in pendientes)
+                    try:
+                        await service.create_triaje(db, TID, cita["id"], TriajeCreate(
+                            pulso=80, temperatura=37, frecuencia_respiratoria=18,
+                            frecuencia_cardiaca=80, presion_sistolica=120, presion_diastolica=80))
+                    except ValueError:
+                        print("triaje_duplicado: bloqueado")
+                    else:
+                        raise AssertionError("Triaje duplicado permitido")
+                    print("registro_edicion_imc_y_aislamiento_triaje: OK")
                     try:
                         await service.confirmar_cita(db, TID, cita["id"])
                     except ValueError:
@@ -47,6 +66,7 @@ async def main():
         async with get_tenant_sessionmaker("his_hospital_reque")() as db:
             original = await service.get_cita_by_id(db, TID, cita["id"])
             assert original["estado"] == "separada"
+            assert await service.get_triaje_by_cita(db, TID, cita["id"]) is None
             print("rollback: cita original preservada")
     finally:
         await engine.dispose()
