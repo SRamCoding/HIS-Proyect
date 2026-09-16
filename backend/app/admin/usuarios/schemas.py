@@ -3,9 +3,19 @@ from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, field_validator, model_validator
 
-from app.sigarh.mantenimiento.schemas import validar_password
+from app.sigarh.mantenimiento.schemas import validar_password, validar_email
 
 PANELES = ("admin", "app", "sigarh", "portal")
+
+# Roles reales del panel Hospitalario (App) + el rol de administrador del
+# panel Admin. Antes solo se exigia que "role" no viniera vacio: cualquier
+# texto pasaba, sin garantizar que fuera un rol que el sistema realmente
+# reconoce (el frontend ya restringe esta misma lista en un <select>, pero
+# la API la aceptaba igual si alguien mandaba otra cosa a mano).
+ROLES_VALIDOS = {
+    "administrador", "medico", "enfermera", "farmaceutico",
+    "laboratorista", "cajero", "tuasis", "sigarh",
+}
 
 
 class PerfilHospitalInput(BaseModel):
@@ -51,6 +61,7 @@ class UserCreate(BaseModel):
     panel: Literal["admin", "app", "portal"]
     empleado_id: uuid.UUID | None = None
     tenant_id: uuid.UUID | None = None
+    is_active: bool = True
 
     @field_validator("name")
     @classmethod
@@ -63,14 +74,14 @@ class UserCreate(BaseModel):
     @field_validator("email")
     @classmethod
     def _v_email(cls, v):
-        return v.strip().lower()
+        return validar_email(v)
 
     @field_validator("role")
     @classmethod
     def _v_role(cls, v):
         v = v.strip()
-        if not v:
-            raise ValueError("El rol es requerido")
+        if v not in ROLES_VALIDOS:
+            raise ValueError(f"Rol inválido. Debe ser uno de: {', '.join(sorted(ROLES_VALIDOS))}")
         return v
 
     @field_validator("password", mode="before")
@@ -116,7 +127,17 @@ class UserUpdate(BaseModel):
     @field_validator("email")
     @classmethod
     def _v_email(cls, v):
-        return v.strip().lower() if v else v
+        return validar_email(v) if v else v
+
+    @field_validator("role")
+    @classmethod
+    def _v_role(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if v not in ROLES_VALIDOS:
+            raise ValueError(f"Rol inválido. Debe ser uno de: {', '.join(sorted(ROLES_VALIDOS))}")
+        return v
 
     @field_validator("password", mode="before")
     @classmethod

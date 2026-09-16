@@ -54,13 +54,6 @@
                 </p>
               </div>
             </div>
-            <button
-              class="btn-danger"
-              @click="confirmDelete"
-            >
-              <UIcon name="i-heroicons-trash" class="w-4 h-4" />
-              Eliminar
-            </button>
           </div>
         </div>
 
@@ -73,6 +66,15 @@
         </div>
 
         <template v-else>
+          <div v-if="provisioningStatus === 'pendiente'" class="error-banner" style="background: var(--mist); color: var(--ink); border-color: var(--line)">
+            <UIcon name="i-heroicons-arrow-path" class="w-4 h-4 shrink-0 animate-spin" />
+            Este hospital todavía se está aprovisionando (creando su base de datos y catálogos iniciales). Algunos datos pueden no estar disponibles todavía.
+          </div>
+          <div v-else-if="provisioningStatus === 'error'" class="error-banner">
+            <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
+            El aprovisionamiento de este hospital falló{{ provisioningError ? `: ${provisioningError}` : '' }}.
+          </div>
+
           <!-- Step 1: Identidad -->
           <section class="edit-card" v-show="currentStep === 0">
             <div class="card-header">
@@ -526,31 +528,6 @@
       </div>
     </div>
 
-    <!-- Delete Confirmation Modal -->
-    <div v-if="showDeleteModal" class="modal-overlay" @click.self="showDeleteModal = false">
-      <div class="modal-content" style="background: var(--paper); border-radius: var(--radius-lg)">
-        <div class="modal-header">
-          <div class="modal-icon" style="background: var(--alert-soft)">
-            <UIcon name="i-heroicons-exclamation-triangle" class="w-6 h-6" style="color: var(--alert)" />
-          </div>
-          <h3 class="modal-title">Confirmar Eliminación</h3>
-        </div>
-        <p class="modal-body">
-          ¿Estás seguro de que deseas eliminar el hospital <strong>{{ form.name }}</strong>?
-          <br>
-          <span style="color: var(--ink-soft); font-size: 0.875rem">
-            Esta acción no se puede deshacer y eliminará todos los datos asociados.
-          </span>
-        </p>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="showDeleteModal = false">Cancelar</button>
-          <button class="btn-danger" @click="handleDelete">
-            <UIcon name="i-heroicons-trash" class="w-4 h-4" />
-            Eliminar Permanentemente
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -578,6 +555,8 @@ interface Hospital {
   values: string
   is_active: boolean
   active_modules: string[]
+  provisioning_status?: string
+  provisioning_error?: string | null
 }
 
 const { api } = useApi()
@@ -591,7 +570,8 @@ const currentStep = ref(0)
 const loading = ref(true)
 const saving = ref(false)
 const saveError = ref('')
-const showDeleteModal = ref(false)
+const provisioningStatus = ref('listo')
+const provisioningError = ref<string | null>(null)
 
 const searchModApp = ref('')
 const searchModSigarh = ref('')
@@ -689,21 +669,6 @@ const irA = (path: string) => {
   }
 }
 
-const confirmDelete = () => {
-  showDeleteModal.value = true
-}
-
-const handleDelete = async () => {
-  try {
-    await api(`/admin/hospitales/${id.value}`, { method: 'DELETE' })
-    router.push('/admin/hospitales')
-  } catch (e: any) {
-    saveError.value = e?.data?.detail || 'No se pudo eliminar el hospital'
-  } finally {
-    showDeleteModal.value = false
-  }
-}
-
 const handleSave = async () => {
   if (!validateStep1()) {
     currentStep.value = 0
@@ -712,6 +677,13 @@ const handleSave = async () => {
 
   saving.value = true
   saveError.value = ''
+
+  // El guardado son 2 peticiones separadas (identidad y modulos, cada una
+  // con su propio endpoint). Si la primera pasa y la segunda falla, la
+  // identidad YA quedo guardada -- antes se mostraba un solo mensaje
+  // generico ("no se pudo guardar el hospital") que sugeria que nada se
+  // habia aplicado, cuando en realidad una parte si. Se avisa cual parte
+  // fallo para que el admin sepa exactamente que reintentar.
   try {
     await api(`/admin/hospitales/${id.value}`, {
       method: 'PATCH',
@@ -728,7 +700,13 @@ const handleSave = async () => {
         is_active: form.is_active,
       },
     })
+  } catch (e: any) {
+    saveError.value = apiErr(e, 'No se pudo guardar la identidad del hospital')
+    saving.value = false
+    return
+  }
 
+  try {
     await api('/admin/hospitales/modulos', {
       method: 'PUT',
       body: {
@@ -736,13 +714,14 @@ const handleSave = async () => {
         module_codes: modulosActivos.value,
       },
     })
-
-    router.push('/admin/hospitales')
   } catch (e: any) {
-    saveError.value = e?.data?.detail || 'No se pudo guardar el hospital'
-  } finally {
+    saveError.value = `Los datos generales se guardaron, pero los módulos no: ${apiErr(e, 'error desconocido')}`
     saving.value = false
+    return
   }
+
+  saving.value = false
+  router.push('/admin/hospitales')
 }
 
 onMounted(async () => {
@@ -765,8 +744,10 @@ onMounted(async () => {
     subdomain.value = hospital.domain?.split('.')[0] || ''
     modulosActivos.value = hospital.active_modules || []
     todosModulos.value = modulos
+    provisioningStatus.value = hospital.provisioning_status || 'listo'
+    provisioningError.value = hospital.provisioning_error || null
   } catch (e: any) {
-    saveError.value = e?.data?.detail || 'No se pudo cargar el hospital'
+    saveError.value = apiErr(e, 'No se pudo cargar el hospital')
   } finally {
     loading.value = false
   }
@@ -780,119 +761,9 @@ onMounted(async () => {
   padding: 1.5rem 2rem;
 }
 
-/* Progress Steps */
-.onboarding-progress {
-  margin-bottom: 2rem;
-}
-
-.progress-steps {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.step-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 1rem;
-  border-radius: 12px;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  opacity: 0.5;
-  transition: all 0.3s ease;
-}
-
-.step-item.active {
-  opacity: 1;
-  border-color: var(--teal);
-  background: var(--teal-soft);
-}
-
-.step-item.completed {
-  opacity: 1;
-  border-color: var(--teal);
-  background: rgba(8, 145, 178, 0.08);
-}
-
-.step-circle {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: var(--mist);
-  color: var(--ink-soft);
-  transition: all 0.3s ease;
-}
-
-.step-item.active .step-circle {
-  background: var(--teal);
-  color: white;
-}
-
-.step-item.completed .step-circle {
-  background: var(--teal);
-  color: white;
-}
-
-.step-check {
-  font-size: 0.875rem;
-}
-
-.step-label {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink);
-}
-
 /* Grid */
-.edit-grid {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 2rem;
-}
-
-.edit-main {
-  min-width: 0;
-}
-
-.edit-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
 
 /* Header */
-.header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.2;
-}
-
-.page-subtitle {
-  font-size: 0.875rem;
-  color: var(--ink-soft);
-  margin: 0.125rem 0 0 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
 
 .domain-display {
   font-size: 0.8125rem;
@@ -903,14 +774,6 @@ onMounted(async () => {
   height: 6px;
   border-radius: 50%;
   display: inline-block;
-}
-
-.dot-active-mini {
-  background: var(--green);
-}
-
-.dot-inactive-mini {
-  background: var(--ink-soft);
 }
 
 .status-text-mini {
@@ -948,136 +811,8 @@ onMounted(async () => {
 }
 
 /* Cards */
-.edit-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.card-header-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.card-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0;
-}
-
-.card-subtitle {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-  margin: 0;
-}
 
 /* Form */
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
-}
-
-.form-group.full-width {
-  grid-column: 1 / -1;
-}
-
-.form-label {
-  display: block;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink);
-  margin-bottom: 0.5rem;
-}
-
-.required {
-  color: var(--alert);
-}
-
-.input-wrapper {
-  position: relative;
-}
-
-.input-icon {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 1rem;
-  height: 1rem;
-  color: var(--ink-soft);
-}
-
-.input-wrapper textarea + .input-icon {
-  top: 0.75rem;
-  transform: none;
-}
-
-.input-clinical {
-  width: 100%;
-  padding: 0.625rem 0.875rem;
-  padding-left: 2.5rem;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 0.875rem;
-  transition: all 0.2s ease;
-}
-
-.input-clinical:focus {
-  outline: none;
-  border-color: var(--teal);
-  box-shadow: 0 0 0 3px var(--teal-soft);
-}
-
-.input-clinical.input-error {
-  border-color: var(--alert);
-}
-
-.input-clinical.input-error:focus {
-  box-shadow: 0 0 0 3px var(--alert-soft);
-}
-
-.error-message {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--alert);
-  margin-top: 0.25rem;
-}
-
-.field-hint {
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-  margin-top: 0.375rem;
-}
 
 /* Subdomain Display */
 .subdomain-display-field {
@@ -1118,44 +853,6 @@ onMounted(async () => {
   padding: 1rem;
   border-radius: 12px;
   background: var(--mist);
-}
-
-.toggle-label {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--ink);
-}
-
-.toggle-switch {
-  position: relative;
-  width: 44px;
-  height: 24px;
-  border-radius: 12px;
-  background: var(--line);
-  border: none;
-  cursor: pointer;
-  transition: background 0.3s ease;
-  padding: 0;
-}
-
-.toggle-switch.toggle-active {
-  background: var(--teal);
-}
-
-.toggle-slider {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: white;
-  transition: transform 0.3s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.toggle-active .toggle-slider {
-  transform: translateX(20px);
 }
 
 /* Module Controls */
@@ -1204,43 +901,7 @@ onMounted(async () => {
   box-shadow: 0 0 0 3px var(--teal-soft);
 }
 
-.action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  padding: 0.375rem 0.75rem;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.action-clear {
-  color: var(--ink-soft);
-}
-
-.action-clear:hover {
-  background: var(--mist);
-}
-
-.module-counter {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink-soft);
-  background: var(--mist);
-  padding: 0.25rem 0.75rem;
-  border-radius: 20px;
-}
-
 /* Module Grid */
-.module-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.625rem;
-}
 
 .module-check {
   display: flex;
@@ -1276,216 +937,9 @@ onMounted(async () => {
   color: var(--ink);
 }
 
-/* Error Banner */
-.error-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  background: var(--alert-soft);
-  color: var(--alert);
-  font-size: 0.875rem;
-  margin-bottom: 1.5rem;
-}
-
 /* Actions */
-.edit-actions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--line);
-}
-
-.action-spacer {
-  flex: 1;
-}
-
-.action-group {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.5rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border: none;
-  background: var(--teal);
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--teal-dark);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.5rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-secondary:hover {
-  background: var(--mist);
-}
-
-.btn-cancel {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--ink-soft);
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.btn-cancel:hover {
-  background: var(--mist);
-}
-
-/* Widgets */
-.widget {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
-  border: 1px solid var(--line);
-}
-
-.widget-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.widget-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-.widget-title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0;
-}
-
-.widget-content {
-  padding: 1rem 1.25rem;
-}
 
 /* Summary Widget */
-.widget-progress {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.widget-progress-label {
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-}
-
-.widget-progress-bar {
-  flex: 1;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--mist);
-  overflow: hidden;
-}
-
-.widget-progress-fill {
-  height: 100%;
-  border-radius: 2px;
-  background: var(--teal);
-  transition: width 0.6s ease;
-}
-
-.widget-progress-value {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--teal);
-}
-
-.summary-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.375rem 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.summary-item:last-of-type {
-  border-bottom: none;
-}
-
-.summary-label {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-.summary-value {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink);
-}
-
-.summary-divider {
-  height: 1px;
-  background: var(--line);
-  margin: 0.5rem 0;
-}
-
-.distribution-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.distribution-bar {
-  display: flex;
-  height: 6px;
-  border-radius: 3px;
-  overflow: hidden;
-  background: var(--mist);
-}
-
-.distribution-fill {
-  height: 100%;
-  transition: width 0.6s ease;
-}
 
 .distribution-fill.app {
   background: var(--green);
@@ -1495,149 +949,9 @@ onMounted(async () => {
   background: var(--navy);
 }
 
-.distribution-labels {
-  display: flex;
-  justify-content: space-between;
-}
-
-.distribution-label {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-}
-
-.distribution-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
 /* Quick Access Widget */
-.quick-action {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--ink);
-  font-size: 0.8125rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.quick-action:hover {
-  background: var(--mist);
-}
-
-.quick-action + .quick-action {
-  margin-top: 0.25rem;
-}
-
-/* Tip Widget */
-.widget-tip {
-  background: var(--amber-soft);
-  border-color: var(--amber-soft);
-}
-
-.tip-content {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.tip-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  flex-shrink: 0;
-  margin-top: 0.125rem;
-}
-
-.tip-title {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0 0 0.25rem 0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.tip-text {
-  font-size: 0.8125rem;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.5;
-}
-
-/* Stats Widget */
-.stat-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.375rem 0;
-}
-
-.stat-item + .stat-item {
-  border-top: 1px solid var(--line);
-}
-
-.stat-label {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-.stat-number {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-/* Status Badge Mini */
-.status-badge-mini {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.125rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.6875rem;
-  font-weight: 500;
-}
-
-.status-active-mini {
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.status-inactive-mini {
-  background: var(--mist);
-  color: var(--ink-soft);
-}
 
 /* Loading State */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  gap: 1rem;
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-}
-
-.loading-spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
 
 /* Modal */
 .modal-overlay {
@@ -1720,10 +1034,6 @@ onMounted(async () => {
   .step-item {
     flex: 1;
     min-width: 120px;
-  }
-  
-  .form-grid {
-    grid-template-columns: 1fr;
   }
   
   .module-grid {

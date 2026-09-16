@@ -1,11 +1,11 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Paquetes' })
-const { api: $api } = useApi()
+const { api } = useApi()
 const route = useRoute()
 const tenant = route.query.tenant as string
 const lista = ref<any[]>([])
 const loading = ref(true)
-onMounted(async () => { lista.value = await $api('/sigarh/general/paquetes', { tenant }); loading.value = false })
+onMounted(async () => { lista.value = await api('/sigarh/general/paquetes', { tenant }); loading.value = false })
 </script>
 <template>
   <div class="p-6 space-y-4">

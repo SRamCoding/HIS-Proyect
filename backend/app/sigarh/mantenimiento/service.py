@@ -5,12 +5,11 @@ from datetime import date
 import bcrypt
 from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy import select, func, or_, text, delete as sa_delete
+from sqlalchemy import select, func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.core.database import Base
-from app.admin.auditoria.models import AuditLog
 from app.sigarh.mantenimiento import models as m, schemas as s
 from app.sigarh.mantenimiento.security import lista, es_admin_erp
 
@@ -88,15 +87,6 @@ def serializar(item):
     return data
 
 
-def snapshot(item):
-    data = {
-        c.name: getattr(item, c.name)
-        for c in item.__table__.columns
-        if c.name not in {"password", "session_version"}
-    }
-    return json.loads(json.dumps(data, default=str))
-
-
 async def obtener(db, modelo, id, tenant_id, bloquear=False):
     query = select(modelo).where(modelo.id == id, modelo.tenant_id == tenant_id)
     for relation in RELACIONES.get(modelo, ()):
@@ -159,6 +149,7 @@ async def estructura_asistencial(db, tenant_id):
             select(m.Servicio)
             .where(m.Servicio.tenant_id == tenant_id)
             .order_by(m.Servicio.nombre)
+            .options(selectinload(m.Servicio.departamento), selectinload(m.Servicio.piso))
         )
     ).all()
     links = (
@@ -240,12 +231,12 @@ async def configurar_servicio(db, tenant_id, id, data):
         await referencia(db, Especialidad, value, tenant_id, "especialidad")
         for value in data.especialidad_ids
     ]
-    await db.execute(sa_delete(m.ServicioUPSS).where(m.ServicioUPSS.servicio_id == id))
-    await db.execute(
-        sa_delete(m.ServicioEspecialidad).where(
-            m.ServicioEspecialidad.servicio_id == id
-        )
-    )
+    # DELETE por SQL directo se salta la sesion ORM: el listener de auditoria
+    # automatica (before_flush) nunca veia estos borrados.
+    for upss in (await db.scalars(select(m.ServicioUPSS).where(m.ServicioUPSS.servicio_id == id))).all():
+        await db.delete(upss)
+    for esp in (await db.scalars(select(m.ServicioEspecialidad).where(m.ServicioEspecialidad.servicio_id == id))).all():
+        await db.delete(esp)
     db.add_all([m.ServicioUPSS(servicio_id=id, upss_id=unit.id) for unit in units])
     db.add_all(
         [
@@ -458,36 +449,45 @@ async def validar_relaciones(db, modelo, tenant_id, values):
     if modelo is m.PerfilUsuario:
         from app.tenants.modulos.submodulos import modulo_padre, permiso_incluye
         rol = refs["rol_sistema_id"]
-        habilitados = {module.code for module in await modulos_habilitados(db, tenant_id, rol.panel)}
-        if rol.panel not in {"sigarh", "app"} or (rol.modulo_requerido and rol.modulo_requerido not in habilitados):
-            raise HTTPException(422, "El rol no es válido para SIGARH o su módulo requerido está deshabilitado")
-        # Un código de modulos_acceso puede venir con submódulo (ej.
-        # "sigarh_recursos_humanos.empleados"): es válido si el rol lo cubre
-        # (código exacto o su módulo padre) y ese módulo padre está habilitado
-        # para el hospital. Antes esto era una resta de sets por código exacto,
-        # que rechazaba cualquier submódulo fino aunque el rol lo permitiera.
-        concedidos_rol = set(lista(rol.modulos_permitidos))
-        no_validos = {
-            c for c in values["modulos_acceso"]
-            if not permiso_incluye(concedidos_rol, c) or modulo_padre(c) not in habilitados
-        }
-        if no_validos:
-            raise HTTPException(422, "Los módulos deben estar permitidos por el rol y habilitados en el hospital")
+        # rol_sistema_id es nullable en el modelo ("Sin rol" en el frontend);
+        # sin rol no hay nada que autorice modulos_acceso, así que debe venir
+        # vacío. Sin este chequeo, `rol.panel` explota con AttributeError en
+        # cuanto se permite null aquí (antes era imposible llegar: el esquema
+        # rechazaba el null antes de esto).
+        if rol is None:
+            if values["modulos_acceso"]:
+                raise HTTPException(422, "Un perfil sin rol no puede tener módulos de acceso")
+        else:
+            habilitados = {module.code for module in await modulos_habilitados(db, tenant_id, rol.panel)}
+            if rol.panel not in {"sigarh", "app"} or (rol.modulo_requerido and rol.modulo_requerido not in habilitados):
+                raise HTTPException(422, "El rol no es válido para SIGARH o su módulo requerido está deshabilitado")
+            # Un código de modulos_acceso puede venir con submódulo (ej.
+            # "sigarh_recursos_humanos.empleados"): es válido si el rol lo cubre
+            # (código exacto o su módulo padre) y ese módulo padre está habilitado
+            # para el hospital. Antes esto era una resta de sets por código exacto,
+            # que rechazaba cualquier submódulo fino aunque el rol lo permitiera.
+            concedidos_rol = set(lista(rol.modulos_permitidos))
+            no_validos = {
+                c for c in values["modulos_acceso"]
+                if not permiso_incluye(concedidos_rol, c) or modulo_padre(c) not in habilitados
+            }
+            if no_validos:
+                raise HTTPException(422, "Los módulos deben estar permitidos por el rol y habilitados en el hospital")
     if modelo is m.UsuarioSigarh:
+        # perfil_id es nullable (un usuario puede quedar sin perfil asignado,
+        # el login lo rechaza aparte en contexto_sigarh()); sin este chequeo
+        # `perfil.rol_sistema_id` explota con AttributeError apenas se permite
+        # null aquí (antes era imposible llegar: el esquema rechazaba el null
+        # antes de esto).
         perfil = refs["perfil_id"]
-        rol = await referencia(
-            db, m.RolSistema, perfil.rol_sistema_id, tenant_id, "rol del perfil"
-        )
-        if not rol or rol.panel != "sigarh":
-            raise HTTPException(422, "El perfil requiere un rol SIGARH activo")
-        grupos = set(lista(rol.grupos_ocupacionales_permitidos))
-        empleado = refs.get("empleado_id")
-        if grupos and (
-            not empleado or str(empleado.grupo_ocupacional_id) not in grupos
-        ):
-            raise HTTPException(
-                422, "Seleccione un empleado del grupo ocupacional permitido por el rol"
-            )
+        if perfil is not None:
+            rol = await referencia(db, m.RolSistema, perfil.rol_sistema_id, tenant_id, "rol del perfil")
+            if not rol or rol.panel != "sigarh":
+                raise HTTPException(422, "El perfil requiere un rol SIGARH activo")
+            grupos = set(lista(rol.grupos_ocupacionales_permitidos))
+            empleado = refs.get("empleado_id")
+            if grupos and (not empleado or str(empleado.grupo_ocupacional_id) not in grupos):
+                raise HTTPException(422, "Seleccione un empleado del grupo ocupacional permitido por el rol")
 
 
 async def validar_unicidad(db, modelo, tenant_id, values, item=None):
@@ -551,26 +551,12 @@ async def bloquear_escritura(db, tenant_id):
     )
 
 
-async def auditar(user, tenant_id, item, action, before=None, ip=None):
-    # AuditLog es una tabla central (la revisa Admin ERP en Auditoría), nunca
-    # vive en la BD física del tenant: se escribe en su propia sesión central,
-    # independiente de `db` (física para /sigarh/*, ver core/database.py).
-    from app.core.database import AsyncSessionLocal
-    async with AsyncSessionLocal() as central:
-        central.add(AuditLog(user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-            tenant_id=tenant_id, action=action, model=type(item).__name__, model_id=str(item.id),
-            description=f"Mantenimiento: {action}", old_values=before,
-            new_values=None if action == "deleted" else snapshot(item), ip_address=ip))
-        await central.commit()
-
-
 async def guardar(db, recurso, tenant_id, data, user, id=None, ip=None):
     modelo, schema, _ = REGISTROS[recurso]
     await bloquear_escritura(db, tenant_id)
     item = await obtener(db, modelo, id, tenant_id, bloquear=True) if id else None
     if id and not item:
         raise HTTPException(404, "Registro no encontrado")
-    before = snapshot(item) if item else None
     supplied = data.model_dump(exclude_unset=True)
     if modelo is m.Profesion and item and item.es_base:
         protected = set(supplied) - {"is_active", "descripcion"}
@@ -704,7 +690,6 @@ async def guardar(db, recurso, tenant_id, data, user, id=None, ip=None):
     except IntegrityError:
         await db.rollback()
         raise HTTPException(409, "Los datos duplican un registro o tienen una relación inválida")
-    await auditar(user, tenant_id, item, "updated" if id else "created", before, ip)
     return serializar(await obtener(db, modelo, item.id, tenant_id))
 
 
@@ -731,14 +716,12 @@ async def eliminar(db, recurso, tenant_id, id, user, ip=None):
         and item.vigencia_desde <= date.today()
     ):
         raise HTTPException(409, "Una tarifa con vigencia iniciada debe conservarse")
-    before = snapshot(item)
     await db.delete(item)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(409, "El catálogo está siendo utilizado y no puede eliminarse")
-    await auditar(user, tenant_id, item, "deleted", before, ip)
     return {"ok": True}
 
 

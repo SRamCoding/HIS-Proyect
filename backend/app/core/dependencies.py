@@ -30,7 +30,15 @@ async def get_current_user(
         )
 
     from app.sigarh.mantenimiento.security import usuario_actual
-    return await usuario_actual(db, payload)
+    user = await usuario_actual(db, payload)
+
+    from app.core.audit import set_audit_actor
+    set_audit_actor(
+        user_id=user.get("sub"),
+        user_name=user.get("name"),
+        tenant_id=user.get("tenant_id"),
+    )
+    return user
 
 
 async def get_admin_user(

@@ -1,4 +1,5 @@
 ﻿# backend/app/admin/reportes/service.py
+import logging
 import uuid
 from collections import Counter
 from datetime import datetime
@@ -10,6 +11,35 @@ from app.tenants.hospitales.models import Tenant
 from app.tenants.modulos.service import get_all_modules
 from app.auth.models import User
 from app.hospital.admision.models import Patient
+from app.sigarh.mantenimiento.models import UsuarioSigarh
+from app.core.tenant_db import get_tenant_sessionmaker
+from app.core.concurrency import gather_limitado
+
+logger = logging.getLogger(__name__)
+
+
+async def _stats_hospital(tenant: Tenant, start: datetime, end: datetime) -> tuple[int, int, bool]:
+    """(pacientes_nuevos, usuarios_count, disponible) para UN hospital,
+    consultando su propia BD fisica -- ahi es donde realmente viven sus
+    Patient/User, no en la central. usuarios_count suma User (panel app) y
+    UsuarioSigarh: antes solo contaba User, subestimando el total real de
+    cuentas de cada hospital (todo el personal SIGARH quedaba fuera)."""
+    if not tenant.database_name:
+        return 0, 0, True  # nunca se aprovisiono base propia: no hay nada que consultar, no es una falla
+    try:
+        TenantSession = get_tenant_sessionmaker(tenant.database_name)
+        async with TenantSession() as tdb:
+            pacientes_nuevos = await tdb.scalar(
+                select(func.count(Patient.id)).where(
+                    Patient.created_at >= start, Patient.created_at < end,
+                )
+            )
+            usuarios_app = await tdb.scalar(select(func.count(User.id))) or 0
+            usuarios_sigarh = await tdb.scalar(select(func.count(UsuarioSigarh.id))) or 0
+            return pacientes_nuevos or 0, usuarios_app + usuarios_sigarh, True
+    except Exception:
+        logger.exception("No se pudo consultar la BD del hospital %s para el reporte mensual", tenant.name)
+        return 0, 0, False
 
 
 async def get_hospitals_modules_report(db: AsyncSession) -> list[dict]:
@@ -58,40 +88,38 @@ async def get_monthly_report(
         tenants_query = tenants_query.where(Tenant.id == tenant_id)
     tenants = (await db.execute(tenants_query)).scalars().all()
 
-    # Pacientes nuevos del periodo, agrupados por hospital
-    patients_rows = await db.execute(
-        select(Patient.tenant_id, func.count(Patient.id))
-        .where(Patient.created_at >= start, Patient.created_at < end)
-        .group_by(Patient.tenant_id)
-    )
-    patients_by_tenant = {row[0]: row[1] for row in patients_rows.fetchall()}
-
-    # Usuarios por hospital (total actual, no solo nuevos)
-    users_rows = await db.execute(
-        select(User.tenant_id, func.count(User.id))
-        .where(User.tenant_id.isnot(None))
-        .group_by(User.tenant_id)
-    )
-    users_by_tenant = {row[0]: row[1] for row in users_rows.fetchall()}
+    # Pacientes y usuarios por hospital viven en la BD FISICA de cada uno
+    # (no en la central), asi que hay que consultar cada base por separado.
+    # Antes esto consultaba Patient/User de la BD central: como esas tablas
+    # ahi casi siempre estan vacias (los hospitales con base propia guardan
+    # sus datos en SU base), el reporte mostraba ~0 para practicamente
+    # cualquier hospital, sin importar su actividad real. Se piden en
+    # paralelo, y si una base no responde se marca "no disponible" en vez
+    # de mostrar 0 (que se confundiria con "sin actividad").
+    resultados = await gather_limitado([_stats_hospital(t, start, end) for t in tenants])
 
     hospitales_summary = []
     module_counter: Counter = Counter()
-    for t in tenants:
+    hospitales_no_disponibles = 0
+    for t, (pacientes_nuevos, usuarios_count, disponible) in zip(tenants, resultados):
         active_codes = t.active_module_codes
         for code in active_codes:
             module_counter[code] += 1
+        if not disponible:
+            hospitales_no_disponibles += 1
         hospitales_summary.append({
             "id": t.id,
             "hospital_name": t.name,
             "domain": t.domain,
             "is_active": t.is_active,
-            "pacientes_nuevos": patients_by_tenant.get(t.id, 0),
-            "usuarios_count": users_by_tenant.get(t.id, 0),
+            "pacientes_nuevos": pacientes_nuevos,
+            "usuarios_count": usuarios_count,
             "modules_count": len(active_codes),
             "created_at": t.created_at,
+            "disponible": disponible,
         })
 
-    pacientes_nuevos_total = sum(h["pacientes_nuevos"] for h in hospitales_summary)
+    pacientes_nuevos_total = sum(h["pacientes_nuevos"] for h in hospitales_summary if h["disponible"])
 
     # Cobertura de modulos (top 10 mas adoptados)
     modules_catalog = await get_all_modules(db)
@@ -139,4 +167,7 @@ async def get_monthly_report(
         "hospitales": hospitales_summary,
         "hospitales_registrados_periodo": hospitales_registrados_periodo,
         "usuarios_centrales_registrados": usuarios_centrales or 0,
+        "hospitales_consultados": len(tenants) - hospitales_no_disponibles,
+        "hospitales_totales": len(tenants),
+        "es_parcial": hospitales_no_disponibles > 0,
     }

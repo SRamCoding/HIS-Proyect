@@ -14,3 +14,7 @@ class ModuleDependencyResponse(ModuleDependencyCreate):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ActiveToggle(BaseModel):
+    is_active: bool

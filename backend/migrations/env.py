@@ -34,7 +34,7 @@ from app.sigarh.rrhh.models import (
     RegistroAsistencia, Justificacion
 )
 
-from app.sigarh.movimientos.models import Vacacion, Licencia, CambioTurno, Papeleta
+from app.sigarh.movimientos.models import CambioTurno, Papeleta
 from app.sigarh.infraestructura.models import Catalogo, Consultorio
 from app.sigarh.infraestructura_hosp.models import Piso, Sala, Cama
 from app.sigarh.config_farmacia.models import Almacen, Medicamento, ProveedorFarmacia, CatalogoFarmacia

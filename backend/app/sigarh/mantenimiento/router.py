@@ -172,9 +172,11 @@ def registrar(recurso, modelo, entrada, salida):
             from app.auth.models import User
             cuenta = await db.get(User, id)
             if cuenta and cuenta.panel == 'app':
+                # El cambio de is_active ya queda auditado automaticamente por
+                # el listener before_flush/after_flush (app/core/audit.py) al
+                # hacer commit -- no hace falta un registro manual aparte.
                 cuenta.is_active = False
                 await db.commit()
-                await svc.auditar(current_user, tid, cuenta, 'hospital_user_disabled')
                 return {'ok': True}
         return await svc.eliminar(db, recurso, tid, id, current_user, ip(request))
 

@@ -384,6 +384,16 @@ class DependenciaResponse(BaseModel):
     created_at: datetime
 
 
+def validar_email(value: str) -> str:
+    """Compartido por perfil/usuarios/hospitales: antes cada esquema solo
+    normalizaba mayusculas/espacios (str.lower().strip()) sin comprobar que
+    el texto tuviera forma de correo -- cualquier cadena pasaba."""
+    value = value.strip().lower()
+    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", value):
+        raise ValueError("El correo electrónico no es válido")
+    return value
+
+
 def validar_password(value: str) -> str:
     if not 8 <= len(value) or len(value.encode("utf-8")) > 72:
         raise ValueError("La contraseña debe tener entre 8 y 72 caracteres")
@@ -447,11 +457,16 @@ def esquema_parcial(schema):
     # Omitir es diferente de enviar NULL, y se conservan límites/formatos de cada campo.
     fields = {}
     for name, info in schema.model_fields.items():
-        annotation = (
-            Annotated[info.annotation, *info.metadata]
-            if info.metadata
-            else info.annotation
-        )
+        annotation = Annotated[info.annotation, *info.metadata] if info.metadata else info.annotation
+        # Una relación (*_id) obligatoria en el Create (ej. PerfilUsuarioCreate.
+        # rol_sistema_id, UsuarioSigarhCreate.perfil_id) hereda ese tipo estricto
+        # sin "| None" si no se ajusta aquí; el default=None de abajo solo deja
+        # OMITIR el campo, pero un PATCH que manda null explícito (ej. "Sin rol"
+        # en el frontend) sigue rechazado por Pydantic aunque la relación sea
+        # legítimamente limpiable. No se aplica a campos escalares (username,
+        # email, etc.) que nunca deben aceptar null.
+        if name.endswith("_id") and annotation is not type(None):
+            annotation = annotation | None
         fields[name] = (annotation, None)
     return create_model(
         schema.__name__.replace("Create", "Update"), __base__=Entrada, **fields

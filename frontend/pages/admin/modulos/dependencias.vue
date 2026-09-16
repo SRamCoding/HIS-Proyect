@@ -1,17 +1,23 @@
 <!-- frontend/pages/admin/modulos/dependencias.vue -->
 <template>
-  <div>
-    <div class="flex items-center gap-2 text-sm mb-2" style="color: var(--ink-soft)">
-      <span>Módulos</span><span>/</span><span>Dependencias</span>
+  <div class="auditoria-container">
+    <div class="page-header">
+      <div class="header-left">
+        <div class="header-icon" style="background: var(--purple-soft)">
+          <UIcon name="i-heroicons-link" class="w-5 h-5" style="color: var(--purple)" />
+        </div>
+        <div>
+          <h1 class="page-title">Dependencias de Módulos</h1>
+          <p class="page-subtitle">
+            Define qué módulos requieren que otro módulo esté activo primero (ej. laboratorio requiere admisión).
+          </p>
+        </div>
+      </div>
     </div>
-    <h1 class="text-lg font-semibold mb-1" style="color: var(--ink)">Dependencias de Módulos</h1>
-    <p class="text-sm mb-4" style="color: var(--ink-soft)">
-      Define qué módulos requieren que otro módulo esté activo primero (ej. laboratorio requiere admisión).
-    </p>
 
     <!-- Formulario de nueva dependencia -->
-    <div class="mb-6 p-4" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-      <h2 class="text-sm font-semibold mb-3" style="color: var(--ink)">Nueva dependencia</h2>
+    <div class="table-card" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem;">
+      <h2 class="detail-label" style="font-size: 0.875rem; font-weight: 600; color: var(--ink); margin-bottom: 0.75rem;">Nueva dependencia</h2>
       <div v-if="formError" class="mb-3 text-sm" style="color: var(--alert)">{{ formError }}</div>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
         <div>
@@ -41,59 +47,74 @@
     </div>
 
     <!-- Tabla de dependencias -->
-    <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-      <div v-if="loading" class="p-6 text-sm" style="color: var(--ink-soft)">Cargando...</div>
-      <div v-else-if="error" class="p-6 text-sm" style="color: var(--alert)">{{ error }}</div>
-      <div v-else class="overflow-x-auto">
-        <table class="w-full text-sm" style="min-width: 640px">
+    <div class="table-card" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-card)">
+      <div v-if="loading" class="table-loading">
+        <div class="loading-spinner">
+          <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin" style="color: var(--teal)" />
+        </div>
+        <p style="color: var(--ink-soft)">Cargando dependencias...</p>
+      </div>
+      <div v-else-if="error" class="table-error">
+        <UIcon name="i-heroicons-exclamation-triangle" class="w-8 h-8" style="color: var(--alert)" />
+        <p style="color: var(--alert)">{{ error }}</p>
+      </div>
+      <div v-else-if="!dependencias.length" class="table-empty">
+        <div class="empty-icon" style="background: var(--mist)">
+          <UIcon name="i-heroicons-link" class="w-12 h-12" style="color: var(--ink-soft)" />
+        </div>
+        <h3 style="color: var(--ink)">Sin dependencias registradas</h3>
+        <p style="color: var(--ink-soft)">Las dependencias entre módulos aparecerán aquí</p>
+      </div>
+      <div v-else class="table-responsive">
+        <table class="auditoria-table">
           <thead>
-            <tr style="border-bottom: 1px solid var(--line)">
-              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Módulo</th>
-              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Requiere</th>
-              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Obligatorio</th>
-              <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Creado</th>
-              <th class="text-right font-medium px-5 py-3"></th>
+            <tr>
+              <th><span class="th-content">Módulo</span></th>
+              <th><span class="th-content">Requiere</span></th>
+              <th><span class="th-content">Obligatorio</span></th>
+              <th><span class="th-content">Creado</span></th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="dep in dependencias" :key="dep.id" style="border-bottom: 1px solid var(--line)">
-              <td class="px-5 py-3 font-medium" style="color: var(--ink)">
-                {{ moduleName(dep.module_code) }}
-                <span class="text-xs block" style="color: var(--ink-soft)">{{ dep.module_code }}</span>
+            <tr v-for="dep in dependencias" :key="dep.id">
+              <td>
+                <span class="model-text" style="color: var(--ink); font-weight: 500;">{{ moduleName(dep.module_code) }}</span>
+                <span class="ip-text" style="display: block;">{{ dep.module_code }}</span>
               </td>
-              <td class="px-5 py-3" style="color: var(--ink)">
-                {{ moduleName(dep.depends_on_code) }}
-                <span class="text-xs block" style="color: var(--ink-soft)">{{ dep.depends_on_code }}</span>
+              <td>
+                <span class="model-text" style="color: var(--ink);">{{ moduleName(dep.depends_on_code) }}</span>
+                <span class="ip-text" style="display: block;">{{ dep.depends_on_code }}</span>
               </td>
-              <td class="px-5 py-3">
+              <td>
                 <span class="badge" :class="dep.is_required ? 'badge--alert' : 'badge--neutral'">
                   {{ dep.is_required ? 'Sí' : 'No' }}
                 </span>
               </td>
-              <td class="px-5 py-3 text-xs" style="color: var(--ink-soft)">{{ formatDate(dep.created_at) }}</td>
-              <td class="px-5 py-3 text-right">
-                <button class="text-sm font-medium" style="color: var(--alert)" @click="abrirConfirmacion(dep)">Eliminar</button>
-              </td>
-            </tr>
-            <tr v-if="!dependencias.length">
-              <td colspan="4" class="px-5 py-8 text-center text-sm" style="color: var(--ink-soft)">
-                Sin dependencias registradas.
+              <td class="ip-text">{{ formatDate(dep.created_at) }}</td>
+              <td style="text-align: right">
+                <button class="action-clear" style="color: var(--alert)" @click="abrirConfirmacion(dep)">Eliminar</button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
     </div>
-  </div>
-      <!-- Modal de confirmación -->
+
+    <!-- Modal de confirmación -->
     <div v-if="showConfirmModal" class="modal-overlay" @click.self="showConfirmModal = false">
-      <div class="modal-box">
-        <h3 class="text-base font-semibold mb-2" style="color: var(--ink)">¿Eliminar dependencia?</h3>
-        <p class="text-sm mb-4" style="color: var(--ink-soft)">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="modal-icon" style="background: var(--alert-soft)">
+            <UIcon name="i-heroicons-exclamation-triangle" class="w-5 h-5" style="color: var(--alert)" />
+          </div>
+          <h3 class="modal-title">¿Eliminar dependencia?</h3>
+        </div>
+        <p class="modal-body" style="color: var(--ink-soft); font-size: 0.875rem;">
           "{{ depToDelete ? moduleName(depToDelete.module_code) : '' }}" ya no requerirá que
           "{{ depToDelete ? moduleName(depToDelete.depends_on_code) : '' }}" esté activo.
         </p>
-        <div class="flex justify-end gap-2">
+        <div class="modal-footer">
           <button class="btn-secondary" @click="showConfirmModal = false">Cancelar</button>
           <button class="btn-danger" :disabled="deleting" @click="ejecutarEliminar">
             {{ deleting ? 'Eliminando...' : 'Eliminar' }}
@@ -101,6 +122,7 @@
         </div>
       </div>
     </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -171,7 +193,7 @@ const crearDependencia = async () => {
     form.depends_on_code = ''
     form.is_required = true
   } catch (e: any) {
-    formError.value = e?.data?.detail || 'No se pudo crear la dependencia'
+    formError.value = apiErr(e, 'No se pudo crear la dependencia')
   } finally {
     saving.value = false
   }
@@ -194,7 +216,7 @@ const ejecutarEliminar = async () => {
     dependencias.value = dependencias.value.filter(d => d.id !== depToDelete.value!.id)
     showConfirmModal.value = false
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo eliminar'
+    error.value = apiErr(e, 'No se pudo eliminar')
   } finally {
     deleting.value = false
   }
@@ -212,7 +234,7 @@ const cargar = async () => {
     dependencias.value = deps
     modulos.value = mods
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error de conexión'
+    error.value = apiErr(e, 'Error de conexión')
   } finally {
     loading.value = false
   }
@@ -221,20 +243,26 @@ const cargar = async () => {
 onMounted(cargar)
 </script>
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.modal-box {
-  background: var(--paper);
-  border-radius: var(--radius);
+.modal-content {
+  max-width: 420px;
+  width: 100%;
   padding: 1.5rem;
-  max-width: 400px;
-  width: 90%;
+  box-shadow: var(--shadow-lg);
 }
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: var(--alert);
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-danger:hover:not(:disabled) { background: var(--alert-dark); }
+.btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>

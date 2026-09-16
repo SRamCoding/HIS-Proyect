@@ -1,9 +1,7 @@
-﻿import uuid
-from datetime import datetime, date
+﻿from datetime import datetime, date
 from decimal import Decimal
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select, func, or_, and_, text, delete
+from sqlalchemy import select, func, or_, and_, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.hospital.laboratorio.models import LabCorrelativo, LabCupo, LabMovimiento, LabMovimientoItem, LabFichaCovid
@@ -26,12 +24,6 @@ def actor(user):
 
 def columns(obj):
     return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 async def own(db, model, tid, obj_id, active=False, lock=False):
@@ -83,14 +75,12 @@ async def save_cupo(db, tid, user, data, creating):
         LabMovimiento.tenant_id == tid, LabMovimiento.fecha == data.fecha, LabMovimiento.estado != "anulado"))
     if data.cupos < used:
         raise HTTPException(409, detail="No puede reducir los cupos por debajo de las reservas activas")
-    before = columns(obj) if obj else None
     if obj is None:
         obj = LabCupo(tenant_id=tid, fecha=data.fecha, cupos=data.cupos, registrado_por=actor(user))
         db.add(obj)
     obj.cupos = data.cupos
     obj.registrado_por = actor(user)
     await db.flush()
-    audit(db, tid, user, "LabCupo", obj.id, "actualizar" if before else "crear", before, columns(obj))
     return dict(columns(obj), usados=used, disponibles=obj.cupos-used)
 
 
@@ -192,7 +182,6 @@ async def create_order(db, tid, user, data):
     for eid in data.examen_ids:
         db.add(OrdenLaboratorioItem(orden_id=obj.id, examen_id=eid))
     await db.flush()
-    audit(db, tid, user, "OrdenLaboratorio", obj.id, "crear", after=columns(obj))
     return await order_detail(db, tid, obj.id)
 
 
@@ -229,7 +218,6 @@ async def save_movement(db, tid, user, data, mid=None):
     for day in sorted({data.fecha, obj.fecha if obj else data.fecha}):
         await day_lock(db, tid, day)
     await available(db, tid, data.fecha, mid)
-    before = columns(obj) if obj else None
     values = data.model_dump(exclude={"items", "version", "medico_id"})
     if not obj:
         obj = LabMovimiento(tenant_id=tid, numero=await number(db, tid, "ML"),
@@ -240,13 +228,18 @@ async def save_movement(db, tid, user, data, mid=None):
         for k, v in values.items():
             setattr(obj, k, v)
         obj.version += 1
-        await db.execute(delete(LabMovimientoItem).where(LabMovimientoItem.tenant_id == tid, LabMovimientoItem.movimiento_id == obj.id))
+        # DELETE por SQL directo se salta la sesion ORM: el listener de
+        # auditoria automatica (before_flush) nunca veia estos borrados.
+        items_previos = (await db.scalars(
+            select(LabMovimientoItem).where(LabMovimientoItem.tenant_id == tid, LabMovimientoItem.movimiento_id == obj.id)
+        )).all()
+        for item in items_previos:
+            await db.delete(item)
     await make_items(db, tid, obj.id, data.items)
     if data.cuenta_nueva and not order.numero_cuenta:
         order.numero_cuenta = await number(db, tid, "CL")
     order.estado = "en_proceso"
     await db.flush()
-    audit(db, tid, user, "LabMovimiento", obj.id, "editar" if before else "agendar", before, data.model_dump())
     return await movement_detail(db, tid, obj.id)
 
 
@@ -285,7 +278,6 @@ async def transition(db, tid, user, mid, action, data):
     obj = await own(db, LabMovimiento, tid, mid, lock=True)
     if obj.version != data.version:
         raise HTTPException(409, detail="El movimiento cambió. Actualice la pantalla")
-    before = columns(obj)
     order = await own(db, OrdenLaboratorio, tid, obj.orden_id, lock=True)
     if action == "tomar-muestra":
         if obj.estado != "agendado":
@@ -312,7 +304,6 @@ async def transition(db, tid, user, mid, action, data):
         raise HTTPException(404, detail="Acción no encontrada")
     obj.version += 1
     await db.flush()
-    audit(db, tid, user, "LabMovimiento", mid, action, before, columns(obj))
     return await movement_detail(db, tid, mid)
 
 
@@ -323,16 +314,13 @@ async def save_results(db, tid, user, mid, data):
     ids = [i.item_id for i in data.items]
     if len(ids) != len(set(ids)):
         raise HTTPException(422, detail="No repita resultados del mismo examen")
-    before = {}
     for item in data.items:
         target = await own(db, LabMovimientoItem, tid, item.item_id)
         if target.movimiento_id != mid:
             raise HTTPException(404, detail="Examen no encontrado en este movimiento")
-        before[str(target.id)] = target.resultados
         target.resultados = [v.model_dump() for v in item.valores]
     obj.version += 1
     await db.flush()
-    audit(db, tid, user, "LabMovimiento", mid, "resultados", before, data.model_dump())
     return await movement_detail(db, tid, mid)
 
 
@@ -395,7 +383,6 @@ async def list_covid(db, tid, f, page, size):
 async def save_covid(db, tid, user, data, cid=None):
     await own(db, Patient, tid, data.patient_id)
     obj = await own(db, LabFichaCovid, tid, cid, lock=True) if cid else None
-    before = columns(obj) if obj else None
     if obj and obj.version != data.version:
         raise HTTPException(409, detail="La ficha cambió; vuelva a cargarla")
     if obj:
@@ -406,15 +393,20 @@ async def save_covid(db, tid, user, data, cid=None):
         obj = LabFichaCovid(tenant_id=tid, registrado_por=actor(user), **data.model_dump())
         db.add(obj)
     await db.flush()
-    audit(db, tid, user, "LabFichaCovid", obj.id, "editar" if before else "crear", before, columns(obj))
     return columns(obj)
 
 
 async def audits(db, tid, mid):
+    # AuditLog es una tabla central (la escribe app/core/audit.py); nunca
+    # vive en la BD fisica del hospital, asi que se consulta con su propia
+    # sesion central, independiente de `db` (fisica para /app/*).
     await own(db, LabMovimiento, tid, mid)
-    return [columns(a) for a in (await db.scalars(select(AuditLog).where(
-        AuditLog.tenant_id == tid, AuditLog.model == "LabMovimiento", AuditLog.model_id == str(mid)
-    ).order_by(AuditLog.created_at.desc()).limit(200))).all()]
+    from app.core.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as central:
+        rows = (await central.scalars(select(AuditLog).where(
+            AuditLog.tenant_id == tid, AuditLog.model == "LabMovimiento", AuditLog.model_id == str(mid)
+        ).order_by(AuditLog.created_at.desc()).limit(200))).all()
+        return [columns(a) for a in rows]
 
 
 def pdf_document(title, hospital, sections):

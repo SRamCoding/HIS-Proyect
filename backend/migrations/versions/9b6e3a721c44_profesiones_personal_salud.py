@@ -56,6 +56,7 @@ def upgrade():
 
 def seed(bind, tenant_id):
     now = datetime.utcnow()
+    grupo_ids = {}
     for code, name, category in GRUPOS:
         gid = stable_id("group", tenant_id, code)
         bind.execute(sa.text("""INSERT INTO sigarh_grupos_ocupacionales
@@ -63,14 +64,25 @@ def seed(bind, tenant_id):
             VALUES (:id,:tid,:name,:code,:description,:category,true,:now,:now)
             ON CONFLICT DO NOTHING"""), {"id": gid, "tid": tenant_id, "name": name, "code": code,
             "description": "Grupo ocupacional base del sector salud", "category": category, "now": now})
+        # sigarh_grupos_ocupacionales tiene un unique index por (tenant_id,
+        # nombre). Si el tenant ya tenia un grupo con este nombre antes de
+        # esta migracion, el INSERT de arriba lo salta en silencio por ESE
+        # choque (no por el id) y la fila con el id determinista nunca se
+        # crea; resolver el id real por nombre evita que PROFESIONES abajo
+        # referencie un grupo_ocupacional_id inexistente.
+        grupo_ids[code] = bind.execute(sa.text("""SELECT id FROM sigarh_grupos_ocupacionales
+            WHERE tenant_id=:tid AND lower(trim(nombre))=lower(trim(:name))"""),
+            {"tid": tenant_id, "name": name}).scalar() or gid
     for code, name, group_code, college_code, college, category in PROFESIONES:
+        pid = stable_id("profession", tenant_id, code)
         bind.execute(sa.text("""INSERT INTO sigarh_profesiones
             (id,tenant_id,grupo_ocupacional_id,nombre,codigo,codigo_colegio,
              colegio_profesional,categoria_personal,fuente,fuente_url,es_base,is_active,created_at,updated_at)
             VALUES (:id,:tid,:gid,:name,:code,:college_code,:college,:category,:source,:url,true,true,:now,:now)
             ON CONFLICT DO NOTHING"""), {
-            "id": stable_id("profession", tenant_id, code), "tid": tenant_id,
-            "gid": stable_id("group", tenant_id, group_code), "name": name, "code": code,
+            "id": pid, "tid": tenant_id,
+            "gid": grupo_ids.get(group_code, stable_id("group", tenant_id, group_code)),
+            "name": name, "code": code,
             "college_code": college_code, "college": college, "category": category,
             "source": FUENTE, "url": FUENTE_URL, "now": now,
         })

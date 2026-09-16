@@ -23,6 +23,15 @@ class Tenant(Base):
     database_name: Mapped[str | None] = mapped_column(String(100), unique=True)  # his_hospital_reque
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # "pendiente" mientras el aprovisionamiento pesado (crear la BD fisica,
+    # migrarla, sembrar catalogos, crear los usuarios iniciales) corre en
+    # segundo plano; "listo" o "error" al terminar. Antes todo ese trabajo
+    # corria DENTRO del request POST, atado a que la conexion HTTP siguiera
+    # viva -- si el admin se quedaba sin internet a medio camino, el
+    # servidor seguia trabajando a ciegas y el admin nunca sabia si termino.
+    provisioning_status: Mapped[str] = mapped_column(String(20), default="listo", server_default="listo")
+    provisioning_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Datos del hospital
     ruc: Mapped[str | None] = mapped_column(String(11))
     address: Mapped[str | None] = mapped_column(Text)

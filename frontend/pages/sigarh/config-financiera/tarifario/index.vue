@@ -1,12 +1,12 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Tarifario' })
-const { api: $api } = useApi()
+const { api } = useApi()
 const route = useRoute()
 const tenant = route.query.tenant as string
 const lista = ref<any[]>([])
 const loading = ref(true)
 const busqueda = ref('')
-onMounted(async () => { lista.value = await $api('/sigarh/config-financiera/tarifario', { tenant }); loading.value = false })
+onMounted(async () => { lista.value = await api('/sigarh/config-financiera/tarifario', { tenant }); loading.value = false })
 const listaFiltrada = computed(() => busqueda.value ? lista.value.filter(t => t.nombre?.toLowerCase().includes(busqueda.value.toLowerCase())) : lista.value)
 </script>
 <template>

@@ -1,9 +1,9 @@
 import uuid
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.admin.niveles_hospitalarios.models import HospitalLevel
-from app.admin.auditoria.service import create_audit_log
 
 
 async def get_all_hospital_levels(db: AsyncSession) -> list[HospitalLevel]:
@@ -34,17 +34,11 @@ async def create_hospital_level(db: AsyncSession, data, actor: dict) -> Hospital
         default_modules=data.default_modules,
         default_roles=data.default_roles,
         sort_order=data.sort_order,
+        is_active=data.is_active,
     )
     db.add(level)
     await db.commit()
     await db.refresh(level)
-    await create_audit_log(
-        db, user_id=actor.get("sub"), user_name=actor.get("name") or actor.get("email"),
-        tenant_id=None, tenant_name=None, action="hospital_level_created",
-        model="HospitalLevel", model_id=str(level.id),
-        description=f"Nivel hospitalario creado: {level.code} — {level.name}",
-        new_values=data.model_dump(),
-    )
     return level
 
 
@@ -53,15 +47,25 @@ async def update_hospital_level(db: AsyncSession, nivel_id: uuid.UUID, data, act
     if not nivel:
         return None
     cambios = data.model_dump(exclude_unset=True)
-    anteriores = {campo: getattr(nivel, campo) for campo in cambios}
     for field, value in cambios.items():
         setattr(nivel, field, value)
     await db.commit()
-    await create_audit_log(
-        db, user_id=actor.get("sub"), user_name=actor.get("name") or actor.get("email"),
-        tenant_id=None, tenant_name=None, action="hospital_level_updated",
-        model="HospitalLevel", model_id=str(nivel.id),
-        description=f"Nivel hospitalario actualizado: {nivel.code}",
-        old_values=anteriores, new_values=cambios,
-    )
     return nivel
+
+
+async def delete_hospital_level(db: AsyncSession, nivel_id: uuid.UUID) -> bool:
+    nivel = await get_hospital_level_by_id(db, nivel_id)
+    if not nivel:
+        return False
+    from app.tenants.hospitales.models import Tenant
+    en_uso = await db.scalar(
+        select(func.count()).select_from(Tenant).where(Tenant.hospital_level == nivel.code)
+    )
+    if en_uso:
+        raise HTTPException(
+            409,
+            f"No se puede eliminar: {en_uso} hospital(es) usan el nivel '{nivel.code}'. Desactívalo en su lugar.",
+        )
+    await db.delete(nivel)
+    await db.commit()
+    return True

@@ -11,6 +11,8 @@ class HospitalListItem(BaseModel):
     is_active: bool
     active_modules: list[str]
     created_at: datetime
+    provisioning_status: str = "listo"
+    provisioning_error: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -18,3 +20,7 @@ class HospitalListItem(BaseModel):
 class ModuleToggle(BaseModel):
     tenant_id: uuid.UUID
     module_codes: list[str]
+
+
+class ActiveToggle(BaseModel):
+    is_active: bool

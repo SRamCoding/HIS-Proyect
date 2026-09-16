@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Entrega de Raciones' })
-const { api: $api } = useApi()
+const { api } = useApi()
 const route = useRoute()
 const tenant = route.query.tenant as string
 const dni = ref('')
@@ -14,7 +14,7 @@ async function buscar() {
   if (!dni.value || dni.value.length < 8) return
   buscando.value = true; racion.value = null; mensaje.value = ''
   try {
-    racion.value = await $api('/sigarh/nutricion/raciones/buscar', {
+    racion.value = await api('/sigarh/nutricion/raciones/buscar', {
       method: 'POST', tenant, body: { dni: dni.value, fecha: fecha.value }
     })
     if (!racion.value) mensaje.value = 'No se encontró ración para este DNI en la fecha seleccionada'
@@ -25,7 +25,7 @@ async function entregar() {
   if (!racion.value) return
   entregando.value = true
   try {
-    await $api(`/sigarh/nutricion/raciones/${racion.value.id}/entregar`, { method: 'POST', tenant })
+    await api(`/sigarh/nutricion/raciones/${racion.value.id}/entregar`, { method: 'POST', tenant })
     racion.value.entregado = true
     racion.value.fecha_entrega = new Date().toISOString()
     mensaje.value = '✓ Ración entregada correctamente'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Nuevo Tiempo de Procedimiento' })
-const { api: $api } = useApi()
+const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
 const tenant = route.query.tenant as string
@@ -8,11 +8,11 @@ const form = reactive({ nombre: '', codigo: '', especialidad_id: '', duracion_mi
 const especialidades = ref<any[]>([])
 const saving = ref(false)
 const error = ref('')
-onMounted(async () => { especialidades.value = await $api('/sigarh/rrhh/especialidades', { tenant }) })
+onMounted(async () => { especialidades.value = await api('/sigarh/rrhh/especialidades', { tenant }) })
 async function guardar() {
   saving.value = true; error.value = ''
   try {
-    await $api('/sigarh/general/tiempos', { method: 'POST', tenant, body: form })
+    await api('/sigarh/general/tiempos', { method: 'POST', tenant, body: form })
     router.push(`/sigarh/general/tiempos?tenant=${tenant}`)
   } catch (e: any) { error.value = e?.data?.detail || 'Error al guardar' } finally { saving.value = false }
 }

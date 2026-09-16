@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Editar Tarifa' })
-const { api: $api } = useApi()
+const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
 const tenant = route.query.tenant as string
@@ -8,11 +8,11 @@ const id = route.params.id as string
 const form = reactive({ nombre: '', codigo: '', categoria: '', precio_sis: 0, precio_essalud: 0, precio_particular: 0, descripcion: '', is_active: true })
 const saving = ref(false)
 const error = ref('')
-onMounted(async () => { Object.assign(form, await $api(`/sigarh/config-financiera/tarifario/${id}`, { tenant })) })
+onMounted(async () => { Object.assign(form, await api(`/sigarh/config-financiera/tarifario/${id}`, { tenant })) })
 async function guardar() {
   saving.value = true; error.value = ''
   try {
-    await $api(`/sigarh/config-financiera/tarifario/${id}`, { method: 'PATCH', tenant, body: form })
+    await api(`/sigarh/config-financiera/tarifario/${id}`, { method: 'PATCH', tenant, body: form })
     router.push(`/sigarh/config-financiera/tarifario?tenant=${tenant}`)
   } catch (e: any) { error.value = e?.data?.detail || 'Error al guardar' } finally { saving.value = false }
 }

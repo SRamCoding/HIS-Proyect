@@ -123,7 +123,7 @@
               <UIcon name="i-heroicons-users" class="w-5 h-5" style="color: #6366f1" />
             </div>
             <div>
-              <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)">Usuarios Totales</p>
+              <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)" title="No incluye cuentas de hospitales con base de datos física propia">Cuentas en BD Central</p>
               <p class="text-2xl font-bold font-mono-data leading-tight" style="color: var(--ink)">
                 {{ stats?.total_users ?? '—' }}
               </p>
@@ -233,7 +233,7 @@
 
       <!-- Anillo: distribución de usuarios por panel -->
       <div style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px">
-        <p class="text-sm font-semibold mb-3" style="color: var(--ink)">Usuarios por panel</p>
+        <p class="text-sm font-semibold mb-3" style="color: var(--ink)" title="Solo cuentas en la BD central">Usuarios por panel (BD central)</p>
         <ClientOnly>
           <ApexChart
             type="radialBar"
@@ -266,7 +266,7 @@
       <!-- Donut: Distribución de usuarios por panel -->
       <div style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px">
         <div class="flex items-center justify-between mb-3">
-          <p class="text-sm font-semibold" style="color: var(--ink)">Usuarios por panel</p>
+          <p class="text-sm font-semibold" style="color: var(--ink)" title="Solo cuentas en la BD central">Usuarios por panel (BD central)</p>
           <span class="text-xs" style="color: var(--ink-soft)">Total: {{ stats?.total_users ?? 0 }}</span>
         </div>
         <ClientOnly>
@@ -821,8 +821,5 @@ onMounted(async () => {
   background: rgba(8, 145, 178, 0.12);
   color: var(--teal);
 }
-.badge--neutral {
-  background: var(--mist);
-  color: var(--ink-soft);
-}
+
 </style>

@@ -1,48 +1,223 @@
+<template>
+  <SFormLayout>
+    <template #main>
+      <div class="mb-8">
+        <div class="flex items-center gap-1.5 text-xs mb-3" style="color: var(--ink-soft)">
+          <NuxtLink :to="`/sigarh/config-financiera/seguros?tenant=${tenantId}`" class="hover:underline" style="color: var(--ink-soft)">Seguros</NuxtLink>
+          <UIcon name="i-heroicons-chevron-right" class="w-3 h-3" />
+          <span style="color: var(--ink)">Editar Seguro</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <div class="page-header-icon" style="background: var(--teal-soft)">
+            <UIcon name="i-heroicons-shield-check" class="w-6 h-6" style="color: var(--teal)" />
+          </div>
+          <div>
+            <h1 class="page-title">{{ form.nombre || 'Editar Seguro' }}</h1>
+            <p class="page-subtitle">Actualiza los datos del seguro o convenio</p>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="loading" class="form-card flex items-center justify-center py-16">
+        <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--teal)" />
+      </div>
+
+      <template v-else>
+        <SFormCard title="Configuracion del Seguro" subtitle="Actualiza los datos del seguro o convenio"
+          icon="i-heroicons-cog-6-tooth" icon-bg="var(--teal-soft)" icon-color="var(--teal)" :error="error">
+
+          <div class="form-group full-width">
+            <label class="form-label">Nombre del Seguro <span class="required">*</span></label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-shield-check" class="input-icon" />
+              <input v-model="form.nombre" class="input-clinical" placeholder="Ej: Seguro Integral de Salud"
+                :class="{ 'input-error': errors.nombre }" @focus="errors.nombre = ''" />
+            </div>
+            <span v-if="errors.nombre" class="error-message">{{ errors.nombre }}</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">RUC <span class="required">*</span></label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-document" class="input-icon" />
+              <input v-model="form.ruc" maxlength="11" class="input-clinical font-mono-data" placeholder="20123456789"
+                :class="{ 'input-error': errors.ruc }" @focus="errors.ruc = ''" />
+            </div>
+            <span v-if="errors.ruc" class="error-message">{{ errors.ruc }}</span>
+            <p class="field-hint">11 digitos</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Tipo <span class="required">*</span></label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-list-bullet" class="input-icon" />
+              <select v-model="form.tipo" class="input-clinical">
+                <option v-for="t in tiposSeguro" :key="t.value" :value="t.value">{{ t.label }}</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Cobertura (%) <span class="required">*</span></label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-chart-pie" class="input-icon" />
+              <input v-model.number="form.porcentaje_cobertura" type="number" min="0" max="100"
+                class="input-clinical font-mono-data" placeholder="100"
+                :class="{ 'input-error': errors.porcentaje_cobertura }" @focus="errors.porcentaje_cobertura = ''" />
+            </div>
+            <span v-if="errors.porcentaje_cobertura" class="error-message">{{ errors.porcentaje_cobertura }}</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Contacto</label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-user" class="input-icon" />
+              <input v-model="form.contacto" class="input-clinical" placeholder="Ej: Juan Perez" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Telefono</label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-phone" class="input-icon" />
+              <input v-model="form.telefono" class="input-clinical" placeholder="(01) 234-5678" />
+            </div>
+          </div>
+
+          <div class="form-group full-width">
+            <label class="form-label">Direccion</label>
+            <div class="input-wrapper">
+              <UIcon name="i-heroicons-map-pin" class="input-icon" />
+              <input v-model="form.direccion" class="input-clinical" placeholder="Direccion de la aseguradora" />
+            </div>
+          </div>
+
+          <div class="form-group full-width">
+            <div class="status-toggle">
+              <span class="toggle-label">Seguro Activo</span>
+              <button type="button" @click="form.is_active = !form.is_active" class="toggle-switch" :class="{ 'toggle-active': form.is_active }">
+                <span class="toggle-slider" />
+              </button>
+            </div>
+            <p class="field-hint">Los seguros inactivos no estaran disponibles</p>
+          </div>
+
+          <SFormPreview
+            :nombre="form.nombre"
+            :extra="`${formatTipo(form.tipo)} · ${form.porcentaje_cobertura ?? 0}%`"
+            :active="form.is_active"
+            icon="i-heroicons-shield-check"
+            :icon-color="getTipoColor(form.tipo)"
+            :icon-bg="getTipoBgColor(form.tipo)"
+          />
+
+          <template #actions>
+            <SFormActions :saving="saving" save-text="Guardar Cambios" saving-text="Guardando..."
+              :cancel-to="`/sigarh/config-financiera/seguros?tenant=${tenantId}`"
+              @save="handleSave" />
+          </template>
+        </SFormCard>
+      </template>
+    </template>
+
+    <template #sidebar>
+      <SWidgetInfo :items="['El RUC debe tener 11 digitos validos', 'La cobertura se expresa en porcentaje (0-100%)', 'Los seguros pueden ser de diferentes tipos', 'Los seguros inactivos no se pueden usar']" />
+      <SWidgetSummary :items="[
+        { label: 'Nombre', value: form.nombre },
+        { label: 'RUC', value: form.ruc, mono: true },
+        { label: 'Tipo', value: formatTipo(form.tipo) },
+        { label: 'Cobertura', value: `${form.porcentaje_cobertura ?? 0}%` },
+        { divider: true },
+        { label: 'Estado', slot: 'estado' },
+      ]">
+        <template #estado>
+          <span class="status-badge-mini" :class="form.is_active ? 'status-active-mini' : 'status-inactive-mini'">
+            <span class="status-dot-mini" :class="form.is_active ? 'dot-active-mini' : 'dot-inactive-mini'" />
+            {{ form.is_active ? 'Activo' : 'Inactivo' }}
+          </span>
+        </template>
+      </SWidgetSummary>
+      <SWidgetTip text="Verifica que el RUC y el porcentaje de cobertura sean correctos para evitar errores en la facturacion y atencion." />
+    </template>
+  </SFormLayout>
+</template>
+
 <script setup lang="ts">
-definePageMeta({ layout: 'sigarh', title: 'Editar Seguro' })
-const { api: $api } = useApi()
+definePageMeta({ layout: 'sigarh', title: 'Editar Seguro', middleware: ['auth'] })
+
+const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
-const tenant = route.query.tenant as string
-const id = route.params.id as string
-const form = reactive({ nombre: '', ruc: '', tipo: '', porcentaje_cobertura: 100, contacto: '', telefono: '', direccion: '', is_active: true })
+const tenantId = computed(() => route.query.tenant as string || '')
+const id = computed(() => route.params.id as string)
+
+const form = reactive({
+  nombre: '', ruc: '', tipo: 'SIS', porcentaje_cobertura: 100,
+  contacto: '', telefono: '', direccion: '', is_active: true,
+})
+const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
-onMounted(async () => { Object.assign(form, await $api(`/sigarh/config-financiera/seguros/${id}`, { tenant })) })
-async function guardar() {
-  saving.value = true; error.value = ''
-  try {
-    await $api(`/sigarh/config-financiera/seguros/${id}`, { method: 'PATCH', tenant, body: form })
-    router.push(`/sigarh/config-financiera/seguros?tenant=${tenant}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'Error al guardar' } finally { saving.value = false }
+const errors = reactive({ nombre: '', ruc: '', porcentaje_cobertura: '' })
+
+const tiposSeguro = [
+  { value: 'SIS', label: 'SIS' }, { value: 'ESSALUD', label: 'EsSalud' }, { value: 'SOAT', label: 'SOAT' },
+  { value: 'PRIVADO', label: 'Privado' }, { value: 'CONVENIO', label: 'Convenio' }, { value: 'PARTICULAR', label: 'Particular' },
+]
+
+const getTipoColor = (tipo: string) => {
+  const map: Record<string, string> = { sis: 'var(--purple)', essalud: 'var(--green)', soat: 'var(--amber)', privado: 'var(--teal)', convenio: 'var(--navy)', particular: 'var(--ink-soft)' }
+  return map[tipo?.toLowerCase()] || 'var(--ink-soft)'
 }
+const getTipoBgColor = (tipo: string) => {
+  const map: Record<string, string> = { sis: 'var(--purple-soft)', essalud: 'var(--green-soft)', soat: 'var(--amber-soft)', privado: 'var(--teal-soft)', convenio: 'var(--navy-soft)', particular: 'var(--mist)' }
+  return map[tipo?.toLowerCase()] || 'var(--mist)'
+}
+const formatTipo = (tipo: string) => {
+  const map: Record<string, string> = { sis: 'SIS', essalud: 'EsSalud', soat: 'SOAT', privado: 'Privado', convenio: 'Convenio', particular: 'Particular' }
+  return tipo ? (map[tipo.toLowerCase()] || tipo) : '-'
+}
+
+const validateForm = (): boolean => {
+  errors.nombre = !form.nombre.trim() ? 'El nombre del seguro es requerido' : ''
+  errors.ruc = !form.ruc.trim() ? 'El RUC es requerido' : !/^\d{11}$/.test(form.ruc) ? 'El RUC debe tener 11 digitos' : ''
+  errors.porcentaje_cobertura = form.porcentaje_cobertura === null || form.porcentaje_cobertura === undefined
+    ? 'El porcentaje de cobertura es requerido'
+    : (form.porcentaje_cobertura < 0 || form.porcentaje_cobertura > 100) ? 'El porcentaje debe estar entre 0 y 100' : ''
+  return !(errors.nombre || errors.ruc || errors.porcentaje_cobertura)
+}
+
+const handleSave = async () => {
+  if (!validateForm()) return
+  saving.value = true
+  error.value = ''
+  try {
+    await api(`/sigarh/config-financiera/seguros/${id.value}`, {
+      method: 'PATCH',
+      tenant: tenantId.value,
+      body: {
+        nombre: form.nombre, ruc: form.ruc, tipo: form.tipo, porcentaje_cobertura: form.porcentaje_cobertura,
+        contacto: form.contacto || null, telefono: form.telefono || null, direccion: form.direccion || null,
+        is_active: form.is_active,
+      },
+    })
+    router.push(`/sigarh/config-financiera/seguros?tenant=${tenantId.value}`)
+  } catch (e: any) { error.value = e?.data?.detail || 'Error al guardar' }
+  finally { saving.value = false }
+}
+
+onMounted(async () => {
+  try {
+    const data = await api<any>(`/sigarh/config-financiera/seguros/${id.value}`, { tenant: tenantId.value })
+    form.nombre = data.nombre
+    form.ruc = data.ruc || ''
+    form.tipo = data.tipo || 'SIS'
+    form.porcentaje_cobertura = data.porcentaje_cobertura ?? 100
+    form.contacto = data.contacto || ''
+    form.telefono = data.telefono || ''
+    form.direccion = data.direccion || ''
+    form.is_active = data.is_active
+  } catch (e: any) { error.value = 'No se pudo cargar' }
+  finally { loading.value = false }
+})
 </script>
-<template>
-  <div class="p-6 max-w-2xl">
-    <div class="flex items-center gap-3 mb-6">
-      <NuxtLink :to="`/sigarh/config-financiera/seguros?tenant=${tenant}`" class="text-gray-400 hover:text-gray-600"><UIcon name="i-heroicons-arrow-left" class="w-5 h-5" /></NuxtLink>
-      <h1 class="text-xl font-semibold text-gray-800">Editar Seguro</h1>
-    </div>
-    <div class="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-      <div v-if="error" class="p-3 bg-red-50 text-red-600 rounded-lg text-sm">{{ error }}</div>
-      <div class="grid grid-cols-2 gap-4">
-        <div class="col-span-2"><label class="block text-sm font-medium text-gray-700 mb-1">Nombre del Seguro</label><input v-model="form.nombre" type="text" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">RUC</label><input v-model="form.ruc" type="text" maxlength="11" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-          <select v-model="form.tipo" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-            <option>SIS</option><option>ESSALUD</option><option>SOAT</option><option>PRIVADO</option><option>CONVENIO</option><option>PARTICULAR</option>
-          </select>
-        </div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Cobertura (%)</label><input v-model="form.porcentaje_cobertura" type="number" min="0" max="100" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Contacto</label><input v-model="form.contacto" type="text" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Teléfono</label><input v-model="form.telefono" type="text" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
-        <div class="col-span-2"><label class="block text-sm font-medium text-gray-700 mb-1">Dirección</label><input v-model="form.direccion" type="text" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
-        <div class="col-span-2 flex items-center gap-2"><input v-model="form.is_active" type="checkbox" id="activo" class="rounded" /><label for="activo" class="text-sm text-gray-700">Activo</label></div>
-      </div>
-      <div class="flex justify-end gap-3 pt-2">
-        <NuxtLink :to="`/sigarh/config-financiera/seguros?tenant=${tenant}`"><button class="px-4 py-2 rounded-lg text-sm border border-gray-200 text-gray-600">Cancelar</button></NuxtLink>
-        <button @click="guardar" :disabled="saving" class="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50" style="background:#1e3a5f">{{ saving ? 'Guardando...' : 'Guardar cambios' }}</button>
-      </div>
-    </div>
-  </div>
-</template>

@@ -110,6 +110,8 @@ async def usuario_actual(db, payload):
         usuario = await db.scalar(select(User).where(User.id == uid, User.is_active.is_(True)))
         if not usuario or usuario.panel != panel:
             raise HTTPException(401, "Usuario no encontrado o inactivo")
+        if payload.get("session_version", 0) != usuario.session_version:
+            raise HTTPException(401, "La sesión fue revocada; vuelva a ingresar")
         result = dict(payload)
         result.update(name=usuario.name, email=usuario.email, role=usuario.role, tenant_id=None)
         return result
@@ -137,6 +139,8 @@ async def usuario_actual(db, payload):
         usuario = await tdb.scalar(select(User).where(User.id == uid, User.is_active.is_(True)))
         if not usuario or usuario.panel != panel:
             raise HTTPException(401, "Usuario no encontrado o inactivo")
+        if payload.get("session_version", 0) != usuario.session_version:
+            raise HTTPException(401, "La sesión fue revocada; vuelva a ingresar")
         if panel == "app":
             from app.auth.hospital_access import contexto_hospital, validar_rol_hospital, limitar_por_rol
             from app.tenants.hospitales.models import TenantModule

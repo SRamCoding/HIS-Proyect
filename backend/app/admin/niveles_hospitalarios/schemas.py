@@ -11,6 +11,7 @@ class HospitalLevelCreate(BaseModel):
     default_modules: dict = {}
     default_roles: dict = {}
     sort_order: int = 0
+    is_active: bool = True
 
 
 class HospitalLevelUpdate(BaseModel):

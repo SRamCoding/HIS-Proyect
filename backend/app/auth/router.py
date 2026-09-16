@@ -48,7 +48,7 @@ async def login(
         token_data = {
             "sub": str(user.id), "email": user.email, "name": user.name,
             "role": user.role, "panel": user.panel, "tenant_id": None,
-            "active_modules": [],
+            "active_modules": [], "session_version": user.session_version,
         }
         return TokenResponse(
             access_token=create_access_token(token_data),
@@ -129,7 +129,7 @@ async def login(
         token_data = {
             "sub": str(user.id), "email": user.email, "name": user.name,
             "role": user.role, "panel": user.panel, "tenant_id": str(tenant.id),
-            "active_modules": active_modules,
+            "active_modules": active_modules, "session_version": user.session_version,
         }
         return TokenResponse(
             access_token=create_access_token(token_data),
@@ -173,11 +173,23 @@ def _respuesta_sesion(token_data):
 
 @router.post("/logout")
 async def logout(request: Request, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
-    if user.get("auth_source") == "sigarh":
-        import uuid
-        cuenta = await db.scalar(select(UsuarioSigarh).where(UsuarioSigarh.id == uuid.UUID(user["sub"])).with_for_update())
-        if cuenta:
-            cuenta.session_version += 1
+    # session_version sube al cerrar sesion para que el token que quedo en el
+    # navegador (o una copia filtrada) deje de servir de inmediato -- antes
+    # solo pasaba para SIGARH y, ademas, solo si esa cuenta vivia en la BD
+    # central: con hospital de base fisica propia (el caso mas comun) la
+    # cuenta no se encontraba ahi y la revocacion no hacia nada. Se usa el
+    # mismo resolvedor de admin/usuarios (busca en central o en la fisica
+    # del hospital) para que funcione para User y UsuarioSigarh por igual.
+    import uuid
+    from app.admin.usuarios.service import _cuenta_localizada
+    try:
+        async with _cuenta_localizada(db, uuid.UUID(user["sub"])) as (cuenta, work_db, es_tenant, tipo):
+            if cuenta:
+                cuenta.session_version += 1
+                await work_db.commit()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("No se pudo revocar la sesion de %s", user.get("sub"))
     await _log_audit(db, user["sub"], user.get("name"), user.get("tenant_id"), "logout",
                      model="UsuarioSigarh" if user.get("auth_source") == "sigarh" else "User",
                      description="Cierre de sesión", ip_address=request.client.host if request.client else None)

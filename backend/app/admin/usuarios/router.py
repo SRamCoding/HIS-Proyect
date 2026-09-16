@@ -1,3 +1,4 @@
+import logging
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,11 +6,14 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.dependencies import get_admin_user
+from app.core.concurrency import gather_limitado
 from app.admin.usuarios.schemas import UserListItem, UserCreate, UserUpdate
 from app.admin.usuarios.service import (
     get_all_users, get_users_by_tenant, create_user,
-    update_user, toggle_user, delete_user,
+    update_user, toggle_user, delete_user, obtener_cuenta,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -129,20 +133,28 @@ async def _rol_nombre_sigarh(session, perfil_id) -> str:
 
 @router.get("/usuarios/con-hospital", summary="Usuarios con datos de hospital, de todos los paneles")
 async def usuarios_con_hospital(
+    tenant_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
+    """Si se pasa `tenant_id`, solo consulta ESE hospital (y las cuentas
+    centrales que ya le pertenecen) en vez de recorrer todos -- la pantalla
+    de Usuarios lo usa cuando el admin ya eligió un hospital puntual, para
+    no pagar el costo de tocar cada base física solo para mostrar una."""
     from app.auth.models import User
     from app.sigarh.mantenimiento.models import UsuarioSigarh
     from app.tenants.hospitales.models import Tenant
     from app.core.tenant_db import get_tenant_sessionmaker
 
-    result = await db.execute(
+    central_query = (
         select(User, Tenant.name.label("tenant_name"))
         .outerjoin(Tenant, User.tenant_id == Tenant.id)
-        .where(User.email != "admin@erp.local")  # excluir super admin
+        .where(User.is_superadmin.is_(False))  # excluir la cuenta admin fundacional
         .order_by(User.created_at.desc())
     )
+    if tenant_id:
+        central_query = central_query.where(User.tenant_id == tenant_id)
+    result = await db.execute(central_query)
     rows = result.all()
     items = [
         {
@@ -163,8 +175,12 @@ async def usuarios_con_hospital(
     ]
 
     # Cuentas SIGARH que viven en la BD central (hospitales sin base física propia).
-    sigarh_central = (await db.scalars(select(UsuarioSigarh))).all()
-    tenants_por_id = {str(t.id): t for t in (await db.scalars(select(Tenant))).all()}
+    sigarh_query = select(UsuarioSigarh)
+    if tenant_id:
+        sigarh_query = sigarh_query.where(UsuarioSigarh.tenant_id == tenant_id)
+    sigarh_central = (await db.scalars(sigarh_query)).all()
+    tenants_query = select(Tenant).where(Tenant.id == tenant_id) if tenant_id else select(Tenant)
+    tenants_por_id = {str(t.id): t for t in (await db.scalars(tenants_query)).all()}
     for u in sigarh_central:
         tenant = tenants_por_id.get(str(u.tenant_id))
         if not tenant or tenant.database_name:
@@ -184,44 +200,50 @@ async def usuarios_con_hospital(
 
     # Hospitales con base de datos física propia: sus usuarios de panel "app"
     # y sus cuentas SIGARH se crean directamente ahí (ver create_tenant), no en
-    # la BD central, así que hay que ir a buscarlas a cada base.
+    # la BD central, así que hay que ir a buscarlas a cada base. Se piden en
+    # paralelo (antes era secuencial: uno por uno) y cada hospital se aísla
+    # con su propio try/except -- si UNO no responde, ya no tumba la pantalla
+    # completa de Usuarios para todos los demás hospitales.
     tenants_con_bd = [t for t in tenants_por_id.values() if t.database_name and t.is_active]
-    for tenant in tenants_con_bd:
-        TenantSession = get_tenant_sessionmaker(tenant.database_name)
-        async with TenantSession() as tdb:
-            tenant_users = (await tdb.scalars(select(User))).all()
-            for u in tenant_users:
-                items.append({
-                    "id": str(u.id),
-                    "name": u.name,
-                    "perfil_hospital_id": str(u.perfil_hospital_id) if u.perfil_hospital_id else None,
-                    "empleado_id": str(u.empleado_id) if u.empleado_id else None,
-                    "email": u.email,
-                    "role": u.role,
-                    "panel": u.panel,
-                    "is_active": u.is_active,
-                    "tenant_name": tenant.name,
-                    "tenant_id": str(tenant.id),
-                    "created_at": u.created_at.strftime("%d/%m/%Y"),
-                    "account_type": "user",
-                })
 
-            tenant_sigarh_users = (await tdb.scalars(select(UsuarioSigarh))).all()
-            for u in tenant_sigarh_users:
-                items.append({
-                    "id": str(u.id),
-                    "name": u.username,
-                    "email": u.email,
-                    "role": await _rol_nombre_sigarh(tdb, u.perfil_id),
-                    "panel": "sigarh",
-                    "is_active": u.is_active,
-                    "tenant_name": tenant.name,
-                    "tenant_id": str(tenant.id),
-                    "created_at": u.created_at.strftime("%d/%m/%Y"),
-                    "account_type": "sigarh",
-                })
+    async def _usuarios_de(tenant) -> tuple[list[dict], bool]:
+        try:
+            TenantSession = get_tenant_sessionmaker(tenant.database_name)
+            async with TenantSession() as tdb:
+                encontrados = []
+                tenant_users = (await tdb.scalars(select(User))).all()
+                for u in tenant_users:
+                    encontrados.append({
+                        "id": str(u.id), "name": u.name, "email": u.email,
+                        "role": u.role, "panel": u.panel, "is_active": u.is_active,
+                        "tenant_name": tenant.name, "tenant_id": str(tenant.id),
+                        "created_at": u.created_at.strftime("%d/%m/%Y"), "account_type": "user",
+                    })
+                tenant_sigarh_users = (await tdb.scalars(select(UsuarioSigarh))).all()
+                for u in tenant_sigarh_users:
+                    encontrados.append({
+                        "id": str(u.id), "name": u.username, "email": u.email,
+                        "role": await _rol_nombre_sigarh(tdb, u.perfil_id), "panel": "sigarh",
+                        "is_active": u.is_active, "tenant_name": tenant.name, "tenant_id": str(tenant.id),
+                        "created_at": u.created_at.strftime("%d/%m/%Y"), "account_type": "sigarh",
+                    })
+                return encontrados, True
+        except Exception:
+            logger.exception("No se pudo consultar usuarios del hospital %s", tenant.name)
+            return [], False
 
-    return items
+    resultados = await gather_limitado([_usuarios_de(t) for t in tenants_con_bd])
+    hospitales_no_disponibles = []
+    for tenant, (encontrados, disponible) in zip(tenants_con_bd, resultados):
+        items.extend(encontrados)
+        if not disponible:
+            hospitales_no_disponibles.append(tenant.name)
+
+    return {
+        "items": items,
+        "hospitales_no_disponibles": hospitales_no_disponibles,
+        "es_parcial": len(hospitales_no_disponibles) > 0,
+    }
 
 
 @router.get("/usuarios/hospital/{tenant_id}", response_model=list[UserListItem], summary="Usuarios por hospital")
@@ -231,6 +253,19 @@ async def usuarios_por_hospital(
     current_user: dict = Depends(get_admin_user),
 ):
     return await get_users_by_tenant(db, tenant_id)
+
+
+@router.get("/usuarios/{user_id}", summary="Obtener una cuenta por id")
+async def obtener_usuario(
+    user_id: uuid.UUID,
+    tenant_id: uuid.UUID | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    cuenta = await obtener_cuenta(db, user_id, tenant_id)
+    if not cuenta:
+        raise HTTPException(404, detail="Usuario no encontrado")
+    return cuenta
 
 
 @router.post("/usuarios", response_model=UserListItem, status_code=201, summary="Crear usuario")

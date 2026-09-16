@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Registro de Raciones' })
-const { api: $api } = useApi()
+const { api } = useApi()
 const route = useRoute()
 const tenant = route.query.tenant as string
 const lista = ref<any[]>([])
@@ -9,14 +9,14 @@ const fechaFiltro = ref(new Date().toISOString().split('T')[0])
 
 async function cargar() {
   loading.value = true
-  try { lista.value = await $api(`/sigarh/nutricion/raciones?fecha=${fechaFiltro.value}`, { tenant }) }
+  try { lista.value = await api(`/sigarh/nutricion/raciones?fecha=${fechaFiltro.value}`, { tenant }) }
   finally { loading.value = false }
 }
 onMounted(cargar)
 watch(fechaFiltro, cargar)
 
 async function entregar(id: string) {
-  await $api(`/sigarh/nutricion/raciones/${id}/entregar`, { method: 'POST', tenant })
+  await api(`/sigarh/nutricion/raciones/${id}/entregar`, { method: 'POST', tenant })
   cargar()
 }
 </script>

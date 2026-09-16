@@ -104,10 +104,6 @@
               <UIcon name="i-heroicons-building-office" class="nav-icon" />
               <span :class="{ 'md:hidden': collapsed }">Auditoria por Hospital</span>
             </NuxtLink>
-            <NuxtLink to="/admin/auditoria/logs" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/auditoria/logs', 'nav-collapsed': collapsedDesktop }">
-              <UIcon name="i-heroicons-clipboard-document-list" class="nav-icon" />
-              <span :class="{ 'md:hidden': collapsed }">Logs de la BD del sistema</span>
-            </NuxtLink>
           </div>
         </div>
 
@@ -175,12 +171,51 @@
     </div>
 
     <div class="ml-auto flex items-center gap-1">
-      <button class="p-2 rounded-lg hover:bg-white/10 transition-colors hidden sm:block">
-        <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
-      </button>
-      <button class="p-2 rounded-lg hover:bg-white/10 transition-colors hidden sm:block">
-        <UIcon name="i-heroicons-cog-6-tooth" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
-      </button>
+      <div class="notif-wrapper relative hidden sm:block">
+        <button class="relative p-2 rounded-lg hover:bg-white/10 transition-colors" @click="toggleNotifs">
+          <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
+          <span v-if="notifUnread > 0" class="notif-badge">{{ notifUnread > 9 ? '9+' : notifUnread }}</span>
+        </button>
+        <div v-if="notifOpen" class="notif-panel">
+          <div class="notif-panel-header">
+            <span>Notificaciones</span>
+            <button v-if="notifUnread > 0" class="notif-mark-all" @click="marcarTodasLeidas">Marcar todas leídas</button>
+          </div>
+          <div v-if="notifLoading" class="notif-empty">Cargando...</div>
+          <div v-else-if="!notificaciones.length" class="notif-empty">Sin notificaciones</div>
+          <ul v-else class="notif-list">
+            <li
+              v-for="n in notificaciones"
+              :key="n.id"
+              class="notif-item"
+              :class="{ unread: !n.is_read }"
+              @click="abrirNotif(n)"
+            >
+              <span class="notif-dot" :class="`notif-dot--${n.nivel}`" />
+              <div class="notif-item-body">
+                <p class="notif-title">{{ n.titulo }}</p>
+                <p v-if="n.cuerpo" class="notif-desc">{{ n.cuerpo }}</p>
+                <p class="notif-time">{{ formatRelativo(n.created_at) }}</p>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <div class="settings-wrapper relative hidden sm:block">
+        <button class="p-2 rounded-lg hover:bg-white/10 transition-colors" @click="settingsOpen = !settingsOpen">
+          <UIcon name="i-heroicons-cog-6-tooth" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
+        </button>
+        <div v-if="settingsOpen" class="settings-menu">
+          <NuxtLink to="/admin/perfil" class="settings-item" @click="settingsOpen = false">
+            <UIcon name="i-heroicons-user-circle" class="w-4 h-4" />
+            Mi Perfil
+          </NuxtLink>
+          <button class="settings-item settings-item--danger" @click="handleLogout">
+            <UIcon name="i-heroicons-arrow-right-on-rectangle" class="w-4 h-4" />
+            Cerrar Sesión
+          </button>
+        </div>
+      </div>
     </div>
   </header>
       <main class="flex-1 overflow-y-auto p-3 sm:p-6">
@@ -192,9 +227,103 @@
 
 <script setup lang="ts">
 const authStore = useAuthStore()
+const { api } = useApi()
 const route = useRoute()
+const router = useRouter()
 const collapsed = ref(false)
 const mobileOpen = ref(false)
+
+interface Notificacion {
+  id: string
+  titulo: string
+  cuerpo: string | null
+  nivel: string
+  link: string | null
+  is_read: boolean
+  created_at: string
+}
+
+const notifOpen = ref(false)
+const notifLoading = ref(false)
+const notifUnread = ref(0)
+const notificaciones = ref<Notificacion[]>([])
+let notifTimer: ReturnType<typeof setInterval> | null = null
+
+const cargarContadorNotif = async () => {
+  try {
+    const r = await api<{ count: number }>('/admin/notificaciones/no-leidas')
+    notifUnread.value = r.count
+  } catch {
+    // silencioso: el contador no debe interrumpir el resto del panel
+  }
+}
+
+const cargarNotificaciones = async () => {
+  notifLoading.value = true
+  try {
+    notificaciones.value = await api<Notificacion[]>('/admin/notificaciones?limit=20')
+  } catch {
+    notificaciones.value = []
+  } finally {
+    notifLoading.value = false
+  }
+}
+
+const toggleNotifs = async () => {
+  notifOpen.value = !notifOpen.value
+  if (notifOpen.value) await cargarNotificaciones()
+}
+
+const marcarTodasLeidas = async () => {
+  try {
+    await api('/admin/notificaciones/leer-todas', { method: 'PATCH' })
+    notificaciones.value.forEach(n => { n.is_read = true })
+    notifUnread.value = 0
+  } catch {
+    // si falla, se queda como estaba -- no hay nada que revertir
+  }
+}
+
+const abrirNotif = async (n: Notificacion) => {
+  if (!n.is_read) {
+    try {
+      await api(`/admin/notificaciones/${n.id}/leer`, { method: 'PATCH' })
+      n.is_read = true
+      notifUnread.value = Math.max(0, notifUnread.value - 1)
+    } catch {
+      // no bloquea la navegacion si falla marcar como leida
+    }
+  }
+  notifOpen.value = false
+  if (n.link) router.push(n.link)
+}
+
+const formatRelativo = (fecha: string) => {
+  const minutos = Math.floor((Date.now() - new Date(fecha).getTime()) / 60000)
+  if (minutos < 1) return 'hace un momento'
+  if (minutos < 60) return `hace ${minutos} min`
+  const horas = Math.floor(minutos / 60)
+  if (horas < 24) return `hace ${horas} h`
+  return `hace ${Math.floor(horas / 24)} d`
+}
+
+const settingsOpen = ref(false)
+
+const cerrarMenusSiFuera = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  if (notifOpen.value && !target.closest('.notif-wrapper')) notifOpen.value = false
+  if (settingsOpen.value && !target.closest('.settings-wrapper')) settingsOpen.value = false
+}
+
+onMounted(() => {
+  cargarContadorNotif()
+  notifTimer = setInterval(cargarContadorNotif, 45000)
+  document.addEventListener('click', cerrarMenusSiFuera)
+})
+onUnmounted(() => {
+  if (notifTimer) clearInterval(notifTimer)
+  document.removeEventListener('click', cerrarMenusSiFuera)
+})
 
 // En móvil el sidebar siempre se muestra expandido (nunca en modo icono),
 // así que "collapsed" solo afecta el ancho/labels en escritorio (md:).
@@ -214,6 +343,152 @@ const handleLogout = async () => {
 </script>
 
 <style scoped>
+.notif-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--alert, #dc2626);
+  color: white;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.notif-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: 340px;
+  max-width: calc(100vw - 2rem);
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper, #fff);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  z-index: 50;
+}
+.notif-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line, #e5e7eb);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink, #111827);
+}
+.notif-mark-all {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--teal, #0891b2);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.notif-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--ink-soft, #6b7280);
+}
+.notif-list {
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line, #e5e7eb);
+  transition: background 0.15s ease;
+}
+.notif-item:last-child {
+  border-bottom: none;
+}
+.notif-item:hover {
+  background: var(--mist, #f3f4f6);
+}
+.notif-item.unread {
+  background: var(--teal-soft, #ecfeff);
+}
+.notif-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 0.375rem;
+  flex-shrink: 0;
+  background: var(--ink-soft, #9ca3af);
+}
+.notif-dot--exito { background: var(--green, #16a34a); }
+.notif-dot--error { background: var(--alert, #dc2626); }
+.notif-dot--alerta { background: var(--amber, #d97706); }
+.notif-dot--info { background: var(--teal, #0891b2); }
+.notif-item-body {
+  min-width: 0;
+}
+.notif-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink, #111827);
+  margin: 0;
+}
+.notif-desc {
+  font-size: 0.75rem;
+  color: var(--ink-soft, #6b7280);
+  margin: 0.125rem 0 0 0;
+}
+.notif-time {
+  font-size: 0.6875rem;
+  color: var(--ink-soft, #9ca3af);
+  margin: 0.25rem 0 0 0;
+}
+
+.settings-menu {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: 0.375rem;
+  background: var(--paper, #fff);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  z-index: 50;
+}
+.settings-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink, #111827);
+  text-decoration: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+.settings-item:hover {
+  background: var(--mist, #f3f4f6);
+}
+.settings-item--danger {
+  color: var(--alert, #dc2626);
+}
+
 .sidebar-nav {
   scrollbar-width: none;
   -ms-overflow-style: none;
