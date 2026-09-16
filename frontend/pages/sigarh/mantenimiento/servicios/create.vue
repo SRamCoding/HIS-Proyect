@@ -181,7 +181,7 @@ const handleCreate = async (createAnother: boolean) => {
       })
     }
     else { router.push(`/sigarh/mantenimiento/servicios?tenant=${tenantId.value}`) }
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear') }
   finally { saving.value = false }
 }
 
@@ -197,6 +197,6 @@ onMounted(async () => {
     pisos.value = pisosData
     upss.value = structure.upss
     especialidades.value = specialties.filter((e:any) => e.tipo === 'especialidad')
-  } catch (e: any) { error.value = e?.data?.detail || 'Error al cargar departamentos' }
+  } catch (e: any) { error.value = apiErr(e, 'Error al cargar departamentos') }
 })
 </script>

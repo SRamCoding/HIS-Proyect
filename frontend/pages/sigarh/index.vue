@@ -39,7 +39,7 @@ const cargar = async () => {
   try {
     data.value = await api<Dashboard>('/sigarh/dashboard')
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo cargar el dashboard'
+    error.value = apiErr(e, 'No se pudo cargar el dashboard')
   } finally {
     loading.value = false
   }

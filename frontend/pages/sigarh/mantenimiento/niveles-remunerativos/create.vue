@@ -89,7 +89,7 @@ const handleCreate = async (createAnother: boolean) => {
     await api('/sigarh/mantenimiento/niveles-remunerativos', { method: 'POST', body: { ...form } })
     if (createAnother) { Object.assign(form, { nombre: '', codigo: '', descripcion: '', is_active: true }) }
     else { router.push(`/sigarh/mantenimiento/niveles-remunerativos?tenant=${tenantId.value}`) }
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear') }
   finally { saving.value = false }
 }
 </script>

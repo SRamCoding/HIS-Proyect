@@ -147,20 +147,23 @@
               </td>
               <td style="text-align: right">
                 <div class="sigarh-actions">
-                  <button class="sigarh-action-btn" title="Ver landing" :disabled="hospital.provisioning_status === 'pendiente'" @click="irA(hospital, '')">
+                  <NuxtLink v-if="hospital.provisioning_status === 'error'" :to="`/admin/hospitales/${hospital.id}/reintentar`" class="sigarh-action-btn" title="Reintentar aprovisionamiento">
+                    <UIcon name="i-heroicons-arrow-path" class="w-4 h-4" style="color: var(--amber)" />
+                  </NuxtLink>
+                  <button class="sigarh-action-btn" title="Ver landing" :disabled="sinBaseFisica(hospital)" @click="irA(hospital, '')">
                     <UIcon name="i-heroicons-globe-alt" class="w-4 h-4" style="color: var(--navy)" />
                   </button>
-                  <button class="sigarh-action-btn" title="Panel Hospitalario" :disabled="hospital.provisioning_status === 'pendiente'" @click="irA(hospital, '/app')">
+                  <button class="sigarh-action-btn" title="Panel Hospitalario" :disabled="sinBaseFisica(hospital)" @click="irA(hospital, '/app')">
                     <UIcon name="i-heroicons-squares-2x2" class="w-4 h-4" style="color: var(--teal)" />
                   </button>
-                  <button class="sigarh-action-btn" title="Panel SIGARH" :disabled="hospital.provisioning_status === 'pendiente'" @click="irA(hospital, '/sigarh')">
+                  <button class="sigarh-action-btn" title="Panel SIGARH" :disabled="sinBaseFisica(hospital)" @click="irA(hospital, '/sigarh')">
                     <UIcon name="i-heroicons-folder-open" class="w-4 h-4" style="color: var(--purple)" />
                   </button>
                   <NuxtLink :to="`/admin/hospitales/${hospital.id}`" class="sigarh-action-btn" title="Editar hospital">
                     <UIcon name="i-heroicons-pencil-square" class="w-4 h-4" style="color: var(--amber)" />
                   </NuxtLink>
                   <button class="sigarh-action-btn danger" :title="hospital.is_active ? 'Desactivar' : 'Activar'"
-                    :disabled="togglingId === hospital.id || hospital.provisioning_status === 'pendiente'" @click="handleToggle(hospital)">
+                    :disabled="togglingId === hospital.id || sinBaseFisica(hospital)" @click="handleToggle(hospital)">
                     <UIcon v-if="togglingId === hospital.id" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
                     <UIcon v-else :name="hospital.is_active ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'" class="w-4 h-4" style="color: var(--alert)" />
                   </button>
@@ -250,6 +253,9 @@ const getModulePercentage = (hospital: Hospital) => {
   return Math.min((total / 20) * 100, 100)
 }
 
+const sinBaseFisica = (hospital: Hospital) =>
+  hospital.provisioning_status === 'pendiente' || hospital.provisioning_status === 'error'
+
 const irA = (hospital: Hospital, path: string) => {
   const baseUrl = window.location.origin
   if (path === '') window.open(`${baseUrl}?tenant=${hospital.id}`, '_blank')
@@ -258,10 +264,36 @@ const irA = (hospital: Hospital, path: string) => {
   else window.open(`${baseUrl}${path}?tenant=${hospital.id}`, '_blank')
 }
 
+const hayPendientes = computed(() => hospitales.value.some(h => h.provisioning_status === 'pendiente'))
+let pollInterval: ReturnType<typeof setInterval> | null = null
+
+// Mientras un hospital este "pendiente", el aprovisionamiento sigue corriendo
+// en el worker de Celery en segundo plano -- sin este polling, la unica
+// forma de enterarse de que ya termino era recargar la pagina a mano.
+const detenerPolling = () => {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null }
+}
+
+const refrescarSilencioso = async () => {
+  try { hospitales.value = await api<Hospital[]>('/admin/hospitales') }
+  catch { /* un fallo puntual del polling no debe pisar el error visible de una carga explicita */ }
+}
+
+const iniciarPolling = () => {
+  if (pollInterval) return
+  pollInterval = setInterval(async () => {
+    await refrescarSilencioso()
+    if (!hayPendientes.value) detenerPolling()
+  }, 5000)
+}
+
 const loadHospitales = async () => {
   loading.value = true
   error.value = ''
-  try { hospitales.value = await api<Hospital[]>('/admin/hospitales') }
+  try {
+    hospitales.value = await api<Hospital[]>('/admin/hospitales')
+    if (hayPendientes.value) iniciarPolling()
+  }
   catch (e: any) { error.value = apiErr(e, 'Error de conexión') }
   finally { loading.value = false }
 }
@@ -276,4 +308,5 @@ const handleToggle = async (hospital: Hospital) => {
 }
 
 onMounted(loadHospitales)
+onUnmounted(detenerPolling)
 </script>

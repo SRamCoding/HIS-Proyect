@@ -216,7 +216,7 @@ const cargar = async () => {
     ])
     items.value = p
     grupos.value = g
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo cargar el catalogo' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo cargar el catalogo') }
   finally { loading.value = false }
 }
 

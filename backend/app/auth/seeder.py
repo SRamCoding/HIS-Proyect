@@ -11,7 +11,6 @@ from app.core.config import settings
 from app.core.database import Base
 from app.tenants.hospitales.models import Tenant, TenantModule
 from app.tenants.modulos.models import Module
-from app.admin.roles.models import SystemRole
 from app.admin.niveles_hospitalarios.models import HospitalLevel
 from app.admin.modulos.models import ModuleDependency
 from app.admin.auditoria.models import AuditLog

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from app.core.dependencies import get_current_user
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 import bcrypt
 import uuid as uuid_lib
 
@@ -161,28 +161,140 @@ def _respuesta_sesion(token_data):
                          user={"id": claims["sub"], **claims})
 
 
+async def _revocar_sesion_actual(user: dict) -> bool:
+    """Revoca (incrementa session_version) la cuenta de la sesion ACTUAL.
+
+    A diferencia de _cuenta_localizada (pensada para cuando un admin busca
+    una cuenta por id sin saber donde vive, y por eso recorre cada hospital
+    con base fisica propia), el propio JWT de la sesion YA trae panel,
+    tenant_id y auth_source resueltos y validados -- no hay motivo para que
+    un logout tenga que barrer TODOS los hospitales, ni para que uno ajeno,
+    caido o lento, pueda demorar o afectar el logout de otra cuenta.
+
+    El incremento se hace con un UPDATE ... SET session_version =
+    session_version + 1 (calculado en el propio SQL), no leyendo el valor
+    en Python y sumando 1 antes de guardar: asi el commit de un logout
+    concurrente con un cambio de contraseña o un login no puede "perder"
+    el incremento del otro.
+
+    Devuelve True solo si una fila fue efectivamente actualizada."""
+    from app.core.database import AsyncSessionLocal
+
+    try:
+        uid = uuid_lib.UUID(str(user["sub"]))
+    except (ValueError, TypeError, KeyError):
+        return False
+
+    panel = user.get("panel")
+    tenant_id_str = user.get("tenant_id")
+
+    if panel == "admin" or not tenant_id_str:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                update(User).where(User.id == uid).values(session_version=User.session_version + 1)
+            )
+            await db.commit()
+        return result.rowcount > 0
+
+    try:
+        tenant_uuid = uuid_lib.UUID(str(tenant_id_str))
+    except (ValueError, TypeError):
+        return False
+
+    from app.tenants.hospitales.models import Tenant
+    from app.core.tenant_db import get_tenant_sessionmaker
+    async with AsyncSessionLocal() as db:
+        hospital = await db.get(Tenant, tenant_uuid)
+    if not hospital or not hospital.database_name:
+        return False
+
+    TenantSession = get_tenant_sessionmaker(hospital.database_name)
+    async with TenantSession() as tdb:
+        if panel == "sigarh" or user.get("auth_source") == "sigarh":
+            result = await tdb.execute(
+                update(UsuarioSigarh).where(UsuarioSigarh.id == uid)
+                .values(session_version=UsuarioSigarh.session_version + 1)
+            )
+        else:
+            result = await tdb.execute(
+                update(User).where(User.id == uid).values(session_version=User.session_version + 1)
+            )
+        await tdb.commit()
+    return result.rowcount > 0
+
+
+async def _log_audit_seguro(
+    user_id: str | None, user_name: str | None, tenant_id: str | None, action: str,
+    model: str | None = None, description: str | None = None, ip_address: str | None = None,
+) -> None:
+    """Como _log_audit, pero en su PROPIA sesion (nunca la que uso la
+    operacion que se esta auditando) y sin propagar sus propios errores.
+
+    _revocar_sesion_actual y el registro de auditoria del logout son dos
+    resultados independientes: un fallo al escribir el evento de auditoria
+    no debe convertir una revocacion ya confirmada en una respuesta de
+    error, y si la revocacion fallo porque una sesion quedo en un estado
+    invalido tras un commit fallido, reusar esa misma sesion para el
+    intento de auditoria solo produce un segundo error que tapa al primero
+    y deja sin registrar el evento.
+
+    Si ni siquiera este intento directo funciona, el evento cae a la misma
+    cola de recuperacion (audit_log_fallback) que usa la auditoria
+    automatica -- antes se quedaba solo en el log tecnico, invisible y sin
+    forma de recuperarlo."""
+    from app.core.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as audit_db:
+            await _log_audit(audit_db, user_id, user_name, tenant_id, action,
+                             model=model, description=description, ip_address=ip_address)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "No se pudo registrar el evento de auditoria de logout, se guarda en fallback"
+        )
+        from app.core.audit import guardar_evento_en_fallback
+        entrada = {
+            "action": action, "model": model, "model_id": None,
+            "old_values": None, "new_values": {"description": description} if description else None,
+            "tenant_hint": tenant_id, "db_name_hint": None,
+        }
+        actor = {"user_id": user_id, "user_name": user_name, "tenant_id": tenant_id}
+        await guardar_evento_en_fallback(entrada, actor, ip_address)
+
+
 @router.post("/logout")
-async def logout(request: Request, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+async def logout(request: Request, user=Depends(get_current_user)):
     # session_version sube al cerrar sesion para que el token que quedo en el
     # navegador (o una copia filtrada) deje de servir de inmediato -- antes
     # solo pasaba para SIGARH y, ademas, solo si esa cuenta vivia en la BD
     # central: con hospital de base fisica propia (el caso mas comun) la
-    # cuenta no se encontraba ahi y la revocacion no hacia nada. Se usa el
-    # mismo resolvedor de admin/usuarios (busca en central o en la fisica
-    # del hospital) para que funcione para User y UsuarioSigarh por igual.
-    import uuid
-    from app.admin.usuarios.service import _cuenta_localizada
+    # cuenta no se encontraba ahi y la revocacion no hacia nada.
     try:
-        async with _cuenta_localizada(db, uuid.UUID(user["sub"])) as (cuenta, work_db, es_tenant, tipo):
-            if cuenta:
-                cuenta.session_version += 1
-                await work_db.commit()
+        revocado = await _revocar_sesion_actual(user)
     except Exception:
         import logging
         logging.getLogger(__name__).exception("No se pudo revocar la sesion de %s", user.get("sub"))
-    await _log_audit(db, user["sub"], user.get("name"), user.get("tenant_id"), "logout",
-                     model="UsuarioSigarh" if user.get("auth_source") == "sigarh" else "User",
-                     description="Cierre de sesión", ip_address=request.client.host if request.client else None)
+        revocado = False
+
+    modelo = "UsuarioSigarh" if user.get("auth_source") == "sigarh" else "User"
+    ip = request.client.host if request.client else None
+    if not revocado:
+        # No se puede afirmar que la sesion quedo invalidada del lado del
+        # servidor -- responder 200 igual (como antes) dejaba creer que el
+        # token viejo ya no sirve cuando en realidad puede seguir siendo
+        # valido hasta que expire. En un ERP hospitalario eso es
+        # inaceptable: se devuelve error explicito para que el cliente lo
+        # sepa (aunque de todas formas descarte el token localmente).
+        await _log_audit_seguro(user.get("sub"), user.get("name"), user.get("tenant_id"), "logout_fallido",
+                                model=modelo,
+                                description="No se pudo confirmar la revocación de la sesión en el servidor",
+                                ip_address=ip)
+        raise HTTPException(500, "No se pudo cerrar la sesión de forma segura en el servidor. Intenta nuevamente.")
+
+    await _log_audit_seguro(user.get("sub"), user.get("name"), user.get("tenant_id"), "logout",
+                            model=modelo,
+                            description="Cierre de sesión", ip_address=ip)
     return {"ok": True}
 
 

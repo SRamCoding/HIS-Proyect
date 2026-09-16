@@ -111,7 +111,7 @@
         </div>
         <div class="mt-2">
           <div class="h-1 rounded-full overflow-hidden" style="background: var(--mist)">
-            <div class="h-full rounded-full" style="width: 78%; background: var(--teal)" />
+            <div class="h-full rounded-full" :style="{ width: porcentajeHospitalesActivos + '%', background: 'var(--teal)' }" />
           </div>
         </div>
       </div>
@@ -471,6 +471,11 @@
         Cargando…
       </div>
 
+      <div v-else-if="errorHospitales" class="flex items-center gap-2 p-5 text-sm" style="color: var(--alert)">
+        <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
+        {{ errorHospitales }}
+      </div>
+
       <div v-else class="overflow-x-auto">
         <table class="w-full text-sm" style="min-width: 480px">
           <thead>
@@ -568,6 +573,7 @@ const authStore = useAuthStore()
 
 const stats = ref<DashboardStats | null>(null)
 const hospitalesRecientes = ref<Hospital[]>([])
+const errorHospitales = ref('')
 const loading = ref(true)
 const loadingHospitales = ref(true)
 const error = ref('')
@@ -589,6 +595,11 @@ const usuariosPorPanel = computed(() => ({
 }))
 const usuariosPorPanelSeries = computed(() => [usuariosPorPanel.value.app, usuariosPorPanel.value.sigarh])
 const tiposDeModulo = computed(() => Object.keys(stats.value?.modules_distribution ?? {}).length)
+const porcentajeHospitalesActivos = computed(() => {
+  const total = stats.value?.total_hospitals ?? 0
+  if (!total) return 0
+  return Math.round(((stats.value?.active_hospitals ?? 0) / total) * 100)
+})
 const coberturaModulos = computed(() => Math.min(100, Math.round(
   ((stats.value?.active_module_assignments ?? 0) / Math.max((stats.value?.active_hospitals ?? 0) * Math.max(tiposDeModulo.value, 1), 1)) * 100,
 )))
@@ -682,7 +693,7 @@ const radialChartOptions = computed(() => ({
 const donutChartOptions = computed(() => ({
   chart: { fontFamily: 'IBM Plex Sans, sans-serif' },
   colors: ['#0891b2', '#6366f1'],
-  labels: ['Médicos', 'Administrativos'],
+  labels: ['APP', 'SIGARH'],
   legend: { show: false },
   plotOptions: {
     pie: {
@@ -733,7 +744,7 @@ onMounted(async () => {
   try {
     stats.value = await api<DashboardStats>('/admin/dashboard')
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error de conexión'
+    error.value = apiErr(e, 'Error de conexión')
   } finally {
     loading.value = false
   }
@@ -741,6 +752,8 @@ onMounted(async () => {
   try {
     const data = await api<Hospital[]>('/admin/hospitales')
     hospitalesRecientes.value = data.slice(0, 5)
+  } catch (e: any) {
+    errorHospitales.value = apiErr(e, 'No se pudieron cargar los hospitales recientes')
   } finally {
     loadingHospitales.value = false
   }

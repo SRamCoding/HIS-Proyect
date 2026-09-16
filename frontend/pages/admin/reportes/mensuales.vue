@@ -272,7 +272,7 @@ const cargar = async () => {
     const query = tenantFilter.value ? `?month=${month}&tenant_id=${tenantFilter.value}` : `?month=${month}`
     data.value = await api<MonthlyReport>(`/admin/reportes/mensuales${query}`)
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error de conexión'
+    error.value = apiErr(e, 'Error de conexión')
   } finally {
     loading.value = false
   }

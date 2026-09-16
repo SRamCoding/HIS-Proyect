@@ -289,7 +289,7 @@ const handleSave = async () => {
       },
     })
     router.push(`/sigarh/mantenimiento/perfiles-usuario?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar el perfil' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar el perfil') }
   finally { saving.value = false }
 }
 
@@ -312,7 +312,7 @@ onMounted(async () => {
     rolesSistema.value = roles
     todosModulos.value = modulos
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo cargar el perfil'
+    error.value = apiErr(e, 'No se pudo cargar el perfil')
   } finally {
     loading.value = false
   }

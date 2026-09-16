@@ -107,7 +107,7 @@ const handleSave = async () => {
       body: { nombre: form.nombre, codigo: form.codigo || null, is_active: form.is_active },
     })
     router.push(`/sigarh/mantenimiento/tipos-actividad?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar') }
   finally { saving.value = false }
 }
 

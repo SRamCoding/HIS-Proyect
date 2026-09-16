@@ -353,7 +353,7 @@ const handleCreate = async (createAnother: boolean) => {
     })
     if (createAnother) { resetForm() }
     else { router.push(`/sigarh/mantenimiento/roles-sistema?tenant=${tenantId.value}`) }
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear el rol' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear el rol') }
   finally { saving.value = false }
 }
 
@@ -370,7 +370,7 @@ onMounted(async () => {
     todosModulos.value = modulos
     gruposOcupacionales.value = grupos
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudieron cargar los catalogos'
+    error.value = apiErr(e, 'No se pudieron cargar los catalogos')
   }
 })
 </script>

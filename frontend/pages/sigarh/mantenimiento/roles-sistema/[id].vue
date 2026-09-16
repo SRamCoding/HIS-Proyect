@@ -341,7 +341,7 @@ const handleSave = async () => {
       },
     })
     router.push(`/sigarh/mantenimiento/roles-sistema?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar el rol' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar el rol') }
   finally { saving.value = false }
 }
 
@@ -369,7 +369,7 @@ onMounted(async () => {
     form.permisos_accion = data.permisos_accion || []
     form.alcance_global = !!data.alcance_global
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo cargar el rol'
+    error.value = apiErr(e, 'No se pudo cargar el rol')
   } finally {
     loading.value = false
   }

@@ -143,10 +143,27 @@ const exportar = async () => {
         `hospitales_${today}.csv`
       )
     } else if (tabla.value === 'usuarios') {
-      const resp = await api<{ items: UsuarioConHospital[]; hospitales_no_disponibles: string[]; es_parcial: boolean }>('/admin/usuarios/con-hospital')
+      // /admin/usuarios/con-hospital ahora pagina (para no mandar de una
+      // el listado completo a la pantalla interactiva) -- el CSV SI
+      // necesita todo, asi que se recorren las paginas hasta juntarlas.
+      const PAGE_SIZE = 200
+      let offset = 0
+      let total = Infinity
+      const items: UsuarioConHospital[] = []
+      let hospitalesNoDisponibles: string[] = []
+      while (offset < total) {
+        const resp = await api<{ items: UsuarioConHospital[]; total: number; hospitales_no_disponibles: string[]; es_parcial: boolean }>(
+          `/admin/usuarios/con-hospital?limit=${PAGE_SIZE}&offset=${offset}`
+        )
+        items.push(...resp.items)
+        total = resp.total
+        if (resp.es_parcial) hospitalesNoDisponibles = [...new Set([...hospitalesNoDisponibles, ...resp.hospitales_no_disponibles])]
+        offset += PAGE_SIZE
+        if (resp.items.length === 0) break // corta si la BD cambio entre paginas y ya no hay mas
+      }
       downloadCsv(
         ['Nombre', 'Email', 'Rol', 'Panel', 'Estado', 'Hospital', 'Registrado'],
-        resp.items.map(u => [
+        items.map(u => [
           u.name,
           u.email,
           u.role,
@@ -157,14 +174,29 @@ const exportar = async () => {
         ]),
         `usuarios_${today}.csv`
       )
-      if (resp.es_parcial) {
-        successWarning.value = `Atención: no se pudo consultar ${resp.hospitales_no_disponibles.join(', ')}. El CSV no incluye esos hospitales.`
+      if (hospitalesNoDisponibles.length) {
+        successWarning.value = `Atención: no se pudo consultar ${hospitalesNoDisponibles.join(', ')}. El CSV no incluye esos hospitales.`
       }
     } else {
-      const resp = await api<{ items: AuditLog[]; total: number }>(`/admin/auditoria?limit=${auditLimit.value}`)
+      // /admin/auditoria tiene un limite maximo de 200 por pagina (antes
+      // esta pantalla pedia hasta 1000 de una sola vez, y silenciosamente
+      // se recortaba a 200). Se recorren paginas hasta juntar la cantidad
+      // que el usuario eligio o hasta agotar el historial real.
+      const PAGE_SIZE = 200
+      const objetivo = auditLimit.value
+      const items: AuditLog[] = []
+      let offset = 0
+      while (items.length < objetivo) {
+        const resp = await api<{ items: AuditLog[]; total: number }>(
+          `/admin/auditoria?limit=${Math.min(PAGE_SIZE, objetivo - items.length)}&offset=${offset}`
+        )
+        items.push(...resp.items)
+        offset += PAGE_SIZE
+        if (resp.items.length === 0 || items.length >= resp.total) break
+      }
       downloadCsv(
         ['Fecha y hora', 'Usuario', 'Hospital', 'Acción', 'Modelo', 'Descripción', 'IP'],
-        resp.items.map(l => [
+        items.map(l => [
           formatDateTime(l.created_at),
           l.user_name || 'Sistema',
           l.tenant_name || '—',
@@ -178,7 +210,7 @@ const exportar = async () => {
     }
     success.value = true
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo generar el archivo'
+    error.value = apiErr(e, 'No se pudo generar el archivo')
   } finally {
     loading.value = false
   }

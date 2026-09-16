@@ -93,7 +93,11 @@ services:
       - rabbitmq
     networks:
       - erp_network
-    command: celery -A workers.celery_app worker --loglevel=info
+    # -B embebe Celery beat (el programador de tareas periodicas) en el mismo
+    # proceso del worker -- valido porque solo hay una replica de "worker";
+    # con mas de una replica, beat duplicado dispara la tarea periodica mas
+    # de una vez y haria falta un servicio de beat aparte.
+    command: celery -A workers.celery_app worker --loglevel=info -B
 
 volumes:
   postgres_data:

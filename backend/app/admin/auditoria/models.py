@@ -30,3 +30,26 @@ class AuditLog(Base):
 
     def __repr__(self) -> str:
         return f"<AuditLog {self.action} by {self.user_name}>"
+
+
+class AuditLogFallback(Base):
+    """Cola de eventos de auditoría que no se pudieron escribir en AuditLog
+    al primer intento. Vive en Postgres (no en un archivo) justamente para
+    poder reclamar filas de forma atómica con `SELECT ... FOR UPDATE SKIP
+    LOCKED`: eso es lo que permite que el reintento sea seguro con más de
+    un worker de Celery corriendo a la vez, algo que un lock en memoria de
+    un solo proceso (asyncio.Lock) nunca puede garantizar entre procesos
+    distintos.
+
+    `id` se reutiliza como el `id` del AuditLog final cuando se recupera:
+    un choque de clave primaria en ese INSERT significa "esta fila ya se
+    proceso antes" (un reintento repetido tras una caída a mitad de
+    camino), no un error nuevo -- así el reintento es idempotente sin
+    necesitar un identificador aparte."""
+    __tablename__ = "audit_log_fallback"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ocurrido_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    actor: Mapped[dict] = mapped_column(JSON)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    entrada: Mapped[dict] = mapped_column(JSON)

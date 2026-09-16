@@ -207,7 +207,7 @@ const handleSave = async () => {
       },
     })
     router.push(`/sigarh/infraestructura-hosp/camas?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar') }
   finally { saving.value = false }
 }
 

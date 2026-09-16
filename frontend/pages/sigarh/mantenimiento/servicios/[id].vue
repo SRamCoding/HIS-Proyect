@@ -173,7 +173,7 @@ const handleSave = async () => {
     })
     await api(`/sigarh/mantenimiento/servicios/${id.value}/estructura`, { method: 'PUT', body: { upss_ids: form.upss_ids, especialidad_ids: form.especialidad_ids } })
     router.push(`/sigarh/mantenimiento/servicios?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar') }
   finally { saving.value = false }
 }
 

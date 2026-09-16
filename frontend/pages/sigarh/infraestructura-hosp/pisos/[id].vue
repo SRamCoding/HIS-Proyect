@@ -125,7 +125,7 @@ const handleSave = async () => {
       body: { nombre: form.nombre, orden: form.orden || 0, descripcion: form.descripcion || null, is_active: form.is_active },
     })
     router.push(`/sigarh/infraestructura-hosp/pisos?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar') }
   finally { saving.value = false }
 }
 

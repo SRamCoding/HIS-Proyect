@@ -1,6 +1,18 @@
 <!-- layouts/admin.vue -->
 <template>
-  <div class="h-screen flex overflow-hidden" style="background: var(--mist)">
+  <!-- Al cerrar sesion se DESMONTA todo el contenido protegido (este bloque
+       es la unica raiz que queda) en vez de solo taparlo con un overlay.
+       Ganarle por z-index a un <Teleport to="body"> (los modales de SIGARH
+       lo usan) es posible en teoria, pero fragil: depende de que ningun
+       ancestro entre medio cree su propio contexto de apilamiento, un
+       detalle facil de romper sin darse cuenta con un cambio de estilos
+       futuro. Y aunque se tape visualmente, un elemento que sigue montado
+       sigue siendo alcanzable por teclado (Tab) -- desmontar evita ambos
+       problemas de raiz en vez de depender de ganar la pulseada de CSS. -->
+  <div v-if="loggingOut" class="h-screen flex items-center justify-center" style="background: var(--mist)">
+    <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--teal)" />
+  </div>
+  <div v-else class="h-screen flex overflow-hidden" style="background: var(--mist)">
     <!-- Overlay móvil -->
     <div
       v-if="mobileOpen"
@@ -159,19 +171,56 @@
       {{ route.meta.title || 'Panel Administrativo' }}
     </h2>
 
-    <div class="flex-1 max-w-sm ml-0 sm:ml-4 hidden sm:block">
+    <div class="search-wrapper relative flex-1 max-w-sm ml-0 sm:ml-4 hidden sm:block">
       <div class="flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12)">
         <UIcon name="i-heroicons-magnifying-glass" class="w-4 h-4 shrink-0" style="color: rgba(255,255,255,0.4)" />
         <input
-          placeholder="Buscar..."
+          v-model="searchQuery"
+          placeholder="Buscar hospitales, cuentas admin..."
           class="bg-transparent border-none outline-none text-sm w-full"
           style="color: white;"
+          @focus="searchOpen = true"
+          @keydown.esc="searchOpen = false"
+          @keydown.enter="irAlPrimerResultado"
         />
+        <UIcon v-if="searchLoading" name="i-heroicons-arrow-path" class="w-3.5 h-3.5 shrink-0 animate-spin" style="color: rgba(255,255,255,0.4)" />
+      </div>
+      <div v-if="searchOpen && searchQuery.trim().length >= 2" class="search-panel">
+        <div v-if="!searchLoading && searchError" class="notif-empty" style="color: var(--alert)">
+          No se pudo buscar. Intenta de nuevo.
+        </div>
+        <div v-else-if="!searchLoading && !searchResultados.hospitales.length && !searchResultados.usuarios.length" class="notif-empty">
+          Sin resultados para "{{ searchQuery }}"
+        </div>
+        <template v-else>
+          <div v-if="searchResultados.hospitales.length" class="search-group-label">Hospitales</div>
+          <NuxtLink
+            v-for="h in searchResultados.hospitales" :key="'h-' + h.id"
+            :to="`/admin/hospitales/${h.id}`" class="search-item" @click="cerrarBusqueda"
+          >
+            <UIcon name="i-heroicons-building-office-2" class="w-4 h-4 shrink-0" style="color: var(--navy)" />
+            <div class="min-w-0">
+              <p class="search-item-title">{{ h.name }}</p>
+              <p class="search-item-sub">{{ h.domain }}</p>
+            </div>
+          </NuxtLink>
+          <div v-if="searchResultados.usuarios.length" class="search-group-label">Cuentas admin</div>
+          <NuxtLink
+            v-for="u in searchResultados.usuarios" :key="'u-' + u.id"
+            :to="`/admin/usuarios/${u.id}${u.tenant_id ? `?tenant_id=${u.tenant_id}` : ''}`" class="search-item" @click="cerrarBusqueda"
+          >
+            <UIcon name="i-heroicons-user-circle" class="w-4 h-4 shrink-0" style="color: var(--teal)" />
+            <div class="min-w-0">
+              <p class="search-item-title">{{ u.name }}</p>
+              <p class="search-item-sub">{{ u.email }}</p>
+            </div>
+          </NuxtLink>
+        </template>
       </div>
     </div>
 
     <div class="ml-auto flex items-center gap-1">
-      <div class="notif-wrapper relative hidden sm:block">
+      <div class="notif-wrapper relative">
         <button class="relative p-2 rounded-lg hover:bg-white/10 transition-colors" @click="toggleNotifs">
           <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
           <span v-if="notifUnread > 0" class="notif-badge">{{ notifUnread > 9 ? '9+' : notifUnread }}</span>
@@ -199,9 +248,13 @@
               </div>
             </li>
           </ul>
+          <button v-if="!notifLoading && notificaciones.length < notifTotal" class="notif-cargar-mas" @click="cargarMasNotificaciones">
+            <UIcon v-if="notifLoadingMas" name="i-heroicons-arrow-path" class="w-3.5 h-3.5 animate-spin" />
+            <span>Cargar más</span>
+          </button>
         </div>
       </div>
-      <div class="settings-wrapper relative hidden sm:block">
+      <div class="settings-wrapper relative">
         <button class="p-2 rounded-lg hover:bg-white/10 transition-colors" @click="settingsOpen = !settingsOpen">
           <UIcon name="i-heroicons-cog-6-tooth" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
         </button>
@@ -245,8 +298,11 @@ interface Notificacion {
 
 const notifOpen = ref(false)
 const notifLoading = ref(false)
+const notifLoadingMas = ref(false)
 const notifUnread = ref(0)
+const notifTotal = ref(0)
 const notificaciones = ref<Notificacion[]>([])
+const NOTIF_PAGE_SIZE = 20
 let notifTimer: ReturnType<typeof setInterval> | null = null
 
 const cargarContadorNotif = async () => {
@@ -261,11 +317,31 @@ const cargarContadorNotif = async () => {
 const cargarNotificaciones = async () => {
   notifLoading.value = true
   try {
-    notificaciones.value = await api<Notificacion[]>('/admin/notificaciones?limit=20')
+    const r = await api<{ items: Notificacion[]; total: number }>(`/admin/notificaciones?limit=${NOTIF_PAGE_SIZE}`)
+    notificaciones.value = r.items
+    notifTotal.value = r.total
   } catch {
     notificaciones.value = []
+    notifTotal.value = 0
   } finally {
     notifLoading.value = false
+  }
+}
+
+// Antes solo se podian ver las ultimas 20 notificaciones, sin forma de ver
+// nada mas viejo -- el backend ya soporta offset, esto solo lo aprovecha.
+const cargarMasNotificaciones = async () => {
+  notifLoadingMas.value = true
+  try {
+    const r = await api<{ items: Notificacion[]; total: number }>(
+      `/admin/notificaciones?limit=${NOTIF_PAGE_SIZE}&offset=${notificaciones.value.length}`
+    )
+    notificaciones.value.push(...r.items)
+    notifTotal.value = r.total
+  } catch {
+    // si falla, el boton "Cargar mas" simplemente sigue disponible para reintentar
+  } finally {
+    notifLoadingMas.value = false
   }
 }
 
@@ -309,10 +385,76 @@ const formatRelativo = (fecha: string) => {
 
 const settingsOpen = ref(false)
 
+interface SearchHospital { id: string; name: string; domain: string }
+interface SearchUsuario { id: string; name: string; email: string; tenant_id: string | null }
+
+const searchQuery = ref('')
+const searchOpen = ref(false)
+const searchLoading = ref(false)
+const searchError = ref(false)
+const searchResultados = reactive<{ hospitales: SearchHospital[]; usuarios: SearchUsuario[] }>({ hospitales: [], usuarios: [] })
+let searchDebounce: ReturnType<typeof setTimeout> | null = null
+// Se descartan respuestas que ya no son la ultima pedida: sin esto, una
+// busqueda lenta ("hospital") podia resolver DESPUES de una mas reciente y
+// mas especifica ("hospital-tuman"), pisando resultados correctos con unos
+// obsoletos.
+let searchToken = 0
+
+watch(searchQuery, (valor) => {
+  if (searchDebounce) clearTimeout(searchDebounce)
+  // El token avanza YA, en cuanto cambia el texto -- no cuando arranca la
+  // peticion 300ms despues. Si incrementara adentro del setTimeout, una
+  // respuesta todavia en vuelo de la busqueda anterior podia colarse como
+  // "vigente" durante la ventana de debounce del siguiente tecleo, porque
+  // el token de esa respuesta y el token actual todavia coincidian.
+  const miToken = ++searchToken
+  const termino = valor.trim()
+  if (termino.length < 2) {
+    searchResultados.hospitales = []
+    searchResultados.usuarios = []
+    searchError.value = false
+    searchLoading.value = false
+    return
+  }
+  searchDebounce = setTimeout(async () => {
+    searchLoading.value = true
+    searchError.value = false
+    try {
+      const r = await api<{ hospitales: SearchHospital[]; usuarios: SearchUsuario[] }>(`/admin/buscar?q=${encodeURIComponent(termino)}`)
+      if (miToken !== searchToken) return
+      searchResultados.hospitales = r.hospitales
+      searchResultados.usuarios = r.usuarios
+    } catch {
+      if (miToken !== searchToken) return
+      searchResultados.hospitales = []
+      searchResultados.usuarios = []
+      searchError.value = true
+    } finally {
+      if (miToken === searchToken) searchLoading.value = false
+    }
+  }, 300)
+})
+
+const cerrarBusqueda = () => {
+  searchOpen.value = false
+  searchQuery.value = ''
+}
+
+const irAlPrimerResultado = () => {
+  const primero = searchResultados.hospitales[0]
+  if (primero) { router.push(`/admin/hospitales/${primero.id}`); cerrarBusqueda(); return }
+  const usuario = searchResultados.usuarios[0]
+  if (usuario) {
+    router.push(`/admin/usuarios/${usuario.id}${usuario.tenant_id ? `?tenant_id=${usuario.tenant_id}` : ''}`)
+    cerrarBusqueda()
+  }
+}
+
 const cerrarMenusSiFuera = (e: MouseEvent) => {
   const target = e.target as HTMLElement
   if (notifOpen.value && !target.closest('.notif-wrapper')) notifOpen.value = false
   if (settingsOpen.value && !target.closest('.settings-wrapper')) settingsOpen.value = false
+  if (searchOpen.value && !target.closest('.search-wrapper')) searchOpen.value = false
 }
 
 onMounted(() => {
@@ -322,6 +464,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   if (notifTimer) clearInterval(notifTimer)
+  if (searchDebounce) clearTimeout(searchDebounce)
   document.removeEventListener('click', cerrarMenusSiFuera)
 })
 
@@ -336,9 +479,12 @@ function onNavClick(e: MouseEvent) {
   if (target.closest('a')) mobileOpen.value = false
 }
 
+const loggingOut = ref(false)
+
 const handleLogout = async () => {
-  await authStore.logout()
-  await navigateTo('/login')
+  loggingOut.value = true
+  const revocadoEnServidor = await authStore.logout()
+  await navigateTo(revocadoEnServidor ? '/login' : '/login?aviso=logout_sin_confirmar')
 }
 </script>
 
@@ -373,6 +519,57 @@ const handleLogout = async () => {
   overflow: hidden;
   z-index: 50;
 }
+.search-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  width: 100%;
+  min-width: 320px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--paper, #fff);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  z-index: 50;
+  padding: 0.375rem;
+}
+.search-group-label {
+  padding: 0.5rem 0.625rem 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft, #6b7280);
+}
+.search-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.search-item:hover {
+  background: var(--mist, #f3f4f6);
+}
+.search-item-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink, #111827);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-item-sub {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--ink-soft, #6b7280);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .notif-panel-header {
   display: flex;
   align-items: center;
@@ -402,6 +599,24 @@ const handleLogout = async () => {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+.notif-cargar-mas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0.625rem;
+  border: none;
+  border-top: 1px solid var(--line, #e5e7eb);
+  background: none;
+  color: var(--teal, #0891b2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.notif-cargar-mas:hover {
+  background: var(--mist, #f3f4f6);
 }
 .notif-item {
   display: flex;

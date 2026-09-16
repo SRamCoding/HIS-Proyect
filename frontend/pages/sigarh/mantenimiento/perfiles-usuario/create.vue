@@ -293,7 +293,7 @@ const handleCreate = async (createAnother: boolean) => {
     } else {
       router.push(`/sigarh/mantenimiento/perfiles-usuario?tenant=${tenantId.value}`)
     }
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear el perfil' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear el perfil') }
   finally { saving.value = false }
 }
 
@@ -310,7 +310,7 @@ onMounted(async () => {
     rolesSistema.value = roles
     todosModulos.value = modulos
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al cargar catalogos'
+    error.value = apiErr(e, 'Error al cargar catalogos')
   }
 })
 </script>

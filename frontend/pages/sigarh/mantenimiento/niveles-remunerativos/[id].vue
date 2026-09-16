@@ -94,7 +94,7 @@ const handleSave = async () => {
   try {
     await api(`/sigarh/mantenimiento/niveles-remunerativos/${id.value}`, { method: 'PATCH', body: { ...form } })
     router.push(`/sigarh/mantenimiento/niveles-remunerativos?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo guardar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo guardar') }
   finally { saving.value = false }
 }
 onMounted(async () => {

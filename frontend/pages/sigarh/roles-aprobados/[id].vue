@@ -48,7 +48,7 @@ const cargar = async () => {
     empleados.value = emps
     actividadesCat.value = acts.filter((a: any) => a.is_active)
     horarios.value = hors.filter((h: any) => h.is_active)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo cargar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo cargar') }
   finally { loading.value = false }
 }
 
@@ -69,7 +69,7 @@ const enviarSolicitud = async () => {
       method: 'POST', body: { empleado_id: form.empleado_id, motivo: form.motivo, schedule_data },
     })
     router.push(`/sigarh/roles-pendientes/solicitudes?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo enviar la solicitud' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo enviar la solicitud') }
   finally { busy.value = false }
 }
 onMounted(cargar)

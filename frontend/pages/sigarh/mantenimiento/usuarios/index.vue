@@ -231,7 +231,7 @@ const deleteItem = async () => {
     items.value = items.value.filter(i => i.id !== itemToDelete.value?.id)
     showDeleteModal.value = false
     itemToDelete.value = null
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo eliminar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo eliminar') }
 }
 
 const cargar = async () => {
@@ -239,7 +239,7 @@ const cargar = async () => {
   error.value = ''
   try {
     items.value = await api<Item[]>('/sigarh/mantenimiento/usuarios')
-  } catch (e: any) { error.value = e?.data?.detail || 'Error de conexion' }
+  } catch (e: any) { error.value = apiErr(e, 'Error de conexion') }
   finally { loading.value = false }
 }
 

@@ -106,11 +106,11 @@ const filteredItems = computed(() => {
 const confirmarEliminar = async (item: Item) => {
   if (!confirm(`Eliminar "${item.nombre}"?`)) return
   try { await api(`/sigarh/mantenimiento/niveles-remunerativos/${item.id}`, { method: 'DELETE' }); items.value = items.value.filter(i => i.id !== item.id) }
-  catch (e: any) { error.value = e?.data?.detail || 'No se pudo eliminar' }
+  catch (e: any) { error.value = apiErr(e, 'No se pudo eliminar') }
 }
 onMounted(async () => {
   try { items.value = await api<Item[]>('/sigarh/mantenimiento/niveles-remunerativos') }
-  catch (e: any) { error.value = e?.data?.detail || 'Error' }
+  catch (e: any) { error.value = apiErr(e, 'Error') }
   finally { loading.value = false }
 })
 </script>

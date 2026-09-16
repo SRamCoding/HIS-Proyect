@@ -1,10 +1,18 @@
 # backend/app/admin/auditoria/service.py
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, cast, String
 
 from app.admin.auditoria.models import AuditLog
+
+# Zona horaria fija de Peru (sin horario de verano, UTC-5 todo el ano) --
+# "eventos de hoy" debe representar el dia calendario de Lima, no el de UTC
+# (created_at se guarda en UTC): un evento a las 7pm en Lima ya es
+# medianoche en UTC y antes se contaba como "de mañana", no "de hoy".
+_ZONA_LIMA = timezone(timedelta(hours=-5))
+
+LIMIT_MAXIMO = 200
 
 
 def _scope(query, tenant_id, only_global):
@@ -28,7 +36,14 @@ async def get_audit_logs(
     busqueda/paginacion pasaba en el navegador sobre ese lote descargado --
     el historial real (mas alla de esas primeras filas) era invisible.
     Ahora offset/busqueda/filtro de accion se resuelven en la consulta, y se
-    devuelve el total real para que la paginacion en pantalla sea honesta."""
+    devuelve el total real para que la paginacion en pantalla sea honesta.
+
+    `limit`/`offset` se acotan aca (no solo confiar en el tipo `int` del
+    parametro del router): sin esto, cualquiera podia pedir limit=999999999
+    o un offset negativo."""
+    limit = max(1, min(limit, LIMIT_MAXIMO))
+    offset = max(0, offset)
+
     base = select(AuditLog)
     base = _scope(base, tenant_id, only_global)
     if action and action != "all":
@@ -58,19 +73,30 @@ async def get_audit_summary(
     el mismo alcance (global o un hospital), calculados en el servidor --
     antes salian de sumar el lote de hasta 1000 filas ya descargado, asi que
     quedaban mal apenas el historial real superaba eso."""
-    hoy_inicio = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    # "Hoy" se calcula en hora de Lima, no UTC (created_at se guarda en
+    # UTC): un evento de las 7pm en Lima ya es medianoche UTC del dia
+    # siguiente, y antes se contaba como "de mañana" en vez de "de hoy".
+    ahora_lima = datetime.now(_ZONA_LIMA)
+    hoy_inicio_lima = ahora_lima.replace(hour=0, minute=0, second=0, microsecond=0)
+    hoy_inicio_utc = hoy_inicio_lima.astimezone(timezone.utc).replace(tzinfo=None)
 
     base = _scope(select(AuditLog.id), tenant_id, only_global)
     total = await db.scalar(select(func.count()).select_from(base.subquery())) or 0
 
     hoy_query = _scope(select(func.count(AuditLog.id)), tenant_id, only_global).where(
-        AuditLog.created_at >= hoy_inicio
+        AuditLog.created_at >= hoy_inicio_utc
     )
     eventos_hoy = await db.scalar(hoy_query) or 0
 
+    # Por id cuando existe (identifica a la persona sin ambiguedad); solo
+    # cae al nombre para los eventos que no traen user_id (login_failed de
+    # un correo que no existe, por ejemplo). Contar por nombre para TODOS
+    # los eventos fundia a dos personas distintas con el mismo nombre en
+    # una sola "cuenta unica".
+    identificador = func.coalesce(cast(AuditLog.user_id, String), AuditLog.user_name)
     usuarios_query = _scope(
-        select(func.count(func.distinct(AuditLog.user_name))), tenant_id, only_global,
-    ).where(AuditLog.user_name.is_not(None))
+        select(func.count(func.distinct(identificador))), tenant_id, only_global,
+    ).where(identificador.is_not(None))
     usuarios_unicos = await db.scalar(usuarios_query) or 0
 
     acciones_query = _scope(

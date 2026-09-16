@@ -22,7 +22,7 @@ const roleType = (rt: string | null) => {
 const cargar = async () => {
   loading.value = true; error.value = ''
   try { sol.value = await api<any>(`/sigarh/roles-pendientes/solicitudes-modificacion/${id.value}`) }
-  catch (e: any) { error.value = e?.data?.detail || 'No se pudo cargar' }
+  catch (e: any) { error.value = apiErr(e, 'No se pudo cargar') }
   finally { loading.value = false }
 }
 const aprobar = async () => {
@@ -31,7 +31,7 @@ const aprobar = async () => {
   try {
     await api(`/sigarh/roles-pendientes/solicitudes-modificacion/${id.value}/aprobar`, { method: 'POST' })
     router.push(`/sigarh/roles-pendientes/solicitudes?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo aprobar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo aprobar') }
   finally { busy.value = false }
 }
 const rechazar = async () => {
@@ -40,7 +40,7 @@ const rechazar = async () => {
   try {
     await api(`/sigarh/roles-pendientes/solicitudes-modificacion/${id.value}/rechazar`, { method: 'POST', body: { motivo: motivo.value } })
     router.push(`/sigarh/roles-pendientes/solicitudes?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo rechazar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo rechazar') }
   finally { busy.value = false }
 }
 onMounted(cargar)

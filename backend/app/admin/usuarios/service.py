@@ -3,7 +3,7 @@ import bcrypt
 from contextlib import asynccontextmanager
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, update
 
 from app.auth.models import User
 
@@ -13,18 +13,29 @@ async def _es_ultimo_administrador(user: User, work_db: AsyncSession) -> bool:
     hospital si es panel "app", o el ERP central si es panel "admin") se
     queda sin ningún administrador activo. `panel` ya delimita el ámbito
     correcto: en la BD física de un hospital solo hay cuentas app/portal de
-    ESE hospital; en la central solo hay cuentas admin."""
+    ESE hospital; en la central solo hay cuentas admin.
+
+    SELECT ... FOR UPDATE sobre TODOS los administradores activos del
+    ámbito (no solo "los otros"): un simple conteo aqui y una escritura
+    despues, sin bloqueo, deja una ventana real -- dos peticiones que
+    desactivan a los dos unicos administradores de un hospital al mismo
+    tiempo pueden contar cada una "el otro sigue activo" antes de que
+    cualquiera confirme, y las dos pasan. Al bloquear las filas de TODOS
+    los administradores del ambito (no solo la del otro), dos operaciones
+    concurrentes sobre el mismo ambito chocan por el mismo lock: la segunda
+    espera a que la primera confirme y entonces re-lee el estado ya
+    actualizado, viendo correctamente que ya no queda ningun otro activo."""
     if user.role != "administrador" or not user.is_active:
         return False
-    otros = await work_db.scalar(
-        select(func.count()).select_from(User).where(
+    activos = (await work_db.execute(
+        select(User.id).where(
             User.panel == user.panel,
             User.role == "administrador",
             User.is_active.is_(True),
-            User.id != user.id,
-        )
-    )
-    return (otros or 0) == 0
+        ).with_for_update()
+    )).scalars().all()
+    otros = [uid for uid in activos if uid != user.id]
+    return len(otros) == 0
 
 
 async def get_all_users(db: AsyncSession) -> list[User]:
@@ -155,15 +166,53 @@ async def _locate_cuenta(db: AsyncSession, user_id: uuid.UUID):
     return None, None, False, None
 
 
+async def _locate_cuenta_directa(db: AsyncSession, user_id: uuid.UUID, tenant_id: uuid.UUID):
+    """Como _locate_cuenta, pero va directo a la BD física de UN hospital ya
+    conocido en vez de recorrer todos -- la lista de usuarios ya trae
+    tenant_id en cada fila, así que editar/activar/eliminar una cuenta no
+    tiene por qué escanear cada hospital para encontrarla (y, en una
+    instalación con muchos hospitales, una base ajena caída o lenta ya no
+    puede demorar ni interrumpir la operación sobre otra cuenta)."""
+    from app.tenants.hospitales.models import Tenant
+    from app.core.tenant_db import get_tenant_sessionmaker
+    from app.sigarh.mantenimiento.models import UsuarioSigarh
+
+    tenant = await db.get(Tenant, tenant_id)
+    if not tenant or not tenant.database_name:
+        return None, None, False, None
+
+    TenantSession = get_tenant_sessionmaker(tenant.database_name)
+    tdb = TenantSession()
+    try:
+        user = await tdb.get(User, user_id)
+        if user:
+            return user, tdb, True, "user"
+        sigarh = await tdb.get(UsuarioSigarh, user_id)
+        if sigarh:
+            return sigarh, tdb, True, "sigarh"
+    except Exception:
+        await tdb.close()
+        raise
+    await tdb.close()
+    return None, None, False, None
+
+
 @asynccontextmanager
-async def _cuenta_localizada(db: AsyncSession, user_id: uuid.UUID):
+async def _cuenta_localizada(db: AsyncSession, user_id: uuid.UUID, tenant_id: uuid.UUID | None = None):
     """Como _locate_cuenta, pero garantiza el cierre de la sesión hospitalaria
     (si se abrió una) al salir del bloque `async with`, incluso si el cuerpo
     lanza una excepción. Antes cada llamador repetía `if es_tenant: await
     work_db.close()` en cada punto de salida por separado -- fácil de
     olvidar en un camino nuevo, y en efecto faltaba en `_locate_user`/
-    `_locate_cuenta` mismos cuando la consulta fallaba a mitad de camino."""
-    user, work_db, es_tenant, tipo = await _locate_cuenta(db, user_id)
+    `_locate_cuenta` mismos cuando la consulta fallaba a mitad de camino.
+
+    Si el llamador ya sabe en qué hospital vive la cuenta (`tenant_id`), se
+    va directo ahí -- el escaneo completo (_locate_cuenta) queda solo como
+    respaldo para cuando de verdad no se sabe dónde buscar."""
+    if tenant_id:
+        user, work_db, es_tenant, tipo = await _locate_cuenta_directa(db, user_id, tenant_id)
+    else:
+        user, work_db, es_tenant, tipo = await _locate_cuenta(db, user_id)
     try:
         yield user, work_db, es_tenant, tipo
     finally:
@@ -235,8 +284,8 @@ async def _serializar_sigarh(session: AsyncSession, sigarh, tenant_id: str | Non
     }
 
 
-async def update_user(db: AsyncSession, user_id: uuid.UUID, data, actor: dict) -> User | None:
-    async with _cuenta_localizada(db, user_id) as (user, work_db, es_tenant, tipo):
+async def update_user(db: AsyncSession, user_id: uuid.UUID, data, actor: dict, tenant_id: uuid.UUID | None = None) -> User | None:
+    async with _cuenta_localizada(db, user_id, tenant_id) as (user, work_db, es_tenant, tipo):
         if not user:
             return None
         if tipo == "sigarh":
@@ -267,6 +316,16 @@ async def update_user(db: AsyncSession, user_id: uuid.UUID, data, actor: dict) -
             raise HTTPException(400, detail="Las cuentas del panel admin deben tener el rol 'administrador'")
 
         activo_final = cambios.get("is_active", user.is_active)
+        # La proteccion de la cuenta fundacional (is_superadmin) antes solo
+        # vivia en toggle_user/delete_user; este PATCH general podia
+        # desactivarla o sacarla de rol/panel administrador sin pasar por
+        # ese chequeo -- bastaba con que existiera otro admin activo para
+        # que _es_ultimo_administrador no lo bloqueara.
+        if tipo == "user" and getattr(user, "is_superadmin", False):
+            if not activo_final:
+                raise HTTPException(400, detail="La cuenta administradora fundacional no se puede desactivar")
+            if panel_final != "admin" or role_final != "administrador":
+                raise HTTPException(400, detail="La cuenta administradora fundacional no puede cambiar de panel ni de rol")
         # Cambiar de panel tambien saca a la cuenta de su ambito actual, aunque
         # el rol siga diciendo "administrador" -- sin este chequeo, mover el
         # unico admin de un hospital a panel "app" esquivaba la proteccion
@@ -284,15 +343,23 @@ async def update_user(db: AsyncSession, user_id: uuid.UUID, data, actor: dict) -
             setattr(user, field, value)
         if data.password:
             user.password = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
-            user.session_version += 1  # invalida cualquier sesion abierta con la contraseña anterior
+            # UPDATE atomico calculado en SQL, no "user.session_version += 1"
+            # en Python: ese patron es lectura-y-luego-escritura sobre el
+            # valor que el ORM tenia en memoria, y una operacion concurrente
+            # (otro cambio de contraseña, un logout) que tambien incrementa
+            # puede perderse. El logout ya usa este mismo patron (ver
+            # auth/router.py); aqui quedaba inconsistente.
+            await work_db.execute(
+                update(User).where(User.id == user.id).values(session_version=User.session_version + 1)
+            )
 
         await work_db.commit()
         await work_db.refresh(user)
         return user
 
 
-async def toggle_user(db: AsyncSession, user_id: uuid.UUID, is_active: bool, actor: dict):
-    async with _cuenta_localizada(db, user_id) as (user, work_db, es_tenant, tipo):
+async def toggle_user(db: AsyncSession, user_id: uuid.UUID, is_active: bool, actor: dict, tenant_id: uuid.UUID | None = None):
+    async with _cuenta_localizada(db, user_id, tenant_id) as (user, work_db, es_tenant, tipo):
         if not user:
             return None
         if str(user.id) == str(actor.get("sub")) and not is_active:
@@ -307,8 +374,8 @@ async def toggle_user(db: AsyncSession, user_id: uuid.UUID, is_active: bool, act
         return user
 
 
-async def delete_user(db: AsyncSession, user_id: uuid.UUID, actor: dict) -> bool:
-    async with _cuenta_localizada(db, user_id) as (user, work_db, es_tenant, tipo):
+async def delete_user(db: AsyncSession, user_id: uuid.UUID, actor: dict, tenant_id: uuid.UUID | None = None) -> bool:
+    async with _cuenta_localizada(db, user_id, tenant_id) as (user, work_db, es_tenant, tipo):
         if not user:
             return False
         if str(user.id) == str(actor.get("sub")):

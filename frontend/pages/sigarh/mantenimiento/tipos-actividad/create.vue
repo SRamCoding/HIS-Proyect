@@ -100,7 +100,7 @@ const handleCreate = async (createAnother: boolean) => {
     })
     if (createAnother) { Object.assign(form, { nombre: '', codigo: '', is_active: true }) }
     else { router.push(`/sigarh/mantenimiento/tipos-actividad?tenant=${tenantId.value}`) }
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear') }
   finally { saving.value = false }
 }
 </script>

@@ -120,6 +120,7 @@
 definePageMeta({ layout: 'admin', middleware: ['auth', 'panel'] })
 
 const { api } = useApi()
+const authStore = useAuthStore()
 
 const loading = ref(true)
 const saving = ref(false)
@@ -183,10 +184,28 @@ const handleSave = async () => {
       body.current_password = form.current_password
       body.new_password = form.new_password
     }
+    const cambioPassword = !!form.new_password
     await api('/admin/perfil', { method: 'PATCH', body })
+
+    if (cambioPassword) {
+      // El backend ya invalido el token actual (session_version) al
+      // cambiar la contraseña -- seguir mostrando la pantalla como si
+      // nada hubiera pasado dejaba la interfaz "autenticada" con un token
+      // que la PROXIMA peticion protegida va a rechazar de todos modos.
+      // Se cierra la sesion local ya mismo, con un resultado predecible en
+      // vez de que parezca un error aparte mas adelante.
+      authStore.clearSession()
+      await navigateTo('/login?aviso=password_cambiada')
+      return
+    }
+
     form.current_password = ''
     form.new_password = ''
     form.new_password_confirm = ''
+    // El sidebar lee authStore.user, no vuelve a pedirlo solo -- sin esto,
+    // seguia mostrando el nombre/correo viejo hasta el proximo refresh de
+    // token (o hasta cerrar sesion y volver a entrar).
+    authStore.updateUser({ name: form.name, email: form.email })
     saveSuccess.value = 'Perfil actualizado correctamente'
   } catch (e: any) {
     saveError.value = apiErr(e, 'No se pudo guardar el perfil')

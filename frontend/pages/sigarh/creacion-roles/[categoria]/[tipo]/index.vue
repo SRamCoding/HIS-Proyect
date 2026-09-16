@@ -20,7 +20,7 @@ const cargar = async () => {
   loading.value = true; error.value = ''
   try {
     items.value = await api<Item[]>(`/sigarh/creacion-roles/roles?categoria=${categoria.value}&tipo=${tipo.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'Error de conexión' }
+  } catch (e: any) { error.value = apiErr(e, 'Error de conexión') }
   finally { loading.value = false }
 }
 const eliminar = async (it: Item) => {
@@ -28,7 +28,7 @@ const eliminar = async (it: Item) => {
   try {
     await api(`/sigarh/creacion-roles/roles/${it.id}`, { method: 'DELETE' })
     items.value = items.value.filter(i => i.id !== it.id)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo eliminar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo eliminar') }
 }
 onMounted(cargar)
 </script>
