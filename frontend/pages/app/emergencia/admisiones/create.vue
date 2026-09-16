@@ -176,7 +176,10 @@
               <label class="form-label">Fuente de Financiamiento</label>
               <div class="input-wrapper">
                 <UIcon name="i-heroicons-currency-dollar" class="input-icon" />
-                <input v-model="form.fuente_financiamiento" type="text" class="input-clinical" placeholder="SIS, Particular..." />
+                <input v-model="form.fuente_financiamiento" type="text" class="input-clinical" placeholder="SIS, Particular..." list="emergencia-seguros" />
+                <datalist id="emergencia-seguros">
+                  <option v-for="s in seguros" :key="s.id" :value="s.nombre" />
+                </datalist>
               </div>
             </div>
           </div>
@@ -365,6 +368,12 @@ const mostrarCreacionRapida = ref(false)
 const creandoPaciente = ref(false)
 const guardando = ref(false)
 const error = ref('')
+const seguros = ref<any[]>([])
+
+onMounted(async () => {
+  try { seguros.value = await api('/app/emergencia/seguros') }
+  catch (e) { /* la fuente de financiamiento sigue siendo texto libre si el catálogo no carga */ }
+})
 
 const nuevoPaciente = reactive({
   first_name: '',

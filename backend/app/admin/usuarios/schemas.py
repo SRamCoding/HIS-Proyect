@@ -18,12 +18,29 @@ ROLES_VALIDOS = {
 }
 
 
+class PerfilHospitalInput(BaseModel):
+    nombre: str
+    role: str
+    modulos: list[str]
+    is_active: bool = True
+
+    @field_validator("nombre", "role")
+    @classmethod
+    def texto_perfil(cls, value):
+        value = value.strip()
+        if not value or len(value) > 100:
+            raise ValueError("Ingrese un texto de 1 a 100 caracteres")
+        return value
+
+
 class UserListItem(BaseModel):
+    perfil_hospital_id: uuid.UUID | None = None
     id: uuid.UUID
     name: str
     email: str
     role: str
     panel: str
+    empleado_id: uuid.UUID | None = None
     tenant_id: uuid.UUID | None
     is_active: bool
     created_at: datetime
@@ -32,6 +49,7 @@ class UserListItem(BaseModel):
 
 
 class UserCreate(BaseModel):
+    perfil_hospital_id: uuid.UUID | None = None
     name: str
     email: str
     password: str
@@ -41,6 +59,7 @@ class UserCreate(BaseModel):
     # User con panel="sigarh" desde Admin deja una cuenta fantasma que nunca
     # puede iniciar sesión (el login de SIGARH no lee la tabla User).
     panel: Literal["admin", "app", "portal"]
+    empleado_id: uuid.UUID | None = None
     tenant_id: uuid.UUID | None = None
     is_active: bool = True
 
@@ -72,20 +91,26 @@ class UserCreate(BaseModel):
 
     @model_validator(mode="after")
     def _v_admin_role(self):
+        if self.perfil_hospital_id and self.panel != "app":
+            raise ValueError("El perfil hospitalario solo corresponde al panel hospitalario")
         # Una cuenta del panel admin siempre debe tener el rol real de
         # administrador: es lo único que separa a un superadmin de una
         # cuenta cualquiera (ver get_admin_user en core/dependencies.py).
+        if self.empleado_id and self.panel != "app":
+            raise ValueError("El empleado solo puede vincularse a una cuenta hospitalaria.")
         if self.panel == "admin" and self.role != "administrador":
             raise ValueError("Las cuentas del panel admin deben tener el rol 'administrador'")
         return self
 
 
 class UserUpdate(BaseModel):
+    perfil_hospital_id: uuid.UUID | None = None
     name: str | None = None
     email: str | None = None
     password: str | None = None
     role: str | None = None
     panel: Literal["admin", "app", "portal"] | None = None
+    empleado_id: uuid.UUID | None = None
     tenant_id: uuid.UUID | None = None
     is_active: bool | None = None
 

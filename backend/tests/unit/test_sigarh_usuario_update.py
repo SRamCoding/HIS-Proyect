@@ -24,7 +24,7 @@ class UsuarioUpdateSchemaTests(unittest.TestCase):
     def test_rejects_internal_and_unknown_fields(self):
         for field in (
             "tenant_id", "id", "created_at", "updated_at",
-            "role", "panel", "_sa_instance_state", "campo_desconocido",
+            "role", "_sa_instance_state", "campo_desconocido",
         ):
             with self.subTest(field=field), self.assertRaises(ValidationError) as ctx:
                 UsuarioSigarhUpdate.model_validate({field: str(uuid4())})

@@ -1,5 +1,6 @@
 <template>
   <div class="sigarh-index-container">
+    <SAccesosPanelInfo />
 
     <div class="sigarh-page-header">
       <div class="sigarh-header-left">
@@ -8,7 +9,7 @@
         </div>
         <div>
           <h1 class="page-title">Usuarios</h1>
-          <p class="page-subtitle">Usuarios del sistema SIGARH</p>
+          <p class="page-subtitle">Cuentas de SIGARH y del panel hospitalario</p>
         </div>
       </div>
       <NuxtLink
@@ -113,7 +114,7 @@
                 <div :style="{ width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--ink)', flexShrink: 0, background: getUserColor(item.username) }">
                   {{ getInitials(item.username) }}
                 </div>
-                <span style="font-weight: 500">{{ item.username }}</span>
+                <span style="font-weight: 500">{{ item.username }}</span><span class="badge badge--neutral">{{ item.panel === 'app' ? 'Hospitalario' : 'SIGARH' }}</span>
               </div>
             </td>
             <td style="color: var(--ink-soft)">{{ item.email }}</td>
@@ -179,6 +180,7 @@
 definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
 
 interface Item {
+  panel: string
   id: string
   username: string
   email: string

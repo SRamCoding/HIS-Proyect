@@ -1,13 +1,11 @@
-<template>
-  <div>
-    <div class="flex items-center gap-2 text-sm mb-2" style="color: var(--ink-soft)">
-      <span>Hospitalizacion</span><span>/</span><span>Panel de Camas</span>
-    </div>
-    <h1 class="text-lg font-semibold" style="color: var(--ink)">Editar - Panel de Camas</h1>
-    <p class="text-sm mt-1" style="color: var(--ink-soft)">Esta seccion estara disponible proximamente.</p>
-  </div>
-</template>
-
 <script setup lang="ts">
 definePageMeta({ layout: 'app', middleware: ['auth'] })
+
+const route = useRoute()
+await navigateTo({
+  path: '/app/hospitalizacion/panel-camas',
+  query: { ...route.query, cama: String(route.params.id) },
+}, { replace: true })
 </script>
+
+<template><div /></template>

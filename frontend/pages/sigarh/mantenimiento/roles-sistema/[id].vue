@@ -23,7 +23,8 @@
       </div>
 
       <template v-else>
-        <SFormCard title="Configuracion del Rol" subtitle="Actualiza los datos del rol del sistema"
+        <SAccesosPanelInfo />
+      <SFormCard title="Configuracion del Rol" subtitle="Actualiza los datos del rol del sistema"
           icon="i-heroicons-cog-6-tooth" icon-bg="var(--navy-soft)" icon-color="var(--navy)" :error="error">
 
           <div class="form-group">
@@ -47,13 +48,14 @@
             <div class="input-wrapper">
               <UIcon name="i-heroicons-computer-desktop" class="input-icon" />
               <select v-model="form.panel" class="input-clinical">
-                <option value="app">App</option>
-                <option value="sigarh">SIGARH</option>
+
+                <option value="sigarh">SIGARH</option><option value="app">Hospitalario</option>
               </select>
             </div>
           </div>
 
-          <div class="form-group">
+          <div v-if="form.panel === 'app'" class="form-group"><label class="form-label">Tipo de cuenta hospitalaria</label><select v-model="form.tipo_usuario" class="input-clinical" @change="cambiarTipoUsuario"><option value="medico">Médico</option><option value="enfermera">Enfermería</option><option value="administrador">Administrativo</option><option value="farmaceutico">Farmacéutico</option><option value="laboratorista">Laboratorista</option><option value="cajero">Cajero</option><option value="tuasis">TUASIS</option></select></div>
+<div class="form-group">
             <label class="form-label">Modulo requerido</label>
             <div class="input-wrapper">
               <UIcon name="i-heroicons-lock-closed" class="input-icon" />
@@ -143,7 +145,7 @@
             <p class="field-hint">Vacio = sin restriccion por grupo ocupacional</p>
           </div>
 
-          <div class="form-group full-width">
+          <div v-if="form.panel === 'sigarh'" class="form-group full-width">
             <label class="form-label">Permisos de accion</label>
             <div class="check-catalog">
               <label
@@ -229,7 +231,11 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 
-const todosModulos = ref<Modulo[]>([])
+const catalogoModulos = ref<Modulo[]>([])
+// Medico y enfermera ya no tienen un catalogo de modulos recortado a mano:
+// el alcance real de cada rol lo define el admin en este mismo formulario,
+// igual que para cualquier otro tipo_usuario (ver hospital_access.py).
+const todosModulos = computed(() => catalogoModulos.value)
 const gruposOcupacionales = ref<GrupoOcupacional[]>([])
 
 const PERMISOS_ACCION = [
@@ -241,7 +247,8 @@ const PERMISOS_ACCION = [
 const form = reactive({
   codigo: '',
   nombre: '',
-  panel: 'app',
+  panel: 'sigarh',
+  tipo_usuario: 'medico',
   modulo_requerido: '',
   descripcion: '',
   is_active: true,
@@ -250,6 +257,21 @@ const form = reactive({
   permisos_accion: [] as string[],
   alcance_global: false,
 })
+let cargaModulos = 0
+watch(() => form.panel, async (panel, anterior) => {
+  if (panel === anterior) return
+  const actual = ++cargaModulos
+  form.modulos_permitidos = []; form.modulo_requerido = ''; form.permisos_accion = []; form.alcance_global = false
+  try { const modulos = await api<Modulo[]>(`/sigarh/mantenimiento/modulos-catalogo?panel=${panel}`); if (actual === cargaModulos) catalogoModulos.value = modulos }
+  catch (e) { error.value = apiErr(e, 'No se pudieron cargar los módulos del panel') }
+})
+
+function cambiarTipoUsuario() {
+  form.modulos_permitidos = []
+  form.grupos_ocupacionales_permitidos = []
+  form.modulo_requerido = ''
+}
+
 
 // --- Arbol de modulos/submodulos permitidos (ver create.vue para el detalle) ---
 const expandidos = ref<Set<string>>(new Set())
@@ -331,6 +353,7 @@ const handleSave = async () => {
         codigo: form.codigo,
         nombre: form.nombre,
         panel: form.panel,
+        tipo_usuario: form.panel === 'app' ? form.tipo_usuario : null,
         modulo_requerido: form.modulo_requerido || null,
         descripcion: form.descripcion || null,
         is_active: form.is_active,
@@ -356,11 +379,13 @@ onMounted(async () => {
       api<Modulo[]>('/sigarh/mantenimiento/modulos-catalogo'),
       api<GrupoOcupacional[]>('/sigarh/mantenimiento/grupos-ocupacionales'),
     ])
-    todosModulos.value = modulos
+    catalogoModulos.value = await api<Modulo[]>(`/sigarh/mantenimiento/modulos-catalogo?panel=${data.panel}`)
     gruposOcupacionales.value = grupos
     form.codigo = data.codigo || ''
     form.nombre = data.nombre
     form.panel = data.panel
+    await nextTick()
+    form.tipo_usuario = data.tipo_usuario || 'medico'
     form.modulo_requerido = data.modulo_requerido || ''
     form.descripcion = data.descripcion || ''
     form.is_active = data.is_active

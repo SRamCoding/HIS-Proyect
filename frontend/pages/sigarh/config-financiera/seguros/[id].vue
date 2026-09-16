@@ -143,7 +143,7 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ layout: 'sigarh', middleware: ['auth'] })
+definePageMeta({ layout: 'sigarh', title: 'Editar Seguro', middleware: ['auth'] })
 
 const { api } = useApi()
 const route = useRoute()

@@ -66,6 +66,7 @@
       </div>
     </div>
 
+    <p v-else-if="soloLectura" role="status">No hay un documento disponible. Guarda los cambios de la atención antes de generar órdenes; una atención cerrada permite solo consulta.</p>
     <template v-else>
       <div class="flex gap-3 mb-3">
         <button class="px-3 py-1 rounded text-sm" :class="tipoDestino === 'interno' ? 'bg-red-600 text-white' : 'border'" @click="tipoDestino = 'interno'">
@@ -108,13 +109,14 @@
       <button class="btn-generar-receta" style="background: #dc2626;" :disabled="!puedeGenerar || generando" @click="generarReferencia">
         {{ generando ? 'Generando...' : 'Generar Referencia' }}
       </button>
-      <div v-if="errorLocal" class="text-sm text-red-600 mt-2">{{ errorLocal }}</div>
+
     </template>
+    <p v-if="errorLocal" class="text-sm text-red-600 mt-2" role="alert">{{ errorLocal }}</p>
   </section>
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{ citaId: string }>()
+const props = defineProps<{ citaId: string; soloLectura?: boolean }>()
 const emit = defineEmits<{ generada: [] }>()
 
 const { api } = useApi()
@@ -197,6 +199,7 @@ const puedeGenerar = computed(() => {
 })
 
 async function generarReferencia() {
+  if (props.soloLectura) return
   generando.value = true
   errorLocal.value = ''
   try {
@@ -215,7 +218,7 @@ async function generarReferencia() {
 onMounted(async () => {
   try {
     referenciaExistente.value = await api(`/app/consulta-externa/referencias/${props.citaId}`)
-  } catch { /* aun no tiene referencia */ }
+  } catch (e: any) { if ((e?.statusCode || e?.status || e?.response?.status) !== 404) errorLocal.value = 'No se pudo cargar el documento. Recarga la página para reintentar.' }
   if (!referenciaExistente.value) {
     try {
       tenantsDisponibles.value = await api('/app/consulta-externa/referencias/tenants-disponibles')

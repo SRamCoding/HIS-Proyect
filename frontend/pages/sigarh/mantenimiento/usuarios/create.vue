@@ -16,11 +16,12 @@
           </div>
           <div>
             <h1 class="page-title">Crear Usuario</h1>
-            <p class="page-subtitle">Define un nuevo usuario para el sistema SIGARH</p>
+            <p class="page-subtitle">Crea una cuenta para SIGARH o el panel hospitalario</p>
           </div>
         </div>
       </div>
 
+      <SAccesosPanelInfo />
       <SFormCard
         title="Datos del Usuario"
         subtitle="Ingresa los datos del nuevo usuario"
@@ -45,13 +46,14 @@
           </div>
         </div>
 
-        <div class="form-group full-width">
+        <SSeguridadEmpleado v-model="form.empleado_id" />
+<div class="form-group full-width">
           <label class="form-label">Perfil <span class="required">*</span></label>
           <div class="input-wrapper">
             <UIcon name="i-heroicons-shield-check" class="input-icon" />
             <select v-model="form.perfil_id" class="input-clinical">
               <option value="">Seleccione un perfil</option>
-              <option v-for="p in perfiles" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+              <option v-for="p in perfiles.filter(p => p.is_active)" :key="p.id" :value="p.id">{{ p.nombre }} ({{ p.panel === 'app' ? 'Hospitalario' : 'SIGARH' }})</option>
             </select>
           </div>
           <p class="field-hint">El rol y los módulos se toman del perfil seleccionado</p>
@@ -158,6 +160,8 @@ const form = reactive({
   email: '',
   password: '',
   perfil_id: '',
+  panel: 'sigarh',
+  empleado_id: '',
   is_active: true
 })
 const verPassword = ref(false)
@@ -165,6 +169,8 @@ const verPassword = ref(false)
 const perfilSeleccionado = computed(() =>
   perfiles.value.find(p => p.id === form.perfil_id) || null
 )
+
+watch(() => form.perfil_id, () => { const p = perfiles.value.find(p => p.id === form.perfil_id); if (p) form.panel = p.panel || 'sigarh' })
 
 const pwdChecks = computed(() => ({
   length: form.password.length >= 8,
@@ -199,7 +205,7 @@ const handleCreate = async (createAnother: boolean) => {
   try {
     await api('/sigarh/mantenimiento/usuarios', {
       method: 'POST',
-      body: { ...form, perfil_id: form.perfil_id || null }
+      body: { ...form, empleado_id: form.empleado_id || null, perfil_id: form.perfil_id || null }
     })
     if (createAnother) {
       Object.assign(form, { username: '', email: '', password: '', perfil_id: '', is_active: true })

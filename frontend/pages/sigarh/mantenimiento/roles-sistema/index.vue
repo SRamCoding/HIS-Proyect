@@ -1,5 +1,6 @@
 <template>
   <div class="sigarh-index-container">
+    <SAccesosPanelInfo />
 
     <div class="sigarh-page-header">
       <div class="sigarh-header-left">
@@ -8,7 +9,7 @@
         </div>
         <div>
           <h1 class="page-title">Roles del Sistema</h1>
-          <p class="page-subtitle">Roles y permisos de acceso por panel</p>
+          <p class="page-subtitle">Roles y permisos por panel</p>
         </div>
       </div>
       <NuxtLink
@@ -133,7 +134,7 @@
                   <span class="sigarh-item-name">{{ item.nombre }}</span>
                 </div>
               </td>
-              <td><span class="badge badge--neutral">{{ item.panel }}</span></td>
+              <td><span class="badge badge--neutral">{{ item.panel === 'app' ? 'Hospitalario' : 'SIGARH' }}</span></td>
               <td style="color: var(--ink-soft); font-size: 0.8125rem">{{ item.descripcion || '-' }}</td>
               <td>
                 <span class="badge" :class="item.is_active ? 'badge--ok' : 'badge--neutral'">

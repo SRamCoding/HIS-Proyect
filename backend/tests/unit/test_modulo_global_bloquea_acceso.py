@@ -16,7 +16,7 @@ def _ctx(db):
 
 
 def _request():
-    return Request({"type": "http", "path": "/app/laboratorio/examenes", "headers": []})
+    return Request({"type": "http", "method": "GET", "path": "/app/laboratorio/examenes", "headers": []})
 
 
 class ModuloGlobalBloqueaAccesoTests(unittest.IsolatedAsyncioTestCase):
@@ -30,7 +30,9 @@ class ModuloGlobalBloqueaAccesoTests(unittest.IsolatedAsyncioTestCase):
         dep = require_module_jwt("laboratorio")
 
         with patch("app.core.database.AsyncSessionLocal", return_value=_ctx(db)):
-            result = await dep(request=_request(), current_user={"panel": "app", "tenant_id": TENANT})
+            result = await dep(request=_request(), current_user={
+                "panel": "app", "tenant_id": TENANT, "active_modules": ["laboratorio"],
+            })
 
         self.assertEqual(result["tenant_id"], TENANT)
         query_text = str(db.execute.call_args.args[0])
@@ -56,7 +58,7 @@ class ModuloGlobalBloqueaAccesoTests(unittest.IsolatedAsyncioTestCase):
         dep = require_module_jwt("laboratorio")
 
         with patch("app.core.database.AsyncSessionLocal", return_value=_ctx(db)):
-            user = {"panel": "app", "tenant_id": TENANT}
+            user = {"panel": "app", "tenant_id": TENANT, "active_modules": ["laboratorio"]}
             result = await dep(request=_request(), current_user=user)
         self.assertIs(result, user)
 

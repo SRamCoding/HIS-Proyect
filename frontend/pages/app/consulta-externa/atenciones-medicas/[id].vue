@@ -56,6 +56,10 @@
           </div>
 
           <!-- Patient Info Card -->
+          <div v-if="!accesoClinico" class="form-card" role="alert" style="padding: 16px; margin-bottom: 16px">
+            <p>{{ motivoAcceso || 'No se pudo verificar el acceso para registrar esta atención.' }}</p>
+            <p>En SIGARH → Mantenimiento → Usuarios, asigna el perfil hospitalario del médico y vincula el empleado que figura en la programación. Ingresa con esa cuenta para registrar y cerrar la atención.</p>
+          </div>
           <section class="form-card">
             <div class="card-header">
               <div class="card-header-icon" style="background: var(--teal-soft)">
@@ -197,7 +201,7 @@
             </div>
 
             <div v-if="!firmado" class="form-actions-sub">
-              <button class="btn-secondary" :disabled="guardandoAntecedentes" @click="guardarAntecedentes">
+              <button class="btn-secondary" :disabled="!accesoClinico || guardandoAntecedentes" @click="guardarAntecedentes">
                 <UIcon v-if="guardandoAntecedentes" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
                 <UIcon v-else name="i-heroicons-check" class="w-4 h-4" />
                 {{ guardandoAntecedentes ? 'Guardando...' : 'Guardar Antecedentes' }}
@@ -205,6 +209,7 @@
             </div>
           </section>
 
+          <p v-if="existeAtencion && !atencion.antecedentes_documentados" role="note">Esta atención antigua no conserva antecedentes por consulta. No se reconstruyen con los datos actuales del paciente.</p>
           <!-- Signos Vitales Card (read-only) -->
           <section class="form-card">
             <div class="card-header">
@@ -286,6 +291,10 @@
                 <span v-if="errors.motivo_consulta" class="error-message">{{ errors.motivo_consulta }}</span>
               </div>
 
+              <div class="form-group full-width">
+                <label class="form-label">Enfermedad actual / Anamnesis</label>
+                <textarea v-model="form.enfermedad_actual" class="input-clinical" rows="4" :disabled="firmado" placeholder="Inicio, tiempo de enfermedad, síntomas, evolución y funciones biológicas relevantes" />
+              </div>
               <div class="form-group full-width">
                 <label class="form-label">Examen Clínico</label>
                 <div class="input-wrapper">
@@ -380,22 +389,31 @@
                     <option value="ALTA">Alta / Domicilio</option>
                     <option value="HOSPITALIZACION">Hospitalización</option>
                     <option value="REFERENCIA">Referencia</option>
-                    <option value="INTERCONSULTA">Interconsulta</option>
-                    <option value="LABORATORIO">Laboratorio</option>
-                    <option value="IMAGEN">Imágenes</option>
-                    <option value="FARMACIA">Farmacia</option>
                   </select>
                 </div>
               </div>
             </div>
           </section>
 
+          <section class="form-card">
+            <h3 class="card-title">Órdenes clínicas</h3>
+            <p class="card-subtitle">Selecciona las prestaciones necesarias y guarda antes de generar sus documentos. Pueden combinarse con el destino del paciente.</p>
+            <label v-for="p in ['FARMACIA', 'LABORATORIO', 'IMAGEN', 'INTERCONSULTA']" :key="p" style="display: block; margin: 12px">
+              <input v-model="form.prestaciones" type="checkbox" :value="p" :disabled="firmado" /> {{ getDestinoLabel(p) }}
+            </label>
+            <p v-if="!existeAtencion || seleccionSinGuardar" class="warning-message" role="status">Guarda la atención para habilitar las órdenes seleccionadas.</p>
+            <button v-if="!firmado" class="btn-secondary" :disabled="!accesoClinico || guardando" @click="guardar">{{ guardando ? 'Guardando...' : 'Guardar y habilitar órdenes' }}</button>
+            <div v-if="form.destino_atencion === 'ALTA'">
+              <label class="form-label">Indicaciones de alta</label>
+              <textarea v-model="form.indicaciones_alta" class="input-clinical" rows="3" :disabled="firmado" placeholder="Indicaciones, seguimiento y signos de alarma según la evaluación médica" />
+            </div>
+          </section>
           <!-- ============================================ -->
           <!-- RECETA DE FARMACIA (Componente) -->
           <!-- ============================================ -->
-          <AtencionMedicaRecetaFarmacia
-            v-if="form.destino_atencion === 'FARMACIA' && existeAtencion"
-            :cita-id="citaId"
+          <RecetaFarmacia
+            v-if="(atencion.prestaciones || []).includes('FARMACIA') && existeAtencion"
+            :cita-id="citaId" :solo-lectura="firmado || !accesoClinico || seleccionSinGuardar"
             :receta-existente="recetaExistente"
             @receta-generada="recetaExistente = $event"
             @error="error = $event"
@@ -404,8 +422,8 @@
           <!-- ============================================ -->
           <!-- HOSPITALIZACIÓN (Componente) -->
           <!-- ============================================ -->
-          <AtencionMedicaHospitalizacion 
-            v-if="form.destino_atencion === 'HOSPITALIZACION' && existeAtencion"
+          <Hospitalizacion
+            v-if="atencion.destino_atencion === 'HOSPITALIZACION' && existeAtencion"
             :cita-id="citaId"
             :hospitalizacion-existente="hospitalizacionExistente"
             :camas-disponibles="camasDisponibles"
@@ -415,18 +433,22 @@
             @error="error = $event"
           />
 
-          <AtencionMedicaOrdenLaboratorio
-  v-if="form.destino_atencion === 'LABORATORIO' && existeAtencion"
-  :cita-id="citaId"
+          <OrdenLaboratorio
+  v-if="(atencion.prestaciones || []).includes('LABORATORIO') && existeAtencion"
+  :cita-id="citaId" :solo-lectura="firmado || !accesoClinico || seleccionSinGuardar"
   @generada="exito = 'Orden de laboratorio generada correctamente'"
 />
 
 
-<AtencionMedicaOrdenImagen v-if="form.destino_atencion === 'IMAGEN' && existeAtencion" :cita-id="citaId" @generada="exito = 'Orden de imagen generada correctamente'" />
-<AtencionMedicaInterconsultaForm v-if="form.destino_atencion === 'INTERCONSULTA' && existeAtencion" :cita-id="citaId" @generada="exito = 'Interconsulta generada correctamente'" />
+<OrdenImagen v-if="(atencion.prestaciones || []).includes('IMAGEN') && existeAtencion" :cita-id="citaId" :solo-lectura="firmado || !accesoClinico || seleccionSinGuardar" @generada="exito = 'Orden de imagen generada correctamente'" />
+<InterconsultaForm v-if="(atencion.prestaciones || []).includes('INTERCONSULTA') && existeAtencion" :cita-id="citaId" :solo-lectura="firmado || !accesoClinico || seleccionSinGuardar" @generada="exito = 'Interconsulta generada correctamente'" />
 
-<AtencionMedicaReferenciaForm v-if="form.destino_atencion === 'REFERENCIA' && existeAtencion" :cita-id="citaId" @generada="exito = 'Referencia generada correctamente'" />
+<ReferenciaForm v-if="atencion.destino_atencion === 'REFERENCIA' && existeAtencion" :cita-id="citaId" :solo-lectura="firmado || !accesoClinico || seleccionSinGuardar" @generada="exito = 'Referencia generada correctamente'" />
 
+          <section class="form-card" role="note">
+            <p>El cierre interno identifica al médico y bloquea la edición. Todavía no incorpora una firma digital con certificado.</p>
+            <p v-if="atencion.cierre_evidencia">Responsable: {{ atencion.cierre_evidencia.medico_nombre }} · Colegiatura: {{ atencion.cierre_evidencia.colegiatura }}</p>
+          </section>
           <!-- Actions -->
           <section class="form-card" style="margin-bottom: 0;">
             <div class="form-actions">
@@ -441,7 +463,7 @@
                 <button
                   v-if="!firmado"
                   class="btn-primary"
-                  :disabled="guardando"
+                  :disabled="!accesoClinico || guardando || firmando"
                   @click="guardar"
                 >
                   <UIcon v-if="guardando" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
@@ -451,12 +473,12 @@
                 <button
                   v-if="existeAtencion && !firmado"
                   class="btn-firmar"
-                  :disabled="firmando"
+                  :disabled="!accesoClinico || firmando || guardando"
                   @click="firmarAtencion"
                 >
                   <UIcon v-if="firmando" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
                   <UIcon v-else name="i-heroicons-check-badge" class="w-4 h-4" />
-                  {{ firmando ? 'Firmando...' : 'Firmar Atención' }}
+                  {{ firmando ? 'Cerrando...' : 'Cerrar atención' }}
                 </button>
                 <span v-if="firmado" class="firmado-badge">
                   <UIcon name="i-heroicons-check-circle" class="w-4 h-4" style="color: var(--green)" />
@@ -484,7 +506,7 @@
               </li>
               <li class="info-item">
                 <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
-                <span>Los antecedentes se guardan en el perfil del paciente</span>
+                <span>Los antecedentes quedan documentados en esta atención</span>
               </li>
               <li class="info-item">
                 <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
@@ -496,7 +518,7 @@
               </li>
               <li class="info-item">
                 <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
-                <span>Si el destino es Farmacia, podrás generar la receta</span>
+                <span>Si seleccionas la prestación Farmacia, podrás generar la receta</span>
               </li>
               <li class="info-item">
                 <UIcon name="i-heroicons-check-circle" class="info-item-icon" style="color: var(--teal)" />
@@ -601,6 +623,8 @@ const guardandoAntecedentes = ref(false)
 const error = ref('')
 const exito = ref('')
 const existeAtencion = ref(false)
+const accesoClinico = ref(false)
+const motivoAcceso = ref('')
 const atencion = ref<any>({})
 const patientId = ref('')
 
@@ -615,6 +639,9 @@ const errors = reactive({
 // Formulario
 const form = reactive({
   motivo_consulta: '',
+  enfermedad_actual: '',
+  prestaciones: [] as string[],
+  indicaciones_alta: '',
   examen_clinico: '',
   plan_tratamiento: '',
   observaciones: '',
@@ -659,6 +686,8 @@ const filledFields = computed(() => {
 const totalFields = 5
 
 // Helpers
+const seleccionSinGuardar = computed(() => form.destino_atencion !== atencion.value.destino_atencion || JSON.stringify([...form.prestaciones].sort()) !== JSON.stringify([...(atencion.value.prestaciones || [])].sort()))
+
 const getDestinoLabel = (destino: string) => {
   const map: Record<string, string> = {
     'ALTA': 'Alta / Domicilio',
@@ -679,12 +708,14 @@ const truncateText = (text: string, max: number) => {
 
 // CIE-10
 function buscarCie10Debounced() {
+  const termino = buscaCie10.value.trim()
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(async () => {
     if (buscaCie10.value.length < 2) { resultadosCie10.value = []; return }
     try {
-      resultadosCie10.value = await api(`/app/consulta-externa/atenciones-medicas/cie10/buscar?q=${encodeURIComponent(buscaCie10.value)}`)
-    } catch (e) { /* silencioso */ }
+      const resultados = await api<any[]>(`/app/consulta-externa/atenciones-medicas/cie10/buscar?q=${encodeURIComponent(termino)}`)
+      if (buscaCie10.value.trim() === termino) resultadosCie10.value = resultados
+    } catch { error.value = 'No se pudo consultar el catálogo CIE-10. Reintenta la búsqueda.' }
   }, 300)
 }
 
@@ -711,7 +742,7 @@ function handleAltaRegistrada(data: any) {
 // Validación
 function validar(): boolean {
   let valid = true
-  if (!form.motivo_consulta) {
+  if (!form.motivo_consulta.trim()) {
     errors.motivo_consulta = 'El motivo de consulta es obligatorio'
     valid = false
   } else {
@@ -722,60 +753,63 @@ function validar(): boolean {
 
 // Funciones
 async function guardarAntecedentes() {
+  if (!accesoClinico.value) { error.value = motivoAcceso.value; return }
   guardandoAntecedentes.value = true
   error.value = ''
   exito.value = ''
   try {
-    await api(`/app/admision/${patientId.value}`, { method: 'PATCH', body: antecedentes })
+    if (firmado.value) throw new Error('Atención cerrada')
+    if (!existeAtencion.value) { await guardar(); return }
+    atencion.value = await api(`/app/consulta-externa/atenciones-medicas/${citaId}`, { method: 'PATCH', body: { antecedentes: { ...antecedentes } } })
     exito.value = 'Antecedentes actualizados correctamente'
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al guardar antecedentes'
+    error.value = apiErr(e, 'Error al guardar antecedentes')
   } finally {
     guardandoAntecedentes.value = false
   }
 }
 
 async function guardar() {
-  if (!validar()) return
+  if (!accesoClinico.value || guardando.value || firmando.value || firmado.value || !validar()) return false
 
   error.value = ''
   exito.value = ''
   guardando.value = true
   try {
-    if (existeAtencion.value) {
-      atencion.value = await api(`/app/consulta-externa/atenciones-medicas/${citaId}`, { method: 'PATCH', body: form })
-    } else {
-      const payload = {
-        ...form,
-        diagnosticos: diagnosticosSeleccionados.value.map((d) => ({
-          diagnostico_cie10_id: d.diagnostico_cie10_id,
-          tipo: d.tipo
-        }))
-      }
-      atencion.value = await api(`/app/consulta-externa/atenciones-medicas/${citaId}`, { method: 'POST', body: payload })
-      existeAtencion.value = true
+    const payload = { ...form, antecedentes: { ...antecedentes }, diagnosticos: diagnosticosSeleccionados.value.map(d => ({ diagnostico_cie10_id: d.diagnostico_cie10_id, tipo: d.tipo })) }
+    atencion.value = await api(`/app/consulta-externa/atenciones-medicas/${citaId}`, { method: existeAtencion.value ? 'PATCH' : 'POST', body: payload })
+    existeAtencion.value = true
+    if (form.destino_atencion === 'HOSPITALIZACION') {
+      try {
+        camasDisponibles.value = await api('/app/consulta-externa/hospitalizacion/camas-disponibles')
+        especialidadesIngreso.value = await api('/app/consulta-externa/programacion-medica/especialidades')
+      } catch (e) { error.value = apiErr(e, 'No se pudieron cargar las camas disponibles') }
     }
     exito.value = 'Guardado correctamente'
     setTimeout(() => { exito.value = '' }, 3000)
+    return true
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al guardar'
+    error.value = apiErr(e, 'Error al guardar')
+    return false
   } finally {
     guardando.value = false
   }
 }
 
 async function firmarAtencion() {
+  if (firmando.value || guardando.value || firmado.value) return
+  if (!await guardar()) return
   firmando.value = true
   error.value = ''
   exito.value = ''
   try {
     atencion.value = await api(`/app/consulta-externa/atenciones-medicas/${citaId}/firmar`, { method: 'POST' })
-    exito.value = '✅ Atención firmada correctamente. Ya no se puede editar.'
+    exito.value = '✅ Atención cerrada correctamente. Ya no se puede editar.'
     setTimeout(() => {
       navigateTo(link('/app/consulta-externa/atenciones-medicas'))
     }, 2000)
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al firmar'
+    error.value = apiErr(e, 'Error al firmar')
   } finally {
     firmando.value = false
   }
@@ -785,6 +819,9 @@ async function firmarAtencion() {
 onMounted(async () => {
   try {
     const cita = await api(`/app/consulta-externa/citas/${citaId}`)
+    const acceso = await api<{ permitido: boolean; motivo: string }>(`/app/consulta-externa/atenciones-medicas/${citaId}/acceso`)
+    accesoClinico.value = acceso.permitido
+    motivoAcceso.value = acceso.motivo
     patientId.value = cita.patient_id
 
     try {
@@ -792,6 +829,9 @@ onMounted(async () => {
       existeAtencion.value = true
       atencion.value = data
       form.motivo_consulta = data.motivo_consulta
+      form.enfermedad_actual = data.enfermedad_actual || ''
+      form.prestaciones = data.prestaciones || []
+      form.indicaciones_alta = data.indicaciones_alta || ''
       form.examen_clinico = data.examen_clinico || ''
       form.plan_tratamiento = data.plan_tratamiento || ''
       form.observaciones = data.observaciones || ''
@@ -810,7 +850,7 @@ onMounted(async () => {
       antecedentes.antecedente_otros = data.antecedente_otros || ''
 
       // Cargar Receta si aplica
-      if (data.destino_atencion === 'FARMACIA') {
+      if ((data.prestaciones || []).includes('FARMACIA')) {
         try {
           recetaExistente.value = await api(`/app/consulta-externa/farmacia/recetas/${citaId}`)
         } catch { /* aun no tiene receta generada */ }
@@ -834,9 +874,9 @@ onMounted(async () => {
           paciente_dni: cita.paciente_dni,
           medico_nombre: cita.medico_nombre,
           especialidad_nombre: cita.especialidad_nombre,
-          triaje: null
+          triaje: await api(`/app/consulta-externa/triaje/${citaId}`).catch(() => null)
         }
-        const paciente = await api(`/app/admision/${cita.patient_id}`)
+        const paciente = await api(`/app/consulta-externa/paciente-consulta/${citaId}`)
         atencion.value.paciente_edad = paciente.age
         antecedentes.antecedente_quirurgico = paciente.antecedente_quirurgico || ''
         antecedentes.antecedente_patologico = paciente.antecedente_patologico || ''
@@ -849,11 +889,11 @@ onMounted(async () => {
           atencion.value.triaje = triajeData
         } catch { /* sin triaje */ }
       } else {
-        error.value = e?.data?.detail || 'Error al cargar la atención'
+        error.value = apiErr(e, 'Error al cargar la atención')
       }
     }
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al cargar la cita'
+    error.value = apiErr(e, 'Error al cargar la cita')
   } finally {
     cargando.value = false
   }

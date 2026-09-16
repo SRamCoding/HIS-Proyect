@@ -13,6 +13,14 @@ def _generar_numero_cuenta(secuencia: int) -> str:
     return f"EMG-{datetime.utcnow().year}-{secuencia:06d}"
 
 
+async def get_seguros(db: AsyncSession, tenant_id: uuid.UUID) -> list[dict]:
+    from app.sigarh.config_financiera.models import Seguro
+    result = await db.execute(
+        select(Seguro).where(Seguro.tenant_id == tenant_id, Seguro.is_active == True).order_by(Seguro.nombre)
+    )
+    return [{"id": s.id, "nombre": s.nombre} for s in result.scalars().all()]
+
+
 async def create_admision(db: AsyncSession, tenant_id: uuid.UUID, data: AdmisionEmergenciaCreate) -> dict:
     paciente_valido = await db.scalar(
         select(Patient.id).where(Patient.id == data.patient_id, Patient.tenant_id == tenant_id)
@@ -153,7 +161,8 @@ async def get_atencion_emergencia(db: AsyncSession, tenant_id: uuid.UUID, admisi
         "paciente_dni": paciente.dni, "motivo_consulta": atencion.motivo_consulta,
         "examen_clinico": atencion.examen_clinico, "plan_tratamiento": atencion.plan_tratamiento,
         "observaciones": atencion.observaciones, "destino_atencion": atencion.destino_atencion,
-        "estado": atencion.estado, "firmado_at": atencion.firmado_at, "diagnosticos": diagnosticos,
+        "estado": atencion.estado, "firmado_at": atencion.firmado_at, "firmado_por_id": atencion.firmado_por_id,
+        "cierre_evidencia": atencion.cierre_evidencia, "diagnosticos": diagnosticos,
         "triaje": {
             "prioridad": triaje.prioridad, "pulso": triaje.pulso, "temperatura": triaje.temperatura,
             "presion_sistolica": triaje.presion_sistolica, "presion_diastolica": triaje.presion_diastolica,
@@ -177,7 +186,26 @@ async def update_atencion_emergencia(db: AsyncSession, tenant_id: uuid.UUID, adm
     return await get_atencion_emergencia(db, tenant_id, admision_id)
 
 
-async def firmar_atencion_emergencia(db: AsyncSession, tenant_id: uuid.UUID, admision_id: uuid.UUID) -> dict | None:
+async def validar_autor_clinico_emergencia(db: AsyncSession, tenant_id: uuid.UUID, user: dict):
+    """Mismo criterio que validar_autor_clinico de Consulta Externa (cuenta médica
+    vinculada, profesión MED, colegiatura habilitada) -- Emergencia no tiene una
+    ProgramacionMedica que preasigne al médico, así que el médico responsable
+    queda fijado recién al firmar: quien firma es quien asume la atención."""
+    from app.auth.models import User
+    from app.sigarh.rrhh.models import Empleado
+    from app.sigarh.mantenimiento.models import Profesion
+    usuario = await db.scalar(select(User).where(User.id == uuid.UUID(user["sub"]), User.is_active == True)) if user else None
+    if not usuario or usuario.panel != "app" or usuario.role != "medico" or not usuario.empleado_id:
+        raise ValueError("La atención requiere una cuenta médica vinculada al empleado desde SIGARH > Mantenimiento > Usuarios.")
+    medico = await db.scalar(select(Empleado).where(Empleado.id == usuario.empleado_id, Empleado.tenant_id == tenant_id, Empleado.is_active == True))
+    profesion = await db.scalar(select(Profesion.codigo).where(Profesion.id == medico.profesion_id, Profesion.tenant_id == tenant_id)) if medico else None
+    if not medico or profesion != "MED" or not medico.habilitado_colegio or not (medico.numero_cmp or medico.numero_colegiatura):
+        raise ValueError("Solo un médico con colegiatura y habilitación registrada puede firmar la atención.")
+    return usuario, medico
+
+
+async def firmar_atencion_emergencia(db: AsyncSession, tenant_id: uuid.UUID, admision_id: uuid.UUID, user: dict | None = None) -> dict | None:
+    import hashlib, json
     result = await db.execute(
         select(AtencionEmergencia, AdmisionEmergencia)
         .join(AdmisionEmergencia, AdmisionEmergencia.id == AtencionEmergencia.admision_id)
@@ -189,6 +217,14 @@ async def firmar_atencion_emergencia(db: AsyncSession, tenant_id: uuid.UUID, adm
         return None
     if atencion.estado == "firmado":
         raise ValueError("Esta atención ya está firmada")
+    usuario, medico = await validar_autor_clinico_emergencia(db, tenant_id, user)
+    contenido = {"motivo_consulta": atencion.motivo_consulta, "examen_clinico": atencion.examen_clinico,
+        "plan_tratamiento": atencion.plan_tratamiento, "destino_atencion": atencion.destino_atencion}
+    atencion.cierre_evidencia = {"tipo": "CIERRE_INTERNO_SIN_CERTIFICADO_DIGITAL", "usuario_id": str(usuario.id), "usuario_nombre": usuario.name,
+        "medico_id": str(medico.id), "medico_nombre": medico.nombre_completo, "colegiatura": medico.numero_cmp or medico.numero_colegiatura,
+        "contenido": contenido, "sha256": hashlib.sha256(json.dumps(contenido, sort_keys=True, ensure_ascii=False).encode()).hexdigest()}
+    atencion.medico_id = atencion.medico_id or medico.id
+    atencion.firmado_por_id = medico.id
     atencion.estado = "firmado"
     atencion.firmado_at = datetime.utcnow()
     finales = {"AMBULATORIA", "ALTA", "FALLECIDO"}
@@ -253,12 +289,25 @@ async def list_destinos_emergencia(db: AsyncSession, tenant_id: uuid.UUID, desti
     } for d, a, adm, patient in rows]
 
 
+# Destinos que generan un registro real en otro modulo al ser admitidos --
+# HOSPITALIZACION en Hospitalizacion, INTERCONSULTA en Hospitalizacion,
+# REFERENCIA en Referencias. Resolverlos aqui sin pasar por esos modulos
+# dejaria el destino en "completado" sin la hospitalizacion/interconsulta/
+# referencia real creada -- por eso resolver_destino_emergencia los rechaza.
+DESTINOS_CON_ADMISION_PROPIA = {"HOSPITALIZACION", "INTERCONSULTA", "REFERENCIA"}
+
+
 async def resolver_destino_emergencia(db: AsyncSession, tenant_id: uuid.UUID, destino_id: uuid.UUID, observacion: str | None) -> dict | None:
     destino = await db.scalar(select(DestinoEmergencia).where(DestinoEmergencia.id == destino_id, DestinoEmergencia.tenant_id == tenant_id))
     if not destino:
         return None
     if destino.estado == "completado":
         raise ValueError("El destino ya fue completado")
+    if destino.destino in DESTINOS_CON_ADMISION_PROPIA:
+        raise ValueError(
+            f"Los destinos de tipo {destino.destino} se resuelven admitiéndolos en su módulo "
+            "correspondiente (Hospitalización, Interconsultas o Referencias), no aquí."
+        )
     destino.estado = "completado"
     destino.observacion = observacion
     destino.resolved_at = datetime.utcnow()

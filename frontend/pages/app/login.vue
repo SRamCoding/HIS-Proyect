@@ -76,7 +76,7 @@
                 />
                 <input
                   v-model="form.email"
-                  type="email"
+                  type="text"
                   class="login-input"
                   placeholder="nombre@hospital.pe"
                   @keyup.enter="handleLogin"

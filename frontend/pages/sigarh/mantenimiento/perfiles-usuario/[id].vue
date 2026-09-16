@@ -23,7 +23,8 @@
       </div>
 
       <template v-else>
-        <SFormCard title="Configuracion del Perfil" subtitle="Actualiza los datos del perfil de usuario"
+        <SAccesosPanelInfo />
+      <SFormCard title="Configuracion del Perfil" subtitle="Actualiza los datos del perfil de usuario"
           icon="i-heroicons-cog-6-tooth" icon-bg="var(--purple-soft)" icon-color="var(--purple)" :error="error">
 
           <div class="form-group full-width">
@@ -39,8 +40,8 @@
             <div class="input-wrapper">
               <UIcon name="i-heroicons-shield-check" class="input-icon" />
               <select v-model="form.rol_sistema_id" class="input-clinical">
-                <option value="">Sin rol</option>
-                <option v-for="r in rolesSistema" :key="r.id" :value="r.id">{{ r.nombre }}</option>
+                <option value="">Seleccione un rol</option>
+                <option v-for="r in rolesSistema.filter(r => ['sigarh', 'app'].includes(r.panel) && r.is_active)" :key="r.id" :value="r.id">{{ r.nombre }} ({{ r.panel === 'app' ? 'Hospitalario' : 'SIGARH' }})</option>
               </select>
             </div>
             <p class="field-hint">Rol base para el perfil</p>
@@ -123,7 +124,7 @@
     </template>
 
     <template #sidebar>
-      <SWidgetInfo :items="['Los perfiles definen los permisos de usuario', 'Pueden estar asociados a un rol del sistema', 'Los modulos seleccionados determinan el acceso', 'Los perfiles inactivos no se pueden asignar']" />
+      <SWidgetInfo :items="['Los perfiles definen los permisos de usuario', 'Cada perfil requiere un rol SIGARH activo', 'Los modulos seleccionados determinan el acceso', 'Los perfiles inactivos no se pueden asignar']" />
       <SWidgetSummary :items="[
         { label: 'Nombre', value: form.nombre },
         { label: 'Rol', value: rolNombre || 'Sin rol' },
@@ -180,7 +181,7 @@ const cubre = (codigos: string[], codigo: string) => {
 }
 
 const modulosDisponibles = computed(() => {
-  const habilitados = todosModulos.value.filter((m: any) => authStore.user?.active_modules?.includes(m.code))
+  const habilitados = todosModulos.value
   const rol = rolesSistema.value.find(r => r.id === form.rol_sistema_id)
   if (!rol || !rol.modulos_permitidos?.length) return []
   return habilitados
@@ -193,7 +194,8 @@ const modulosDisponibles = computed(() => {
 
 watch(() => form.rol_sistema_id, () => {
   const modulos = modulosDisponibles.value
-  form.modulos_acceso = form.modulos_acceso.filter(c => modulos.some((m: any) => cubre([c], m.code) || m.submodulos?.some((s: any) => `${m.code}.${s.code}` === c)))
+  const rol = rolesSistema.value.find(r => r.id === form.rol_sistema_id)
+  form.modulos_acceso = form.modulos_acceso.filter(c => cubre(rol?.modulos_permitidos || [], c) && modulos.some((m: any) => cubre([c], m.code) || m.submodulos?.some((s: any) => `${m.code}.${s.code}` === c)))
 })
 
 // --- Arbol de modulos/submodulos (igual que en Rol del Sistema) ---
@@ -270,10 +272,12 @@ const toggleSub = (mod: any, sub: any) => {
 const todosSeleccionados = computed(() => modulosDisponibles.value.every((m: any) => estadoModulo(m) === 'all'))
 
 const toggleTodosModulos = () => {
-  form.modulos_acceso = todosSeleccionados.value ? [] : modulosDisponibles.value.map((m: any) => m.code)
+  const rol = rolesSistema.value.find(r => r.id === form.rol_sistema_id)
+  form.modulos_acceso = todosSeleccionados.value ? [] : modulosDisponibles.value.flatMap((m: any) => cubre(rol?.modulos_permitidos || [], m.code) ? [m.code] : (m.submodulos || []).map((s: any) => `${m.code}.${s.code}`))
 }
 
 const handleSave = async () => {
+  if (!form.rol_sistema_id) { error.value = 'Seleccione un rol activo'; return }
   if (!form.nombre.trim()) { error.value = 'El nombre del perfil es requerido'; return }
   saving.value = true
   error.value = ''
@@ -302,7 +306,7 @@ onMounted(async () => {
     const [data, roles, modulos] = await Promise.all([
       api<any>(`/sigarh/mantenimiento/perfiles-usuario/${id.value}`),
       api<any[]>('/sigarh/mantenimiento/roles-sistema'),
-      api<any[]>('/sigarh/mantenimiento/modulos-catalogo'),
+      Promise.all([api<any[]>('/sigarh/mantenimiento/modulos-catalogo?panel=sigarh'), api<any[]>('/sigarh/mantenimiento/modulos-catalogo?panel=app')]).then(r => r.flat()),
     ])
     form.nombre = data.nombre
     form.rol_sistema_id = data.rol_sistema_id || ''

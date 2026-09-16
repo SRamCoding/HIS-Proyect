@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, Integer, Float, Text, ForeignKey
+from sqlalchemy import String, Boolean, DateTime, Integer, Float, Text, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -83,6 +83,8 @@ class AtencionEmergencia(Base):
 
     estado: Mapped[str] = mapped_column(String(20), default="borrador")  # borrador, firmado
     firmado_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    firmado_por_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="SET NULL"), nullable=True)
+    cierre_evidencia: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

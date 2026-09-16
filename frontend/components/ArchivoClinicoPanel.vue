@@ -9,7 +9,9 @@
         <div>
           <p class="breadcrumb-label" style="color: var(--ink-soft); font-size: 0.75rem;">Archivo Clínico</p>
           <h1 class="page-title">{{ title }}</h1>
-          <p class="page-subtitle">Busca una historia para consultar su ubicación, digitalización y traslados.</p>
+          <p class="page-subtitle">
+            {{ props.soloDigitalizadas ? 'Historias clínicas ya digitalizadas y disponibles en electrónico.' : 'Busca una historia para consultar su ubicación, digitalización y traslados.' }}
+          </p>
         </div>
       </div>
       <button class="btn-secondary" :disabled="loading || busy" @click="load()">
@@ -56,7 +58,7 @@
               />
             </div>
           </div>
-          <div class="filter-field">
+          <div v-if="!props.soloDigitalizadas" class="filter-field">
             <label class="form-label">Digitalización</label>
             <div class="input-wrapper">
               <UIcon name="i-heroicons-document" class="input-icon" />
@@ -316,12 +318,12 @@ interface Page<T> {
   page_size: number
 }
 
-defineProps<{ title: string }>()
+const props = defineProps<{ title: string; soloDigitalizadas?: boolean }>()
 
 const { api } = useApi()
 
 // State
-const filters = reactive({ q: '', location: '', digitized: '' })
+const filters = reactive({ q: '', location: '', digitized: props.soloDigitalizadas ? 'true' : '' })
 const applied = ref({ ...filters })
 const items = ref<Historia[]>([])
 const total = ref(0)
@@ -405,7 +407,7 @@ function search() {
 }
 
 function clearFilters() {
-  Object.assign(filters, { q: '', location: '', digitized: '' })
+  Object.assign(filters, { q: '', location: '', digitized: props.soloDigitalizadas ? 'true' : '' })
   search()
 }
 

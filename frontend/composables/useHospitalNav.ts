@@ -8,7 +8,6 @@ export const useHospitalNav = () => {
     const separator = path.includes('?') ? '&' : '?'
     return `${path}${separator}tenant=${tenantId.value}`
   }
-  const activo = (path: string) => ({ 'nav-active': route.path === path })
   const tiene = (code: string) => authStore.user?.active_modules?.includes(code) ?? false
   const tieneAlguno = (codes: string[]) => codes.some(c => tiene(c))
 
@@ -22,7 +21,6 @@ export const useHospitalNav = () => {
         { label: 'Pacientes', path: '/app/admision/pacientes', icon: 'i-heroicons-user' },
         { label: 'Altas', path: '/app/admision/altas-pacientes', icon: 'i-heroicons-arrow-right-on-rectangle' },
         { label: 'Agendamiento', path: '/app/admision/agendamiento', icon: 'i-heroicons-calendar-days' },
-        { label: 'Citas por Confirmar', path: '/app/admision/agendamiento/pendientes', icon: 'i-heroicons-clock' },
         { label: 'Anuncios', path: '/app/admision/anuncios', icon: 'i-heroicons-speaker-wave' },
         { label: 'Programacion Medica', path: '/app/admision/programacion-medica', icon: 'i-heroicons-clipboard-document-list' },
         { label: 'Lista Espera', path: '/app/admision/lista-espera', icon: 'i-heroicons-clock' },
@@ -47,6 +45,7 @@ export const useHospitalNav = () => {
       modulo: 'consulta_externa',
       icon: 'i-heroicons-clipboard-document-check',
       items: [
+        { label: 'Citas por Confirmar', path: '/app/consulta-externa/citas-por-confirmar', icon: 'i-heroicons-clock' },
         { label: 'Registro de Triaje', path: '/app/consulta-externa/triaje', icon: 'i-heroicons-heart' },
         { label: 'Registro de atenciones', path: '/app/consulta-externa/atenciones-medicas', icon: 'i-heroicons-clipboard-document-check' },
         { label: 'Ficha Covid', path: '/app/consulta-externa/ficha-covid', icon: 'i-heroicons-document-text' },
@@ -61,9 +60,17 @@ export const useHospitalNav = () => {
       items: [
         { label: 'Admisión de emergencia', path: '/app/emergencia/admisiones', icon: 'i-heroicons-exclamation-triangle' },
         { label: 'Atenciones', path: '/app/emergencia/atenciones', icon: 'i-heroicons-clipboard-document-check' },
-        { label: 'ObservaciÃ³n / HospitalizaciÃ³n', path: '/app/emergencia/observacion', icon: 'i-heroicons-building-office-2' },
+        { label: 'Observación / Hospitalización', path: '/app/emergencia/observacion', icon: 'i-heroicons-building-office-2' },
         { label: 'Interconsultas', path: '/app/emergencia/interconsultas', icon: 'i-heroicons-arrow-path-rounded-square' },
         { label: 'Referencias', path: '/app/emergencia/referencias', icon: 'i-heroicons-arrow-top-right-on-square' },
+      ]
+    },
+    {
+      label: 'Referencias',
+      modulo: 'referencias',
+      icon: 'i-heroicons-arrow-top-right-on-square',
+      items: [
+        { label: 'Referencias', path: '/app/referencias/referencias', icon: 'i-heroicons-arrow-top-right-on-square' },
       ]
     },
     {
@@ -189,7 +196,7 @@ export const useHospitalNav = () => {
       modulo: 'facturacion',
       icon: 'i-heroicons-receipt-percent',
       items: [
-        { label: 'Estado de Cuenta', path: '/app/facturacion/estado-cuenta', icon: 'i-heroicons-document-text' },
+        { label: 'Estado de Cuenta', path: '/app/caja/cuentas', icon: 'i-heroicons-document-text' },
       ]
     },
     {
@@ -301,14 +308,28 @@ export const useHospitalNav = () => {
       modulo: 'seguimiento',
       icon: 'i-heroicons-magnifying-glass-circle',
       items: [
-        { label: 'Seguimiento', path: '/app/seguimiento/seguimiento', icon: 'i-heroicons-magnifying-glass-circle' },
+        { label: 'Seguimiento', path: '/app/hospitalizacion/seguimiento-paciente', icon: 'i-heroicons-magnifying-glass-circle' },
       ]
     },
   ])
 
   const gruposVisibles = computed(() =>
-    grupos.value.filter(g => tieneAlguno([g.modulo]))
+    grupos.value.map(g => ({ ...g, items: g.items.filter(i => hospitalPuede(authStore.user?.active_modules || [], hospitalPermiso(i.path) || g.modulo)) })).filter(g => g.items.length)
   )
 
-  return { tenantId, link, activo, tieneAlguno, grupos, gruposVisibles }
+  // Misma idea que rutaMenuActual en useSigarhNav: resuelve a que item del
+  // menu corresponde la ruta actual aunque sea una sub-ruta (crear/detalle,
+  // ej. "/app/farmacia/recetas/abc123" -> "/app/farmacia/recetas"), tomando
+  // el path mas largo que calce como prefijo. Antes la comparacion exacta
+  // dejaba sin resaltar (y sin grupo abierto) cualquier pagina de crear o
+  // detalle, que es la mayoria de las paginas reales del panel.
+  const rutasVisibles = computed(() => gruposVisibles.value.flatMap(g => g.items.map(i => i.path)))
+  const rutaMenuActual = computed(() => route.path === '/app'
+    ? '/app'
+    : rutasVisibles.value
+        .filter(path => route.path === path || route.path.startsWith(`${path}/`))
+        .sort((a, b) => b.length - a.length)[0] || '')
+  const activo = (path: string) => ({ 'nav-active': rutaMenuActual.value === path })
+
+  return { tenantId, link, activo, tieneAlguno, grupos, gruposVisibles, rutaMenuActual }
 }

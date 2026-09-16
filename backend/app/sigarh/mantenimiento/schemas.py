@@ -297,7 +297,8 @@ class GuardiaValorizadaResponse(BaseModel):
 class RolSistemaCreate(Entrada):
     codigo: Annotated[str, Field(min_length=1, max_length=100)]
     nombre: Nombre
-    panel: Literal["sigarh"] = "sigarh"
+    panel: Literal["sigarh", "app"] = "sigarh"
+    tipo_usuario: Literal['administrador', 'medico', 'enfermera', 'farmaceutico', 'laboratorista', 'cajero', 'tuasis'] | None = None
     modulo_requerido: str | None = None
     modulos_permitidos: list[str] = []
     grupos_ocupacionales_permitidos: list[uuid.UUID] = []
@@ -305,6 +306,12 @@ class RolSistemaCreate(Entrada):
     alcance_global: bool = False
     descripcion: str | None = None
     is_active: bool = True
+
+    @model_validator(mode='after')
+    def tipo_hospitalario(self):
+        if self.panel == 'app' and not self.tipo_usuario:
+            raise ValueError('Seleccione el tipo de cuenta hospitalaria')
+        return self
 
     @field_validator("permisos_accion")
     @classmethod
@@ -315,6 +322,7 @@ class RolSistemaCreate(Entrada):
 
 
 class RolSistemaResponse(BaseModel):
+    tipo_usuario: str | None = None
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -340,6 +348,7 @@ class PerfilUsuarioCreate(Entrada):
 
 
 class PerfilUsuarioResponse(BaseModel):
+    panel: str = 'sigarh'
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -400,6 +409,7 @@ def validar_password(value: str) -> str:
 
 
 class UsuarioSigarhCreate(Entrada):
+    panel: Literal['sigarh', 'app'] = 'sigarh'
     empleado_id: uuid.UUID | None = None
     perfil_id: uuid.UUID
     username: Annotated[
@@ -430,6 +440,7 @@ class UsuarioSigarhCreate(Entrada):
 
 
 class UsuarioSigarhResponse(BaseModel):
+    panel: str = 'sigarh'
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     tenant_id: uuid.UUID

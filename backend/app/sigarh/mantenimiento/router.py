@@ -81,14 +81,16 @@ async def servicio_estructura(request: Request, id: uuid.UUID, data: ServicioEst
 
 # Rutas auxiliares antes de los identificadores dinámicos.
 @router.get("/modulos-catalogo")
-async def modulos(request: Request, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+async def modulos(request: Request, panel: str = 'sigarh', db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     from app.tenants.modulos.submodulos import submodulos_de
 
     tid = await autorizar(request, db, user, "roles-sistema")
+    if panel not in {'sigarh','app'}: raise HTTPException(422, 'Panel inválido')
+    from app.auth.hospital_access import RECURSOS
     return [{
         "id": str(m.id), "code": m.code, "name": m.name, "category": m.category, "is_active": m.is_active,
-        "submodulos": submodulos_de(m.code),
-    } for m in await svc.modulos_habilitados(db, tid)]
+        "submodulos": submodulos_de(m.code) if panel == 'sigarh' else [{'code': r['code'].split('.')[1], 'label': r['label']} for r in RECURSOS if r['code'].startswith(m.code + '.')],
+    } for m in await svc.modulos_habilitados(db, tid, panel)]
 
 
 @router.get("/personal-catalogo")
@@ -118,25 +120,64 @@ def registrar(recurso, modelo, entrada, salida):
                            q: str | None = Query(None, max_length=255), is_active: bool | None = None,
                            db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
         tid = await autorizar(request, db, current_user, recurso)
-        return [svc.serializar(i) for i in await svc.listar(db, modelo, tid, offset, limit, q, is_active)]
+        resultado = [svc.serializar(i) for i in await svc.listar(db, modelo, tid, offset, limit, q, is_active)]
+        if recurso == 'perfiles-usuario':
+            from .models import RolSistema
+            roles = {r.id:r.panel for r in (await db.scalars(select(RolSistema).where(RolSistema.tenant_id == tid))).all()}
+            for perfil in resultado: perfil['panel'] = roles.get(uuid.UUID(str(perfil['rol_sistema_id'])), 'sigarh') if perfil.get('rol_sistema_id') else 'sigarh'
+        if recurso == 'usuarios':
+            from app.auth.models import User
+            from .hospital_users import salida
+            query = select(User).where(User.panel == 'app')
+            if is_active is not None: query = query.where(User.is_active == is_active)
+            if q: query = query.where(User.email.ilike('%' + q + '%'))
+            resultado += [salida(u, tid) for u in (await db.scalars(query.offset(offset).limit(limit))).all()]
+        return resultado
 
     async def crear_item(request: Request, data: entrada, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):  # type: ignore[valid-type]
         tid = await autorizar(request, db, current_user, recurso, True)
+        if recurso == 'usuarios' and data.panel == 'app':
+            from .hospital_users import guardar
+            return await guardar(db, tid, data, current_user)
         return await svc.guardar(db, recurso, tid, data, current_user, ip=ip(request))
 
     async def obtener_item(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
         tid = await autorizar(request, db, current_user, recurso)
+        if recurso == 'usuarios':
+            from app.auth.models import User
+            from .hospital_users import salida
+            cuenta = await db.get(User, id)
+            if cuenta and cuenta.panel == 'app': return salida(cuenta, tid)
         item = await svc.obtener(db, modelo, id, tid)
         if not item:
             raise HTTPException(404, "Registro no encontrado")
+        if recurso == 'perfiles-usuario':
+            from .models import RolSistema
+            rol = await db.get(RolSistema, item.rol_sistema_id) if item.rol_sistema_id else None
+            return {**svc.serializar(item), 'panel': rol.panel if rol else 'sigarh'}
         return svc.serializar(item)
 
     async def actualizar_item(request: Request, id: uuid.UUID, data: parcial, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):  # type: ignore[valid-type]
         tid = await autorizar(request, db, current_user, recurso, True)
+        if recurso == 'usuarios':
+            from app.auth.models import User
+            from .hospital_users import guardar
+            cuenta = await db.get(User, id)
+            if cuenta and cuenta.panel == 'app': return await guardar(db, tid, data, current_user, cuenta)
         return await svc.guardar(db, recurso, tid, data, current_user, id, ip(request))
 
     async def eliminar_item(request: Request, id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
         tid = await autorizar(request, db, current_user, recurso, True)
+        if recurso == 'usuarios':
+            from app.auth.models import User
+            cuenta = await db.get(User, id)
+            if cuenta and cuenta.panel == 'app':
+                # El cambio de is_active ya queda auditado automaticamente por
+                # el listener before_flush/after_flush (app/core/audit.py) al
+                # hacer commit -- no hace falta un registro manual aparte.
+                cuenta.is_active = False
+                await db.commit()
+                return {'ok': True}
         return await svc.eliminar(db, recurso, tid, id, current_user, ip(request))
 
     router.add_api_route(f"/{recurso}", listar_items, methods=["GET"], response_model=list[salida], name=f"listar_{recurso}")

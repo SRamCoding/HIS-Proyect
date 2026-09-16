@@ -1,50 +1,43 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Request
+from datetime import date
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
-from app.tenants.entitlements import require_module_jwt
+from app.tenants.entitlements import require_any_module_jwt
+from app.hospital.his import schemas, service
 
 router = APIRouter()
-
-MODULO_CODIGO = "his"
-
-
-def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
-    tid = current_user.get("tenant_id") or request.headers.get("X-Tenant-ID")
-    if not tid:
-        raise HTTPException(403, detail="Sin tenant asignado")
-    return uuid.UUID(str(tid))
+his_user = require_any_module_jwt("his")
 
 
-@router.get("/registro-microred", summary="Estado de Registro HIS de la MicroRed (placeholder)")
-async def estado_registro_microred(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "registro-microred",
-        "nombre": "Registro HIS de la MicroRed",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+def tid(user):
+    return uuid.UUID(user["tenant_id"])
 
 
-@router.get("/formato-his", summary="Estado de Formato HIS (placeholder)")
-async def estado_formato_his(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "formato-his",
-        "nombre": "Formato HIS",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+# --- Formato HIS (reporte de atenciones, no persistido) ---
+@router.get("/formato-his")
+async def formato_his(fecha_desde: date, fecha_hasta: date, db: AsyncSession = Depends(get_db), user=Depends(his_user)):
+    return await service.list_atenciones_his(db, tid(user), fecha_desde, fecha_hasta)
+
+
+@router.get("/formato-his.csv")
+async def formato_his_csv(fecha_desde: date, fecha_hasta: date, db: AsyncSession = Depends(get_db), user=Depends(his_user)):
+    return Response(await service.csv_his(db, tid(user), fecha_desde, fecha_hasta), media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="formato-his.csv"', "Cache-Control": "no-store"})
+
+
+# --- Registro HIS de la MicroRed (envíos por periodo) ---
+@router.get("/registro-microred")
+async def envios(db: AsyncSession = Depends(get_db), user=Depends(his_user)):
+    return await service.list_envios(db, tid(user))
+
+
+@router.post("/registro-microred", status_code=201)
+async def crear_envio(data: schemas.CrearEnvioIn, db: AsyncSession = Depends(get_db), user=Depends(his_user)):
+    return await service.crear_envio(db, tid(user), user, data)
+
+
+@router.post("/registro-microred/{envio_id}/cerrar")
+async def cerrar_envio(envio_id: uuid.UUID, data: schemas.CerrarEnvioIn, db: AsyncSession = Depends(get_db), user=Depends(his_user)):
+    return await service.cerrar_envio(db, tid(user), user, envio_id, data)

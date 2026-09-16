@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, JSON, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -24,6 +24,10 @@ class User(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    empleado_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="SET NULL"), nullable=True)
+    perfil_hospital_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("hospital_perfiles.id", ondelete="RESTRICT"), nullable=True)
+    perfil_usuario_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_perfiles_usuario.id", ondelete="RESTRICT"), nullable=True)
+    username: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
     # Identifica a la cuenta admin fundacional (creada por el seeder), la
     # unica que nunca deberia poder eliminarse/ocultarse por accidente.
     # Antes esa regla se aplicaba comparando el correo contra un texto fijo
@@ -38,3 +42,13 @@ class User(Base):
 
     def __repr__(self) -> str:
         return f"<User {self.email} ({self.role})>"
+
+
+class PerfilHospital(Base):
+    __tablename__ = "hospital_perfiles"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    nombre: Mapped[str] = mapped_column(String(150))
+    role: Mapped[str] = mapped_column(String(100))
+    modulos: Mapped[list] = mapped_column(JSON, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)

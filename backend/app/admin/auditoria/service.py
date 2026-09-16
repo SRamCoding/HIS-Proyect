@@ -114,3 +114,34 @@ async def get_audit_summary(
     }
 
 
+async def create_audit_log(
+    db: AsyncSession,
+    user_id: uuid.UUID | None,
+    user_name: str | None,
+    tenant_id: uuid.UUID | None,
+    tenant_name: str | None,
+    action: str,
+    model: str | None = None,
+    model_id: str | None = None,
+    description: str | None = None,
+    old_values: dict | None = None,
+    new_values: dict | None = None,
+    ip_address: str | None = None,
+) -> None:
+    log = AuditLog(
+        user_id=user_id,
+        user_name=user_name,
+        tenant_id=tenant_id,
+        tenant_name=tenant_name,
+        action=action,
+        model=model,
+        model_id=model_id,
+        description=description,
+        old_values=old_values,
+        new_values=new_values,
+        ip_address=ip_address,
+    )
+    db.add(log)
+    await db.commit()
+
+

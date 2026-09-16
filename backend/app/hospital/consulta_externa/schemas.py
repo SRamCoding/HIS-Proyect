@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, date
 from pydantic import BaseModel, Field, model_validator
+from typing import Literal
 
 
 _MODALIDADES = {"PRESENCIAL", "VIRTUAL"}
@@ -199,18 +200,18 @@ class CitaResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class TriajeCreate(BaseModel):
-    pulso: int | None = None
-    temperatura: float | None = None
-    presion_sistolica: int | None = None
-    presion_diastolica: int | None = None
-    frecuencia_cardiaca: int | None = None
-    frecuencia_respiratoria: int | None = None
-    peso: float | None = None
-    talla: float | None = None
-    perimetro_abdominal: float | None = None
-    perimetro_cefalico: float | None = None
-    saturacion_o2: float | None = None
+class TriajeCampos(BaseModel):
+    pulso: int | None = Field(default=None, ge=0)
+    temperatura: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    presion_sistolica: int | None = Field(default=None, ge=0)
+    presion_diastolica: int | None = Field(default=None, ge=0)
+    frecuencia_cardiaca: int | None = Field(default=None, ge=0)
+    frecuencia_respiratoria: int | None = Field(default=None, ge=0)
+    peso: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    talla: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    perimetro_abdominal: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    perimetro_cefalico: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    saturacion_o2: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
 
     @model_validator(mode="before")
     @classmethod
@@ -218,6 +219,15 @@ class TriajeCreate(BaseModel):
         if isinstance(data, dict):
             return {k: (None if v == "" else v) for k, v in data.items()}
         return data
+
+
+class TriajeCreate(TriajeCampos):
+    pulso: int = Field(ge=0)
+    temperatura: float = Field(gt=0, allow_inf_nan=False)
+    presion_sistolica: int = Field(ge=0)
+    presion_diastolica: int = Field(ge=0)
+    frecuencia_cardiaca: int = Field(ge=0)
+    frecuencia_respiratoria: int = Field(ge=0)
 
 
 class TriajeResponse(BaseModel):
@@ -255,18 +265,13 @@ class CitaTriajeItem(BaseModel):
     paso_triaje: bool
 
 
-class TriajeUpdate(BaseModel):
-    pulso: int | None = None
-    temperatura: float | None = None
-    presion_sistolica: int | None = None
-    presion_diastolica: int | None = None
-    frecuencia_cardiaca: int | None = None
-    frecuencia_respiratoria: int | None = None
-    peso: float | None = None
-    talla: float | None = None
-    perimetro_abdominal: float | None = None
-    perimetro_cefalico: float | None = None
-    saturacion_o2: float | None = None
+class TriajeUpdate(TriajeCampos):
+    @model_validator(mode="after")
+    def conservar_obligatorios(self):
+        for campo in ("pulso", "temperatura", "presion_sistolica", "presion_diastolica", "frecuencia_cardiaca", "frecuencia_respiratoria"):
+            if campo in self.model_fields_set and getattr(self, campo) is None:
+                raise ValueError("No puede borrar una medición obligatoria: " + campo)
+        return self
 
 
 
@@ -279,7 +284,7 @@ class DiagnosticoCIE10Out(BaseModel):
 
 class AtencionDiagnosticoCreate(BaseModel):
     diagnostico_cie10_id: uuid.UUID
-    tipo: str = "definitivo"
+    tipo: Literal["presuntivo", "definitivo", "repetitivo"] = "definitivo"
 
 
 class AtencionDiagnosticoOut(BaseModel):
@@ -291,30 +296,43 @@ class AtencionDiagnosticoOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class AtencionMedicaCreate(BaseModel):
-    motivo_consulta: str
-    examen_clinico: str | None = None
-    plan_tratamiento: str | None = None
-    observaciones: str | None = None
-    destino_atencion: str = "ALTA"
-    indicaciones_alta: str | None = None
-    diagnosticos: list[AtencionDiagnosticoCreate] = []
-
-    @model_validator(mode="before")
-    @classmethod
-    def vacios_a_none(cls, data):
-        if isinstance(data, dict):
-            return {k: (None if v == "" else v) for k, v in data.items()}
-        return data
+class AntecedentesConsulta(BaseModel):
+    antecedente_quirurgico: str | None = None
+    antecedente_patologico: str | None = None
+    antecedente_alergias: str | None = None
+    antecedentes_obstetricos: str | None = None
+    antecedente_familiares: str | None = None
+    antecedente_otros: str | None = None
 
 
 class AtencionMedicaUpdate(BaseModel):
-    motivo_consulta: str | None = None
+    motivo_consulta: str | None = Field(default=None, min_length=1)
+    enfermedad_actual: str | None = None
     examen_clinico: str | None = None
     plan_tratamiento: str | None = None
     observaciones: str | None = None
-    destino_atencion: str | None = None
+    destino_atencion: Literal["ALTA", "HOSPITALIZACION", "REFERENCIA"] | None = None
     indicaciones_alta: str | None = None
+    diagnosticos: list[AtencionDiagnosticoCreate] | None = None
+    antecedentes: AntecedentesConsulta | None = None
+    prestaciones: list[Literal["FARMACIA", "LABORATORIO", "IMAGEN", "INTERCONSULTA"]] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalizar(cls, data):
+        if isinstance(data, dict):
+            data = {k: (v.strip() if isinstance(v, str) else v) for k, v in data.items()}
+            for campo in ("motivo_consulta", "destino_atencion", "diagnosticos", "prestaciones", "antecedentes"):
+                if campo in data and data[campo] is None:
+                    raise ValueError("No puede borrar el campo " + campo)
+        return data
+
+
+class AtencionMedicaCreate(AtencionMedicaUpdate):
+    motivo_consulta: str = Field(min_length=1)
+    destino_atencion: Literal["ALTA", "HOSPITALIZACION", "REFERENCIA"] = "ALTA"
+    diagnosticos: list[AtencionDiagnosticoCreate] = Field(default_factory=list)
+    prestaciones: list[Literal["FARMACIA", "LABORATORIO", "IMAGEN", "INTERCONSULTA"]] = Field(default_factory=list)
 
 
 class AtencionMedicaResponse(BaseModel):
@@ -334,7 +352,11 @@ class AtencionMedicaResponse(BaseModel):
     estado: str
     firmado_at: datetime | None
     diagnosticos: list[AtencionDiagnosticoOut]
-    # antecedentes (leidos desde Patient, solo lectura aqui)
+    enfermedad_actual: str | None = None
+    prestaciones: list[str] = Field(default_factory=list)
+    antecedentes_documentados: bool = False
+    cierre_evidencia: dict | None = None
+    # Antecedentes conservados por consulta
     antecedente_quirurgico: str | None
     antecedente_patologico: str | None
     antecedente_alergias: str | None
@@ -373,10 +395,10 @@ class MedicamentoOut(BaseModel):
 
 class RecetaItemCreate(BaseModel):
     medicamento_id: uuid.UUID
-    cantidad: int
+    cantidad: int = Field(ge=1)
     dosis: str | None = None
     frecuencia: str | None = None
-    duracion_dias: int | None = None
+    duracion_dias: int | None = Field(default=None, ge=1)
     indicaciones: str | None = None
 
 
@@ -544,7 +566,10 @@ class InterconsultaCreate(BaseModel):
 
 class InterconsultaResponse(BaseModel):
     id: uuid.UUID
-    atencion_medica_id: uuid.UUID
+    atencion_medica_id: uuid.UUID | None = None
+    hospitalizacion_id: uuid.UUID | None = None
+    atencion_emergencia_id: uuid.UUID | None = None
+    origen: str = "CONSULTA_EXTERNA"
     paciente_nombre: str
     paciente_dni: str | None
     especialidad_destino_id: uuid.UUID

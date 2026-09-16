@@ -52,6 +52,13 @@ def require_module_jwt(module_code: str):
         from sqlalchemy import text
         from app.tenants.modulos.submodulos import permiso_incluye, modulo_padre
 
+        if current_user.get("panel") == "app":
+            from app.auth.hospital_access import permiso_recurso, verificar_ambito_medico
+            requerido = permiso_recurso(request.url.path, request.method, module_code, current_user)
+            if not permiso_incluye(current_user.get("active_modules", []), requerido):
+                raise HTTPException(403, detail="Su perfil hospitalario no permite esta operación")
+            await verificar_ambito_medico(request, current_user)
+
         if current_user.get("panel") == "sigarh" and not permiso_incluye(
             current_user.get("active_modules", []), module_code
         ):

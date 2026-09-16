@@ -19,6 +19,47 @@ from app.core.database import get_db
 from app.core.security import create_access_token, create_refresh_token
 from app.hospital.admision.models import Patient, ClinicalRecord
 from app.tenants.hospitales.models import Tenant, TenantModule
+from app.auth.models import User
+
+
+class _SharedTestSession:
+    """Comparte UNA sola AsyncSession real por "solicitud" entre get_db,
+    get_db_central y get_tenant_sessionmaker (los tres quedan parcheados para
+    llamar a harness.session()).
+
+    Sin esto, cada uno abre su propia AsyncSession independiente sobre la
+    MISMA conexión/transacción externa (join_transaction_mode="create_savepoint"),
+    y como FastAPI no necesariamente cierra esas sesiones-dependencia en el
+    mismo orden en que las abrió (get_db_central, usado por get_current_user,
+    puede cerrarse antes de que get_db -- todavía en uso por el endpoint --
+    cierre la suya), el apilamiento LIFO de savepoints de Postgres se rompe:
+    se libera un savepoint "ancestro" mientras uno "descendiente" sigue
+    activo, y Postgres descarta a este último silenciosamente
+    (InvalidSavepointSpecificationError: "no existe el savepoint" al
+    intentar cerrarlo después). Contar referencias aquí hace que solo la
+    apertura MÁS EXTERNA cree la sesión real y solo su cierre la libere;
+    las que se abren "adentro" (anidadas dentro de la misma solicitud)
+    simplemente reciben la misma sesión prestada.
+    """
+    def __init__(self, harness):
+        self.harness = harness
+
+    async def __aenter__(self):
+        h = self.harness
+        h._session_depth = getattr(h, "_session_depth", 0) + 1
+        if h._session_depth == 1:
+            h._active_session = AsyncSession(bind=h.connection, expire_on_commit=False,
+                                             join_transaction_mode="create_savepoint")
+            await h._active_session.__aenter__()
+        return h._active_session
+
+    async def __aexit__(self, exc_type, exc, tb):
+        h = self.harness
+        h._session_depth -= 1
+        if h._session_depth == 0:
+            session, h._active_session = h._active_session, None
+            return await session.__aexit__(exc_type, exc, tb)
+        return None
 
 
 @unittest.skipUnless(os.getenv("RUN_ARCHIVO_DB_TESTS") == "1", "Requiere PostgreSQL explícito")
@@ -34,10 +75,21 @@ class ArchivoClinicoTests(unittest.IsolatedAsyncioTestCase):
         self.user_id = uuid.uuid4()
         async with self.session() as db:
             for tid in (self.tenant_id, self.other_tenant):
+                # database_name es obligatorio para que usuario_actual() resuelva el
+                # hospital (si no, 401 "Hospital no encontrado o inactivo" antes de
+                # llegar a cualquier lógica de negocio). El valor en si no importa
+                # porque get_tenant_sessionmaker queda parcheado mas abajo para
+                # devolver siempre esta misma conexion/transaccion de prueba.
                 db.add(Tenant(id=tid, name="TEST Archivo", domain=f"{tid}.test",
-                              schema_name=f"test_{tid.hex}"))
+                              schema_name=f"test_{tid.hex}", database_name=f"test_{tid.hex}"))
             await db.flush()
             db.add(TenantModule(tenant_id=self.tenant_id, module_code="archivo_clinico"))
+            # Usuario "administrador" sin perfil: usuario_actual()/contexto_hospital()
+            # le conceden el set completo de TenantModule habilitados sin exigir un
+            # PerfilHospital/RolSistema sintético — igual que las cuentas admin reales
+            # (ver Lennart en Reque). Cada subclase agrega sus propios TenantModule.
+            db.add(User(id=self.user_id, name="Operador de prueba", email=f"qa-{self.user_id}@test.pe",
+                password="x", role="administrador", panel="app", is_active=True))
             for tid, rid, name in ((self.tenant_id, self.record_id, "Ana"),
                                    (self.other_tenant, self.other_record, "Otra")):
                 patient = Patient(id=uuid.uuid4(), tenant_id=tid, dni=rid.hex[:8],
@@ -64,6 +116,16 @@ class ArchivoClinicoTests(unittest.IsolatedAsyncioTestCase):
         self.session_patch = patch("app.core.database.AsyncSessionLocal", self.session)
         self.session_patch.start()
         self.addCleanup(self.session_patch.stop)
+        # usuario_actual() resuelve la cuenta panel='app' contra la BD FISICA del
+        # hospital via get_tenant_sessionmaker(hospital.database_name) -- una conexion
+        # real y aparte de la BD central. Sin este parche apuntaria a una base que no
+        # existe (o, si existiera, no veria las filas sintéticas de esta transaccion
+        # de prueba, que nunca se comitean). Se redirige a la MISMA conexion/savepoint
+        # de este test, sea cual sea el database_name pedido.
+        self.tenant_session_patch = patch("app.core.tenant_db.get_tenant_sessionmaker",
+                                          lambda database_name: self.session)
+        self.tenant_session_patch.start()
+        self.addCleanup(self.tenant_session_patch.stop)
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
         self.addAsyncCleanup(self.client.aclose)
         self.claims = {"sub": str(self.user_id), "name": "Operador de prueba", "panel": "app",
@@ -71,8 +133,7 @@ class ArchivoClinicoTests(unittest.IsolatedAsyncioTestCase):
         self.client.headers["Authorization"] = "Bearer " + create_access_token(self.claims)
 
     def session(self):
-        return AsyncSession(bind=self.connection, expire_on_commit=False,
-                            join_transaction_mode="create_savepoint")
+        return _SharedTestSession(self)
 
     def restore_overrides(self):
         app.dependency_overrides.clear()
@@ -171,15 +232,25 @@ class ArchivoClinicoTests(unittest.IsolatedAsyncioTestCase):
             await db.execute(update(Tenant).where(Tenant.id == self.tenant_id).values(is_active=False))
             await db.commit()
         response = await self.client.get("/app/archivo-clinico/historias")
-        self.assertEqual(response.status_code, 403)
+        # Hospital inexistente/inactivo se resuelve en usuario_actual() (capa de
+        # autenticacion, antes de llegar al chequeo de modulo) y por eso da 401
+        # "Hospital no encontrado o inactivo", no 403 -- distinto del caso de
+        # arriba (modulo deshabilitado), donde la sesion SI es valida y el 403
+        # lo emite la capa de autorizacion (require_any_module_jwt).
+        self.assertEqual(response.status_code, 401)
 
     async def test_refresh_tokens_panel_and_header_cannot_authorize(self):
         url = "/app/archivo-clinico/historias"
         self.client.headers["Authorization"] = "Bearer " + create_refresh_token(self.claims)
         self.assertEqual((await self.client.get(url)).status_code, 401)
+        # Los tres casos fallan en usuario_actual() (sesion invalida/sin
+        # hospital), antes de llegar a ningun chequeo de modulo -- por eso 401,
+        # no 403. El header X-Tenant-ID no puede suplir esto: get_tenant_id()
+        # solo lo usa como respaldo dentro de un router ya autorizado, nunca
+        # para decidir la autenticacion en si.
         for changes in ({"panel": "admin"}, {"tenant_id": None}, {"tenant_id": "invalid"}):
             self.client.headers["Authorization"] = "Bearer " + create_access_token(self.claims | changes)
             response = await self.client.get(url, headers={"X-Tenant-ID": str(self.tenant_id)})
-            self.assertEqual(response.status_code, 403, response.text)
+            self.assertEqual(response.status_code, 401, response.text)
         self.client.headers.pop("Authorization")
         self.assertIn((await self.client.get(url)).status_code, (401, 403))

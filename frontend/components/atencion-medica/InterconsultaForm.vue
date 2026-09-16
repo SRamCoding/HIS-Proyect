@@ -56,6 +56,7 @@
       </div>
     </div>
 
+    <p v-else-if="soloLectura" role="status">No hay un documento disponible. Guarda los cambios de la atención antes de generar órdenes; una atención cerrada permite solo consulta.</p>
     <template v-else>
       <div class="form-group full-width" style="margin-bottom: 0.75rem;">
         <label class="form-label">Especialidad Destino *</label>
@@ -77,13 +78,14 @@
       <button class="btn-generar-receta" style="background: #9333ea;" :disabled="!especialidadDestino || !motivo || generando" @click="generarInterconsulta">
         {{ generando ? 'Generando...' : 'Generar Interconsulta' }}
       </button>
-      <div v-if="errorLocal" class="text-sm text-red-600 mt-2">{{ errorLocal }}</div>
+
     </template>
+    <p v-if="errorLocal" class="text-sm text-red-600 mt-2" role="alert">{{ errorLocal }}</p>
   </section>
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{ citaId: string }>()
+const props = defineProps<{ citaId: string; soloLectura?: boolean }>()
 const emit = defineEmits<{ generada: [] }>()
 
 const { api } = useApi()
@@ -158,6 +160,7 @@ const getEstadoBadgeClass = (estado: string) => {
 }
 
 async function generarInterconsulta() {
+  if (props.soloLectura) return
   generando.value = true
   errorLocal.value = ''
   try {
@@ -176,9 +179,10 @@ async function generarInterconsulta() {
 onMounted(async () => {
   try {
     interconsultaExistente.value = await api(`/app/consulta-externa/interconsultas/${props.citaId}`)
-  } catch { /* aun no tiene interconsulta */ }
+  } catch (e: any) { if ((e?.statusCode || e?.status || e?.response?.status) !== 404) errorLocal.value = 'No se pudo cargar el documento. Recarga la página para reintentar.' }
   if (!interconsultaExistente.value) {
-    especialidades.value = await api('/app/consulta-externa/programacion-medica/especialidades')
+    try { especialidades.value = await api('/app/consulta-externa/programacion-medica/especialidades') }
+    catch { errorLocal.value = 'No se pudieron cargar las especialidades disponibles.' }
   }
 })
 </script>

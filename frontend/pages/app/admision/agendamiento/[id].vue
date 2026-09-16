@@ -180,7 +180,11 @@
                       v-model="form.fuente_financiamiento"
                       class="input-clinical"
                       placeholder="SIS, EsSalud, Particular..."
+                      list="admision-edit-seguros"
                     />
+                    <datalist id="admision-edit-seguros">
+                      <option v-for="s in seguros" :key="s.id" :value="s.nombre" />
+                    </datalist>
                   </div>
                 </div>
 
@@ -432,6 +436,7 @@ const confirmando = ref(false)
 const error = ref('')
 const exito = ref('')
 const cita = ref<any>(null)
+const seguros = ref<any[]>([])
 
 const form = reactive({
   observacion: '',
@@ -504,6 +509,9 @@ const getTurnoIcon = (turno: string) => {
 }
 
 onMounted(async () => {
+  try {
+    seguros.value = await api('/app/consulta-externa/seguros')
+  } catch (e) { /* la fuente de financiamiento sigue siendo texto libre si el catálogo no carga */ }
   try {
     cita.value = await api(`/app/consulta-externa/citas/${citaId}`)
     form.observacion = cita.value.observacion || ''

@@ -1,6 +1,6 @@
 <!-- frontend/layouts/app.vue -->
 <template>
-  <div class="min-h-screen flex" style="background: var(--mist)">
+  <div class="h-screen flex overflow-hidden" style="background: var(--mist)">
 
     <!-- SIDEBAR -->
     <aside
@@ -16,7 +16,7 @@
       </div>
 
       <!-- Nav -->
-      <nav class="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 sidebar-scroll">
+      <nav ref="navRef" class="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 sidebar-scroll">
 
         <!-- Escritorio -->
         <NuxtLink :to="link('/app')" class="nav-link mb-2" :class="activo('/app')">
@@ -166,17 +166,40 @@
 
 <script setup lang="ts">
 const authStore = useAuthStore()
-const { link, activo, gruposVisibles } = useHospitalNav()
+const { link, activo, gruposVisibles, rutaMenuActual } = useHospitalNav()
+const route = useRoute()
 const collapsed = ref(false)
+const navRef = ref<HTMLElement | null>(null)
+
+// Acordeon: un solo grupo abierto a la vez -- con ~22 grupos y varios items
+// cada uno, tenerlos todos abiertos de entrada obligaba a bajar mucho para
+// encontrar donde uno esta parado. Al navegar, se abre solo el grupo de la
+// ruta actual y se hace scroll hasta el item activo.
 const gruposAbiertos = ref<Record<string, boolean>>({})
 
 function grupoAbierto(label: string): boolean {
-  return gruposAbiertos.value[label] !== false
+  return gruposAbiertos.value[label] === true
 }
 
 function toggleGrupo(label: string) {
-  gruposAbiertos.value[label] = !grupoAbierto(label)
+  const abrir = !grupoAbierto(label)
+  gruposAbiertos.value = abrir ? { [label]: true } : {}
 }
+
+function sincronizarMenu() {
+  const ruta = rutaMenuActual.value
+  const grupo = gruposVisibles.value.find(g => g.items.some(item => item.path === ruta))
+  gruposAbiertos.value = grupo ? { [grupo.label]: true } : {}
+  nextTick(() => {
+    navRef.value?.querySelector('.nav-active')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  })
+}
+
+watch(
+  [() => route.path, () => gruposVisibles.value.map(g => g.label).join('|')],
+  sincronizarMenu,
+  { immediate: true },
+)
 
 const horaActual = new Date().getHours()
 const saludoHora = computed(() => {
@@ -199,8 +222,6 @@ const inicialesUsuario = computed(() => {
     .map((p: string) => p[0]?.toUpperCase())
     .join('') || 'U'
 })
-
-const route = useRoute()
 
 const handleLogout = async () => {
   // Capturar el tenant ANTES de logout(): borra authStore.user, y sin el
@@ -328,15 +349,14 @@ const handleLogout = async () => {
   padding-bottom: 0.25rem;
 }
 
-/* Scrollbar discreto en el sidebar */
+/* Scroll del sidebar sin barra visible: se puede desplazar con la rueda o
+   arrastrando, pero no queda una barra ocupando espacio ni compitiendo con
+   el scroll de la derecha (el de la pagina). */
+.sidebar-scroll {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Edge/IE legado */
+}
 .sidebar-scroll::-webkit-scrollbar {
-  width: 5px;
-}
-.sidebar-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.sidebar-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
+  display: none; /* Chrome, Safari, Edge Chromium */
 }
 </style>

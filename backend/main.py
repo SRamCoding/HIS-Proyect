@@ -18,6 +18,7 @@ from app.admin.reportes.router import router as admin_reportes_router
 from app.admin.notificaciones.router import router as admin_notificaciones_router
 from app.admin.perfil.router import router as admin_perfil_router
 from app.admin.busqueda.router import router as admin_busqueda_router
+from app.admin.roles.router import router as admin_roles_router
 
 # ── SIGARH ──────────────────────────────────────────────────
 from app.sigarh.mantenimiento.router import router as sigarh_mant_router
@@ -45,11 +46,24 @@ from app.hospital.laboratorio.router import router as hosp_laboratorio_router
 from app.hospital.imagenes.router import router as hosp_imagenes_router
 from app.hospital.farmacia.router import router as hosp_farmacia_router
 from app.hospital.caja.router import router as hosp_caja_router
+from app.hospital.referencias.router import router as hosp_referencias_router
+from app.hospital.auditoria.router import router as hosp_auditoria_router
+from app.hospital.general.router import router as hosp_general_router
+from app.hospital.fact_config.router import router as hosp_fact_config_router
+from app.hospital.seguridad.router import router as hosp_seguridad_router
 from app.hospital.archivo_clinico.router import router as hosp_archivo_clinico_router
 from app.hospital.sis.router import router as hosp_sis_router
 from app.hospital.his.router import router as hosp_his_router
 from app.hospital.informes.router import router as hosp_informes_router
 from app.hospital.telesalud.router import router as hosp_telesalud_router
+from app.hospital.banco_sangre.router import router as hosp_banco_sangre_router
+from app.hospital.hemodialisis.router import router as hosp_hemodialisis_router
+from app.hospital.medicina_fisica.router import router as hosp_medicina_fisica_router
+from app.hospital.firma_electronica.router import router as hosp_firma_electronica_router
+from app.hospital.salud_ambiental.router import router as hosp_salud_ambiental_router
+from app.hospital.epidemiologia.router import router as hosp_epidemiologia_router
+from app.hospital.servicio_social.router import router as hosp_servicio_social_router
+from app.hospital.procedimientos.router import router as hosp_procedimientos_router
 
 
 @asynccontextmanager
@@ -103,6 +117,7 @@ app.include_router(admin_auditoria_router, prefix="/admin", tags=["admin-auditor
 app.include_router(admin_modulos_router, prefix="/admin", tags=["admin-modulos"])
 app.include_router(admin_reportes_router, prefix="/admin", tags=["admin-reportes"])
 app.include_router(admin_busqueda_router, prefix="/admin", tags=["admin-busqueda"])
+app.include_router(admin_roles_router, prefix="/admin", tags=["admin-roles"])
 
 # SIGARH
 app.include_router(sigarh_mant_router, prefix="/sigarh/mantenimiento", tags=["sigarh-mantenimiento"])
@@ -130,8 +145,21 @@ app.include_router(hosp_laboratorio_router, prefix="/app/laboratorio", tags=["ap
 app.include_router(hosp_imagenes_router, prefix="/app/imagenes", tags=["app-imagenes"])
 app.include_router(hosp_farmacia_router, prefix="/app/farmacia", tags=["app-farmacia"])
 app.include_router(hosp_caja_router, prefix="/app/caja", tags=["app-caja"])
+app.include_router(hosp_referencias_router, prefix="/app/referencias", tags=["app-referencias"])
+app.include_router(hosp_auditoria_router, prefix="/app/auditoria", tags=["app-auditoria"])
+app.include_router(hosp_general_router, prefix="/app/general", tags=["app-general"])
+app.include_router(hosp_fact_config_router, prefix="/app/fact-config", tags=["app-fact-config"])
+app.include_router(hosp_seguridad_router, prefix="/app/seguridad", tags=["app-seguridad"])
 app.include_router(hosp_archivo_clinico_router, prefix="/app/archivo-clinico", tags=["app-archivo-clinico"])
 app.include_router(hosp_sis_router, prefix="/app/sis", tags=["app-sis"])
 app.include_router(hosp_his_router, prefix="/app/his", tags=["app-his"])
 app.include_router(hosp_informes_router, prefix="/app/informes", tags=["app-informes"])
 app.include_router(hosp_telesalud_router, prefix="/app/telesalud", tags=["app-telesalud"])
+app.include_router(hosp_banco_sangre_router, prefix="/app/banco-sangre", tags=["app-banco-sangre"])
+app.include_router(hosp_hemodialisis_router, prefix="/app/hemodialisis", tags=["app-hemodialisis"])
+app.include_router(hosp_medicina_fisica_router, prefix="/app/medicina-fisica", tags=["app-medicina-fisica"])
+app.include_router(hosp_firma_electronica_router, prefix="/app/firma-electronica", tags=["app-firma-electronica"])
+app.include_router(hosp_salud_ambiental_router, prefix="/app/salud-ambiental", tags=["app-salud-ambiental"])
+app.include_router(hosp_epidemiologia_router, prefix="/app/epidemiologia", tags=["app-epidemiologia"])
+app.include_router(hosp_servicio_social_router, prefix="/app/servicio-social", tags=["app-servicio-social"])
+app.include_router(hosp_procedimientos_router, prefix="/app/procedimientos", tags=["app-procedimientos"])

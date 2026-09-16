@@ -1,120 +1,146 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Request
+from datetime import date
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
-from app.tenants.entitlements import require_module_jwt
-from app.hospital.hospitalizacion.schemas import PisoOut, CamaConPacienteOut
-from app.hospital.hospitalizacion.service import get_pisos, get_panel_camas
+from app.tenants.entitlements import require_any_module_jwt
+from app.hospital.hospitalizacion import schemas, service
 
 router = APIRouter()
-
-MODULO_CODIGO = "hospitalizacion"
-
-
-def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
-    tid = current_user.get("tenant_id") or request.headers.get("X-Tenant-ID")
-    if not tid:
-        raise HTTPException(403, detail="Sin tenant asignado")
-    return uuid.UUID(str(tid))
+hosp_user = require_any_module_jwt("hospitalizacion")
+# Seguimiento Paciente es el único item de nav del módulo "seguimiento" — necesita
+# listar/ver hospitalizaciones y sus notas de evolución sin el módulo "hospitalizacion" completo.
+seguimiento_user = require_any_module_jwt("hospitalizacion", "seguimiento")
 
 
-@router.get("/hospitalizaciones", summary="Estado de Hospitalizaciones (placeholder)")
-async def estado_hospitalizaciones(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "hospitalizaciones",
-        "nombre": "Hospitalizaciones",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+def tid(user):
+    return uuid.UUID(user["tenant_id"])
 
 
-# --- Panel de Camas (real, ya no placeholder) ---
-@router.get("/pisos", response_model=list[PisoOut], summary="Listar pisos del hospital")
-async def listar_pisos(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
-):
-    return await get_pisos(db, get_tenant_id(current_user, request))
+# --- Panel de Camas ---
+@router.get("/pisos", response_model=list[schemas.PisoOut])
+async def listar_pisos(db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.get_pisos(db, tid(user))
 
 
-@router.get("/panel-camas", response_model=list[CamaConPacienteOut], summary="Panel de Camas en tiempo real")
-async def panel_camas(
-    request: Request,
-    piso_id: uuid.UUID | None = None,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
-):
-    return await get_panel_camas(db, get_tenant_id(current_user, request), piso_id)
+@router.get("/panel-camas", response_model=list[schemas.CamaConPacienteOut])
+async def panel_camas(piso_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.get_panel_camas(db, tid(user), piso_id)
 
 
-@router.get("/seguimiento-paciente", summary="Estado de Seguimiento Paciente (placeholder)")
-async def estado_seguimiento_paciente(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "seguimiento-paciente",
-        "nombre": "Seguimiento Paciente",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+@router.get("/camas-disponibles")
+async def camas_disponibles(servicio_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.camas_disponibles(db, tid(user), servicio_id)
 
 
-@router.get("/censo-diario", summary="Estado de Censo Diario (placeholder)")
-async def estado_censo_diario(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "censo-diario",
-        "nombre": "Censo Diario",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+@router.get("/catalogos/{kind}")
+async def catalogos(kind: str, q: str = Query("", max_length=200), db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.catalogs(db, tid(user), kind, q)
 
 
-@router.get("/interconsultas", summary="Estado de Interconsultas (placeholder)")
-async def estado_interconsultas(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "interconsultas",
-        "nombre": "Interconsultas",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+# --- Admisión desde Emergencia ---
+@router.get("/emergencia-pendientes")
+async def destinos_pendientes(destino: str = "HOSPITALIZACION", db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.destinos_emergencia_pendientes(db, tid(user), destino)
 
 
-@router.get("/consentimientos", summary="Estado de Consentimientos Informados (placeholder)")
-async def estado_consentimientos(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "consentimientos",
-        "nombre": "Consentimientos Informados",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+@router.post("/hospitalizaciones/admitir-emergencia", status_code=201)
+async def admitir_desde_emergencia(data: schemas.AdmisionDesdeEmergencia, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.admitir_desde_emergencia(db, tid(user), user, data)
+
+
+# --- Hospitalizaciones ---
+@router.get("/hospitalizaciones")
+async def hospitalizaciones(q: str | None = None, estado: str | None = None, origen: str | None = None,
+                            page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+                            db: AsyncSession = Depends(get_db), user=Depends(seguimiento_user)):
+    f = {"q": q, "estado": estado, "origen": origen}
+    return await service.list_hospitalizaciones(db, tid(user), f, page, page_size)
+
+
+@router.get("/hospitalizaciones/{hosp_id}")
+async def hospitalizacion(hosp_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(seguimiento_user)):
+    return await service.hospitalizacion_detalle(db, tid(user), hosp_id)
+
+
+@router.post("/hospitalizaciones/{hosp_id}/alta")
+async def dar_alta(hosp_id: uuid.UUID, data: schemas.AltaHospitalizacion, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.dar_alta(db, tid(user), user, hosp_id, data)
+
+
+# --- Seguimiento del paciente (notas de evolución) ---
+@router.get("/hospitalizaciones/{hosp_id}/notas")
+async def notas(hosp_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(seguimiento_user)):
+    return await service.listar_notas(db, tid(user), hosp_id)
+
+
+@router.post("/hospitalizaciones/{hosp_id}/notas", status_code=201)
+async def crear_nota(hosp_id: uuid.UUID, data: schemas.NotaEvolucionCreate, db: AsyncSession = Depends(get_db), user=Depends(seguimiento_user)):
+    return await service.crear_nota(db, tid(user), user, hosp_id, data)
+
+
+# --- Interconsultas intrahospitalarias ---
+@router.get("/interconsultas")
+async def todas_interconsultas(estado: str | None = None, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.listar_todas_interconsultas(db, tid(user), estado)
+
+
+@router.post("/interconsultas/admitir-emergencia", status_code=201)
+async def admitir_interconsulta_desde_emergencia(data: schemas.AdmitirInterconsultaEmergencia, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.admitir_interconsulta_desde_emergencia(db, tid(user), user, data)
+
+
+@router.get("/hospitalizaciones/{hosp_id}/interconsultas")
+async def interconsultas(hosp_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.listar_interconsultas(db, tid(user), hosp_id)
+
+
+@router.post("/hospitalizaciones/{hosp_id}/interconsultas", status_code=201)
+async def crear_interconsulta(hosp_id: uuid.UUID, data: schemas.InterconsultaHospCreate, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.crear_interconsulta(db, tid(user), user, hosp_id, data)
+
+
+# --- Consentimientos informados ---
+@router.get("/consentimientos")
+async def todos_consentimientos(estado: str | None = None, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.listar_todos_consentimientos(db, tid(user), estado)
+
+
+@router.get("/hospitalizaciones/{hosp_id}/consentimientos")
+async def consentimientos(hosp_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.listar_consentimientos(db, tid(user), hosp_id)
+
+
+@router.post("/hospitalizaciones/{hosp_id}/consentimientos", status_code=201)
+async def crear_consentimiento(hosp_id: uuid.UUID, data: schemas.ConsentimientoCreate, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.crear_consentimiento(db, tid(user), user, hosp_id, data)
+
+
+@router.post("/consentimientos/{consentimiento_id}/revocar")
+async def revocar_consentimiento(consentimiento_id: uuid.UUID, data: schemas.ConsentimientoRevocar, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.revocar_consentimiento(db, tid(user), user, consentimiento_id, data)
+
+
+@router.get("/consentimientos/{consentimiento_id}/comprobante.pdf")
+async def consentimiento_pdf(consentimiento_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return Response(await service.consentimiento_pdf(db, tid(user), consentimiento_id), media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="consentimiento.pdf"', "Cache-Control": "no-store"})
+
+
+# --- Censo diario ---
+@router.get("/censo-diario")
+async def censo_diario(fecha: date | None = None, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return await service.censo_diario(db, tid(user), fecha or date.today())
+
+
+@router.get("/censo-diario/reporte.pdf")
+async def censo_pdf(fecha: date | None = None, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return Response(await service.censo_pdf(db, tid(user), fecha or date.today()), media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="censo-diario.pdf"', "Cache-Control": "no-store"})
+
+
+@router.get("/censo-diario/reporte.csv")
+async def censo_csv(fecha: date | None = None, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+    return Response(await service.export_censo_csv(db, tid(user), fecha or date.today()), media_type="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="censo-diario.csv"', "Cache-Control": "no-store"})

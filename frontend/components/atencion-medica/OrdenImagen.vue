@@ -48,6 +48,7 @@
       </div>
     </div>
 
+    <p v-else-if="soloLectura" role="status">No hay un documento disponible. Guarda los cambios de la atención antes de generar órdenes; una atención cerrada permite solo consulta.</p>
     <template v-else>
       <div class="form-group full-width" style="margin-bottom: 0.75rem;">
         <label class="form-label">Buscar Estudio</label>
@@ -100,13 +101,14 @@
         <p class="receta-empty-text">Busca y agrega estudios a la orden</p>
       </div>
 
-      <div v-if="errorLocal" class="text-sm text-red-600 mt-2">{{ errorLocal }}</div>
+
     </template>
+    <p v-if="errorLocal" class="text-sm text-red-600 mt-2" role="alert">{{ errorLocal }}</p>
   </section>
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{ citaId: string }>()
+const props = defineProps<{ citaId: string; soloLectura?: boolean }>()
 const emit = defineEmits<{ generada: [] }>()
 
 const { api } = useApi()
@@ -187,6 +189,7 @@ function agregarExamen(e: any) {
 }
 
 async function generarOrden() {
+  if (props.soloLectura) return
   generando.value = true
   errorLocal.value = ''
   try {
@@ -205,7 +208,7 @@ async function generarOrden() {
 onMounted(async () => {
   try {
     ordenExistente.value = await api(`/app/consulta-externa/imagenologia/ordenes/${props.citaId}`)
-  } catch { /* aun no tiene orden */ }
+  } catch (e: any) { if ((e?.statusCode || e?.status || e?.response?.status) !== 404) errorLocal.value = 'No se pudo cargar el documento. Recarga la página para reintentar.' }
 })
 </script>
 

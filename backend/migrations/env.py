@@ -5,10 +5,15 @@ from sqlalchemy import pool
 from alembic import context
 from app.admin.niveles_hospitalarios.models import HospitalLevel
 from app.admin.modulos.models import ModuleDependency
+from app.admin.roles.models import SystemRole
 from app.admin.auditoria.models import AuditLog
 from app.core.config import settings
 from app.core.database import Base
 from app.hospital.laboratorio.models import LabCorrelativo, LabCupo, LabMovimiento, LabMovimientoItem, LabFichaCovid
+from app.hospital.imagenes.models import ImagenCorrelativo, ImagenMovimiento, ImagenMovimientoItem
+from app.hospital.caja.models import CajaCorrelativo, CajaSesion, Cobro, CobroItem
+from app.hospital.hospitalizacion.models import HospCorrelativo, NotaEvolucion, ConsentimientoInformado
+from app.hospital.referencias.models import ReferenciaCorrelativo
 from app.hospital.admision.models import Patient, ClinicalRecord, ClinicalRecordMovement
 from app.hospital.consulta_externa.models import ProgramacionMedica, Cita, Triaje, AtencionMedica, AtencionDiagnostico, Receta, RecetaItem, Hospitalizacion, OrdenLaboratorio, OrdenLaboratorioItem, OrdenImagen, OrdenImagenItem, Interconsulta, Referencia
 from app.hospital.emergencia.models import AdmisionEmergencia, TriajeEmergencia, AtencionEmergencia, EmergenciaDiagnostico

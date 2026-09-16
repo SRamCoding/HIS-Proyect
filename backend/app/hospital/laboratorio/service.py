@@ -13,6 +13,7 @@ from app.sigarh.laboratorio.models import ExamenLaboratorio
 from app.sigarh.rrhh.models import Empleado, Especialidad
 from app.sigarh.mantenimiento.models import Servicio
 from app.sigarh.config_financiera.models import Seguro
+from app.hospital.caja.models import Cobro, CobroItem
 from app.tenants.hospitales.models import Tenant
 from app.admin.auditoria.models import AuditLog
 
@@ -259,9 +260,18 @@ async def movement_detail(db, tid, mid):
     items = (await db.scalars(select(LabMovimientoItem).where(LabMovimientoItem.tenant_id == tid,
         LabMovimientoItem.movimiento_id == mid).order_by(LabMovimientoItem.nombre))).all()
     staff = await own(db, Empleado, tid, obj.toma_examen_id)
+    total = sum((i.precio*i.cantidad for i in items), Decimal("0"))
+    # Estado de pago real, tomado de Caja (CobroItem origen='LABORATORIO') -- no
+    # del campo "comprobante" (texto libre, solo una anotación del técnico).
+    cobrado = await db.scalar(select(func.coalesce(func.sum(CobroItem.monto), 0)).select_from(CobroItem)
+        .join(Cobro, Cobro.id == CobroItem.cobro_id)
+        .where(Cobro.tenant_id == tid, Cobro.estado == "registrado",
+               CobroItem.origen == "LABORATORIO", CobroItem.origen_id == mid))
+    cobrado = Decimal(str(cobrado))
+    estado_pago = "pagado" if cobrado >= total and total > 0 else ("parcial" if cobrado > 0 else "pendiente")
     return dict(columns(obj), orden=order, toma_examen=staff.nombre_completo,
         items=[dict(columns(i), subtotal=i.precio*i.cantidad) for i in items],
-        total=sum((i.precio*i.cantidad for i in items), Decimal("0")))
+        total=total, monto_cobrado=cobrado, monto_pendiente=max(total-cobrado, Decimal("0")), estado_pago=estado_pago)
 
 
 async def transition(db, tid, user, mid, action, data):
