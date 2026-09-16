@@ -1,17 +1,13 @@
-import uuid
 from datetime import datetime
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select, func, or_
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.hospital.referencias.models import ReferenciaCorrelativo
 from app.hospital.admision.models import Patient, ClinicalRecord
 from app.hospital.consulta_externa.models import Referencia
 from app.hospital.emergencia.models import DestinoEmergencia, AtencionEmergencia, AdmisionEmergencia
 from app.sigarh.general.models import DiagnosticoCIE10
-from app.admin.auditoria.models import AuditLog
 
 
 def actor(user):
@@ -20,12 +16,6 @@ def actor(user):
 
 def columns(obj):
     return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 async def own(db, model, tid, obj_id, lock=False):
@@ -138,7 +128,6 @@ async def admitir_desde_emergencia(db, tid, user, data):
     destino.observacion = f"Referencia {ref.numero_referencia} generada"
     admision.estado = "derivado"
     await db.flush()
-    audit(db, tid, user, "Referencia", ref.id, "admitir_desde_emergencia", after=columns(ref))
     await db.commit()
     return await referencia_detalle(db, tid, ref.id)
 
@@ -149,10 +138,9 @@ async def resolver(db, tid, user, referencia_id, data):
     ref = await own(db, Referencia, tid, referencia_id, lock=True)
     if ref.estado != "enviada":
         raise HTTPException(409, detail="Solo se puede aceptar o rechazar una referencia recién enviada")
-    before = columns(ref)
+    columns(ref)
     ref.estado, ref.observacion_resolucion = data.estado, data.observacion_resolucion
     await db.flush()
-    audit(db, tid, user, "Referencia", ref.id, data.estado, before, columns(ref))
     await db.commit()
     return await referencia_detalle(db, tid, ref.id)
 
@@ -164,12 +152,11 @@ async def registrar_contrarreferencia(db, tid, user, referencia_id, data):
     if data.diagnostico_contrarreferencia_id and not await db.scalar(select(DiagnosticoCIE10.id).where(
         DiagnosticoCIE10.id == data.diagnostico_contrarreferencia_id, DiagnosticoCIE10.tenant_id == tid, DiagnosticoCIE10.is_active.is_(True))):
         raise HTTPException(422, detail="Seleccione un diagnóstico activo de este hospital")
-    before = columns(ref)
+    columns(ref)
     for k, v in data.model_dump().items():
         setattr(ref, k, v)
     ref.estado = "contrarreferida"
     await db.flush()
-    audit(db, tid, user, "Referencia", ref.id, "contrarreferir", before, columns(ref))
     await db.commit()
     return await referencia_detalle(db, tid, ref.id)
 

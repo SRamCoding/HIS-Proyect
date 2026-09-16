@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,17 +12,10 @@ from app.hospital.emergencia.models import AtencionEmergencia, AdmisionEmergenci
 from app.sigarh.rrhh.models import Empleado
 from app.sigarh.mantenimiento.models import Profesion
 from app.sigarh.general.models import DiagnosticoCIE10
-from app.admin.auditoria.models import AuditLog
 
 
 def actor(user):
     return f"{(user.get('name') or 'Usuario')[:210]} ({user['sub']})"
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 async def _siguiente(db: AsyncSession, tid: uuid.UUID, tipo: str, prefijo: str) -> str:
@@ -80,7 +72,7 @@ def pdf_document(title, hospital, sections):
 
 
 async def crear_certificado(db: AsyncSession, tid: uuid.UUID, user: dict, data) -> dict:
-    medico = await _validar_medico_certificador(db, tid, data.medico_certificador_id)
+    await _validar_medico_certificador(db, tid, data.medico_certificador_id)
 
     atencion_emergencia = None
     hospitalizacion = None
@@ -127,7 +119,6 @@ async def crear_certificado(db: AsyncSession, tid: uuid.UUID, user: dict, data) 
         hospitalizacion.fecha_alta = hospitalizacion.fecha_alta or data.fecha_defuncion
 
     await db.flush()
-    audit(db, tid, user, "CertificadoDefuncion", certificado.id, "crear", after={"numero_certificado": numero, "patient_id": str(patient_id)})
     await db.commit()
     return await _certificado_out(db, certificado)
 
@@ -180,7 +171,6 @@ async def marcar_enviado(db: AsyncSession, tid: uuid.UUID, user: dict, certifica
         raise HTTPException(409, detail="Este certificado ya fue marcado como enviado")
     c.estado_envio = "enviado_reniec"
     c.fecha_envio = datetime.utcnow()
-    audit(db, tid, user, "CertificadoDefuncion", c.id, "marcar_enviado")
     await db.commit()
     return await _certificado_out(db, c)
 

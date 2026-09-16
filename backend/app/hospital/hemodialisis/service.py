@@ -1,7 +1,6 @@
 import uuid
-from datetime import date, datetime
+from datetime import date
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +8,6 @@ from app.hospital.hemodialisis.models import PacienteHemodialisis, SesionHemodia
 from app.hospital.admision.models import Patient
 from app.sigarh.general.models import DiagnosticoCIE10
 from app.sigarh.rrhh.models import Empleado
-from app.admin.auditoria.models import AuditLog
 
 _TRANSICIONES_SESION = {
     "programada": {"en_curso", "suspendida", "no_asistio"},
@@ -19,12 +17,6 @@ _TRANSICIONES_SESION = {
 
 def actor(user):
     return f"{(user.get('name') or 'Usuario')[:210]} ({user['sub']})"
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 # ─── Hemodiálisis: programa de pacientes ────────────────────────────────────
@@ -46,7 +38,6 @@ async def crear_paciente(db: AsyncSession, tid: uuid.UUID, user: dict, data) -> 
         frecuencia_semanal=data.frecuencia_semanal, observaciones=data.observaciones, registrado_por=actor(user))
     db.add(hd)
     await db.flush()
-    audit(db, tid, user, "PacienteHemodialisis", hd.id, "crear", after={"patient_id": str(data.patient_id)})
     await db.commit()
     return await _paciente_out(db, hd)
 
@@ -97,7 +88,6 @@ async def update_paciente(db: AsyncSession, tid: uuid.UUID, user: dict, paciente
     cambios = data.model_dump(exclude_unset=True)
     for k, v in cambios.items():
         setattr(hd, k, v)
-    audit(db, tid, user, "PacienteHemodialisis", hd.id, "actualizar", after=cambios)
     await db.commit()
     return await _paciente_out(db, hd)
 
@@ -109,12 +99,10 @@ async def cambiar_estado_paciente(db: AsyncSession, tid: uuid.UUID, user: dict, 
     if hd.estado != "activo":
         raise HTTPException(409, detail=f"El paciente ya está en estado '{hd.estado}'")
 
-    before = {"estado": hd.estado}
     hd.estado = data.estado
     hd.fecha_estado = data.fecha_estado or date.today()
     if data.observaciones:
         hd.observaciones = data.observaciones
-    audit(db, tid, user, "PacienteHemodialisis", hd.id, "cambiar_estado", before=before, after={"estado": data.estado})
     await db.commit()
     return await _paciente_out(db, hd)
 
@@ -156,7 +144,6 @@ async def crear_sesion(db: AsyncSession, tid: uuid.UUID, user: dict, data) -> di
         observaciones=data.observaciones, registrado_por=actor(user))
     db.add(sesion)
     await db.flush()
-    audit(db, tid, user, "SesionHemodialisis", sesion.id, "crear", after={"paciente_hemodialisis_id": str(data.paciente_hemodialisis_id)})
     await db.commit()
     return _sesion_out(sesion)
 
@@ -190,7 +177,6 @@ async def cambiar_estado_sesion(db: AsyncSession, tid: uuid.UUID, user: dict, se
     if data.estado not in permitidas:
         raise HTTPException(409, detail=f"No se puede pasar de '{sesion.estado}' a '{data.estado}'")
 
-    before = {"estado": sesion.estado}
     sesion.estado = data.estado
     if data.hora_fin:
         sesion.hora_fin = data.hora_fin
@@ -203,6 +189,5 @@ async def cambiar_estado_sesion(db: AsyncSession, tid: uuid.UUID, user: dict, se
     if data.observaciones:
         sesion.observaciones = data.observaciones
 
-    audit(db, tid, user, "SesionHemodialisis", sesion.id, "cambiar_estado", before=before, after={"estado": data.estado})
     await db.commit()
     return _sesion_out(sesion)

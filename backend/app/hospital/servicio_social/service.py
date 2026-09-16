@@ -1,7 +1,6 @@
 import uuid
 from datetime import date, datetime
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,17 +11,10 @@ from app.hospital.consulta_externa.models import AtencionMedica, Hospitalizacion
 from app.hospital.emergencia.models import AtencionEmergencia
 from app.sigarh.rrhh.models import Empleado
 from app.sigarh.mantenimiento.models import Profesion
-from app.admin.auditoria.models import AuditLog
 
 
 def actor(user):
     return f"{(user.get('name') or 'Usuario')[:210]} ({user['sub']})"
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 async def _siguiente(db: AsyncSession, tid: uuid.UUID) -> str:
@@ -67,7 +59,6 @@ async def crear_evaluacion(db: AsyncSession, tid: uuid.UUID, user: dict, data) -
         recomendaciones=data.recomendaciones, registrado_por=actor(user))
     db.add(evaluacion)
     await db.flush()
-    audit(db, tid, user, "EvaluacionSocial", evaluacion.id, "crear", after={"numero_ficha": numero, "patient_id": str(data.patient_id)})
     await db.commit()
     return await _evaluacion_out(db, evaluacion)
 
@@ -126,7 +117,6 @@ async def cerrar_evaluacion(db: AsyncSession, tid: uuid.UUID, user: dict, evalua
     e.fecha_cierre = date.today()
     if data.recomendaciones:
         e.recomendaciones = data.recomendaciones
-    audit(db, tid, user, "EvaluacionSocial", e.id, "cerrar")
     await db.commit()
     return await _evaluacion_out(db, e)
 
@@ -142,6 +132,5 @@ async def crear_gestion(db: AsyncSession, tid: uuid.UUID, user: dict, evaluacion
         registrado_por=actor(user))
     db.add(gestion)
     await db.flush()
-    audit(db, tid, user, "GestionSocial", gestion.id, "crear", after={"tipo_gestion": data.tipo_gestion})
     await db.commit()
     return await _evaluacion_out(db, evaluacion)

@@ -1,7 +1,6 @@
 import uuid
 from datetime import date, datetime
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,17 +12,10 @@ from app.hospital.emergencia.models import AtencionEmergencia, AdmisionEmergenci
 from app.sigarh.rrhh.models import Empleado
 from app.sigarh.mantenimiento.models import Profesion
 from app.sigarh.general.models import DiagnosticoCIE10
-from app.admin.auditoria.models import AuditLog
 
 
 def actor(user):
     return f"{(user.get('name') or 'Usuario')[:210]} ({user['sub']})"
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 async def _siguiente(db: AsyncSession, tid: uuid.UUID, tipo: str) -> str:
@@ -46,7 +38,7 @@ async def _validar_medico_notificante(db: AsyncSession, tid: uuid.UUID, medico_i
 
 
 async def crear_ficha(db: AsyncSession, tid: uuid.UUID, user: dict, data) -> dict:
-    medico = await _validar_medico_notificante(db, tid, data.medico_notificante_id)
+    await _validar_medico_notificante(db, tid, data.medico_notificante_id)
 
     patient_id = data.patient_id
     if data.atencion_medica_id:
@@ -84,7 +76,6 @@ async def crear_ficha(db: AsyncSession, tid: uuid.UUID, user: dict, data) -> dic
         datos_clinicos=data.datos_clinicos, observaciones=data.observaciones, registrado_por=actor(user))
     db.add(ficha)
     await db.flush()
-    audit(db, tid, user, "FichaEpidemiologica", ficha.id, "crear", after={"tipo_ficha": data.tipo_ficha, "numero_ficha": numero})
     await db.commit()
     return await _ficha_out(db, ficha)
 
@@ -131,6 +122,5 @@ async def marcar_enviado(db: AsyncSession, tid: uuid.UUID, user: dict, ficha_id:
         raise HTTPException(409, detail="Esta ficha ya fue marcada como enviada")
     f.estado_envio = "enviada_red_salud"
     f.fecha_envio = datetime.utcnow()
-    audit(db, tid, user, "FichaEpidemiologica", f.id, "marcar_enviado")
     await db.commit()
     return await _ficha_out(db, f)

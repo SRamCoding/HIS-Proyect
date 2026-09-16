@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
@@ -15,17 +14,10 @@ from app.hospital.emergencia.models import AtencionEmergencia, AdmisionEmergenci
 from app.sigarh.mantenimiento.models import Servicio
 from app.sigarh.rrhh.models import Especialidad
 from app.auth.models import User
-from app.admin.auditoria.models import AuditLog
 
 
 def actor(user):
     return f"{(user.get('name') or 'Usuario')[:210]} ({user['sub']})"
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 def columns(obj):
@@ -296,7 +288,6 @@ async def create_lista_espera(db: AsyncSession, tid: uuid.UUID, data: ListaEsper
         registrado_por=actor(user))
     db.add(le)
     await db.flush()
-    audit(db, tid, user, "ListaEspera", le.id, "crear", after=columns(le))
     await db.commit()
     row = (await db.execute(_lista_espera_query(tid).where(ListaEspera.id == le.id))).first()
     return await _lista_espera_out(db, row)
@@ -309,11 +300,10 @@ async def update_lista_espera(db: AsyncSession, tid: uuid.UUID, item_id: uuid.UU
         raise HTTPException(404, detail="Registro de lista de espera no encontrado")
     if le.estado != "pendiente":
         raise HTTPException(409, detail="Solo se puede editar un registro pendiente")
-    before = columns(le)
+    columns(le)
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(le, field, value)
     await db.flush()
-    audit(db, tid, user, "ListaEspera", le.id, "editar", before=before, after=columns(le))
     await db.commit()
     row = (await db.execute(_lista_espera_query(tid).where(ListaEspera.id == le.id))).first()
     return await _lista_espera_out(db, row)
@@ -332,11 +322,10 @@ async def atender_lista_espera(db: AsyncSession, tid: uuid.UUID, item_id: uuid.U
         if not cita:
             raise HTTPException(404, detail="La cita indicada no existe o no pertenece a este paciente")
         le.cita_id = cita_id
-    before = columns(le)
+    columns(le)
     le.estado = "atendido"
     le.atendido_at = datetime.utcnow()
     await db.flush()
-    audit(db, tid, user, "ListaEspera", le.id, "atender", before=before, after=columns(le))
     await db.commit()
     row = (await db.execute(_lista_espera_query(tid).where(ListaEspera.id == le.id))).first()
     return await _lista_espera_out(db, row)
@@ -349,10 +338,9 @@ async def cancelar_lista_espera(db: AsyncSession, tid: uuid.UUID, item_id: uuid.
         raise HTTPException(404, detail="Registro de lista de espera no encontrado")
     if le.estado != "pendiente":
         raise HTTPException(409, detail="Este registro ya fue resuelto")
-    before = columns(le)
+    columns(le)
     le.estado = "cancelado"
     await db.flush()
-    audit(db, tid, user, "ListaEspera", le.id, "cancelar", before=before, after=columns(le))
     await db.commit()
     row = (await db.execute(_lista_espera_query(tid).where(ListaEspera.id == le.id))).first()
     return await _lista_espera_out(db, row)
@@ -371,7 +359,6 @@ async def create_anuncio(db: AsyncSession, tid: uuid.UUID, data: AnuncioCreate, 
     anuncio = Anuncio(tenant_id=tid, titulo=data.titulo, contenido=data.contenido, publicado_por=actor(user))
     db.add(anuncio)
     await db.flush()
-    audit(db, tid, user, "Anuncio", anuncio.id, "crear", after=columns(anuncio))
     await db.commit()
     await db.refresh(anuncio)
     return anuncio
@@ -382,11 +369,10 @@ async def update_anuncio(db: AsyncSession, tid: uuid.UUID, anuncio_id: uuid.UUID
         .with_for_update())).scalar_one_or_none()
     if not anuncio:
         raise HTTPException(404, detail="Anuncio no encontrado")
-    before = columns(anuncio)
+    columns(anuncio)
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(anuncio, field, value)
     await db.flush()
-    audit(db, tid, user, "Anuncio", anuncio.id, "editar", before=before, after=columns(anuncio))
     await db.commit()
     await db.refresh(anuncio)
     return anuncio

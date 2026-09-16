@@ -1,8 +1,7 @@
 import uuid
 from datetime import date, datetime
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.hospital.his.models import HisEnvio
@@ -15,7 +14,6 @@ from app.sigarh.general.models import DiagnosticoCIE10
 from app.sigarh.rrhh.models import Empleado, Especialidad
 from app.sigarh.mantenimiento.models import Servicio
 from app.sigarh.config_financiera.models import Seguro
-from app.admin.auditoria.models import AuditLog
 
 
 def actor(user):
@@ -24,12 +22,6 @@ def actor(user):
 
 def columns(obj):
     return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 async def _nombres_distritos(district_ids: set[str]) -> dict[str, str]:
@@ -158,7 +150,6 @@ async def crear_envio(db, tid, user, data):
         total_registros=total, observaciones=data.observaciones, registrado_por=actor(user))
     db.add(envio)
     await db.flush()
-    audit(db, tid, user, "HisEnvio", envio.id, "crear", after=columns(envio))
     await db.commit()
     return columns(envio)
 
@@ -170,7 +161,7 @@ async def cerrar_envio(db, tid, user, envio_id, data):
         raise HTTPException(404, detail="Envío no encontrado")
     if envio.estado == "enviado":
         raise HTTPException(409, detail="Este envío ya fue marcado como enviado")
-    before = columns(envio)
+    columns(envio)
     # Recalcula el total al cerrar -- puede haber cambiado desde que se creó el borrador.
     envio.total_registros = len(await list_atenciones_his(db, tid, envio.fecha_desde, envio.fecha_hasta))
     envio.estado = "enviado"
@@ -178,6 +169,5 @@ async def cerrar_envio(db, tid, user, envio_id, data):
     if data.observaciones:
         envio.observaciones = data.observaciones
     await db.flush()
-    audit(db, tid, user, "HisEnvio", envio.id, "cerrar", before=before, after=columns(envio))
     await db.commit()
     return columns(envio)

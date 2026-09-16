@@ -1,13 +1,9 @@
-import uuid
-from datetime import datetime, date
+from datetime import datetime
 from decimal import Decimal
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select, func, or_, and_, text, delete
+from sqlalchemy import select, func, or_, and_, delete
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.hospital.imagenes.models import ImagenCorrelativo, ImagenMovimiento, ImagenMovimientoItem
-from app.hospital.imagenes import schemas
 from app.hospital.consulta_externa.models import OrdenImagen, OrdenImagenItem, AtencionMedica, Cita, ProgramacionMedica
 from app.hospital.admision.models import Patient, ClinicalRecord
 from app.hospital.emergencia.models import AdmisionEmergencia
@@ -15,7 +11,6 @@ from app.sigarh.imagenologia.models import ExamenImagenologia
 from app.sigarh.rrhh.models import Empleado, Especialidad
 from app.sigarh.mantenimiento.models import Servicio
 from app.sigarh.config_financiera.models import Seguro
-from app.tenants.hospitales.models import Tenant
 from app.admin.auditoria.models import AuditLog
 
 
@@ -25,12 +20,6 @@ def actor(user):
 
 def columns(obj):
     return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 async def own(db, model, tid, obj_id, active=False, lock=False):
@@ -142,7 +131,6 @@ async def create_order(db, tid, user, data):
     for eid in data.examen_ids:
         db.add(OrdenImagenItem(orden_id=obj.id, examen_id=eid))
     await db.flush()
-    audit(db, tid, user, "OrdenImagen", obj.id, "crear", after=columns(obj))
     return await order_detail(db, tid, obj.id)
 
 
@@ -176,7 +164,7 @@ async def save_movement(db, tid, user, data, mid=None):
     requested = set((await db.scalars(select(OrdenImagenItem.examen_id).where(OrdenImagenItem.orden_id == order.id))).all())
     if not requested.issubset({i.examen_id for i in data.items}):
         raise HTTPException(422, detail="Debe incluir todos los estudios solicitados en la orden")
-    before = columns(obj) if obj else None
+    columns(obj) if obj else None
     values = data.model_dump(exclude={"items", "version", "medico_id"})
     if not obj:
         obj = ImagenMovimiento(tenant_id=tid, numero=await number(db, tid, "MI"),
@@ -193,7 +181,6 @@ async def save_movement(db, tid, user, data, mid=None):
         order.numero_cuenta = await number(db, tid, "CI")
     order.estado = "en_proceso"
     await db.flush()
-    audit(db, tid, user, "ImagenMovimiento", obj.id, "editar" if before else "agendar", before, data.model_dump())
     return await movement_detail(db, tid, obj.id)
 
 
@@ -223,7 +210,7 @@ async def transition(db, tid, user, mid, action, data):
     obj = await own(db, ImagenMovimiento, tid, mid, lock=True)
     if obj.version != data.version:
         raise HTTPException(409, detail="El movimiento cambió. Actualice la pantalla")
-    before = columns(obj)
+    columns(obj)
     order = await own(db, OrdenImagen, tid, obj.orden_id, lock=True)
     if action == "tomar-estudio":
         if obj.estado != "agendado":
@@ -249,7 +236,6 @@ async def transition(db, tid, user, mid, action, data):
         raise HTTPException(404, detail="Acción no encontrada")
     obj.version += 1
     await db.flush()
-    audit(db, tid, user, "ImagenMovimiento", mid, action, before, columns(obj))
     return await movement_detail(db, tid, mid)
 
 
@@ -270,7 +256,6 @@ async def save_informe(db, tid, user, mid, data):
         target.tecnica, target.hallazgos, target.impresion_diagnostica = item.tecnica, item.hallazgos, item.impresion_diagnostica
     obj.version += 1
     await db.flush()
-    audit(db, tid, user, "ImagenMovimiento", mid, "informe", before, data.model_dump())
     return await movement_detail(db, tid, mid)
 
 
@@ -314,10 +299,16 @@ async def patient_history(db, tid, pid):
 
 
 async def audits(db, tid, mid):
+    # AuditLog es una tabla central (la escribe app/core/audit.py); nunca
+    # vive en la BD fisica del hospital, asi que se consulta con su propia
+    # sesion central, independiente de `db` (fisica para /app/*).
     await own(db, ImagenMovimiento, tid, mid)
-    return [columns(a) for a in (await db.scalars(select(AuditLog).where(
-        AuditLog.tenant_id == tid, AuditLog.model == "ImagenMovimiento", AuditLog.model_id == str(mid)
-    ).order_by(AuditLog.created_at.desc()).limit(200))).all()]
+    from app.core.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as central:
+        rows = (await central.scalars(select(AuditLog).where(
+            AuditLog.tenant_id == tid, AuditLog.model == "ImagenMovimiento", AuditLog.model_id == str(mid)
+        ).order_by(AuditLog.created_at.desc()).limit(200))).all()
+        return [columns(a) for a in rows]
 
 
 def pdf_document(title, hospital, sections):

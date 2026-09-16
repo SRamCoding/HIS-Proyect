@@ -2,13 +2,10 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select, func, or_, and_, text
+from sqlalchemy import select, func, or_, text
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.hospital.caja.models import CajaCorrelativo, CajaSesion, Cobro, CobroItem
-from app.hospital.caja import schemas
 from app.hospital.admision.models import Patient, ClinicalRecord
 from app.hospital.consulta_externa.models import Cita, AtencionMedica, ProgramacionMedica, OrdenLaboratorio, OrdenImagen
 from app.hospital.emergencia.models import AdmisionEmergencia
@@ -17,7 +14,6 @@ from app.hospital.imagenes.models import ImagenMovimiento, ImagenMovimientoItem
 from app.hospital.farmacia.models import FarmaciaMovimiento
 from app.sigarh.config_financiera.models import Caja as CajaFisica, Tarifario, Seguro
 from app.sigarh.rrhh.models import Empleado, Especialidad
-from app.admin.auditoria.models import AuditLog
 
 CERO = Decimal("0")
 
@@ -28,12 +24,6 @@ def actor(user):
 
 def columns(obj):
     return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 async def own(db, model, tid, obj_id, active=False, lock=False):
@@ -288,7 +278,6 @@ async def abrir_sesion(db, tid, user, data):
     db.add(sesion)
     caja.estado, caja.cajero_id, caja.monto_apertura = "abierta", cajero_id, data.monto_apertura
     await db.flush()
-    audit(db, tid, user, "CajaSesion", sesion.id, "abrir", after=columns(sesion))
     await db.commit()
     return await sesion_detalle(db, tid, sesion.id)
 
@@ -297,7 +286,7 @@ async def cerrar_sesion(db, tid, user, sesion_id, data):
     sesion = await own(db, CajaSesion, tid, sesion_id, lock=True)
     if sesion.estado != "abierta":
         raise HTTPException(409, detail="Este turno ya está cerrado")
-    before = columns(sesion)
+    columns(sesion)
     efectivo = await db.scalar(select(func.coalesce(func.sum(Cobro.monto), 0)).where(
         Cobro.tenant_id == tid, Cobro.caja_sesion_id == sesion.id, Cobro.estado == "registrado",
         Cobro.forma_pago == "EFECTIVO"))
@@ -311,7 +300,6 @@ async def cerrar_sesion(db, tid, user, sesion_id, data):
     caja = await own(db, CajaFisica, tid, sesion.caja_id, lock=True)
     caja.estado, caja.cajero_id = "cerrada", None
     await db.flush()
-    audit(db, tid, user, "CajaSesion", sesion.id, "cerrar", before, columns(sesion))
     await db.commit()
     return await sesion_detalle(db, tid, sesion.id)
 
@@ -370,7 +358,6 @@ async def crear_cobro(db, tid, user, sesion_id, data):
         db.add(CobroItem(tenant_id=tid, cobro_id=cobro.id, origen=item.origen, origen_id=item.origen_id,
             descripcion=item.descripcion, monto=item.monto))
     await db.flush()
-    audit(db, tid, user, "Cobro", cobro.id, "crear", after=columns(cobro))
     await db.commit()
     return await cobro_detalle(db, tid, cobro.id)
 
@@ -382,10 +369,9 @@ async def anular_cobro(db, tid, user, cobro_id, motivo):
     sesion = await own(db, CajaSesion, tid, cobro.caja_sesion_id)
     if sesion.estado != "abierta":
         raise HTTPException(409, detail="No se puede anular un cobro de una sesión de caja ya cerrada")
-    before = columns(cobro)
+    columns(cobro)
     cobro.estado, cobro.motivo_anulacion = "anulado", motivo
     await db.flush()
-    audit(db, tid, user, "Cobro", cobro.id, "anular", before, columns(cobro))
     await db.commit()
     return await cobro_detalle(db, tid, cobro.id)
 
