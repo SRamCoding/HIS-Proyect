@@ -4,6 +4,12 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from app.auth.models import PerfilHospital
 
+# Set inicial con el que se sembró el rol "medico"/"enfermera" al crear el
+# sistema (ver scripts/migrate_perfiles_hospital.py). Ya NO se usa como
+# restricción en caliente: el alcance real de estos roles lo define el
+# SystemRole.allowed_modules / RolSistema.modulos_permitidos configurado por
+# el hospital en Seguridad/SIGARH, igual que para cualquier otro rol. Se
+# conserva solo para no romper los scripts históricos que la importan.
 MEDICO_MODULOS = {"consulta_externa.programacion", "consulta_externa.atenciones", "firma_electronica"}
 ENFERMERIA_MODULOS = {
     "consulta_externa.confirmacion", "consulta_externa.triaje",
@@ -109,11 +115,10 @@ async def contexto_hospital(db, usuario, hospital, habilitados):
         grupos = set(lista(rol.grupos_ocupacionales_permitidos))
         if grupos and (not empleado or str(empleado.grupo_ocupacional_id) not in grupos):
             raise HTTPException(403, 'El grupo ocupacional no est? autorizado por el rol')
+    # medico/enfermera ya no se recortan contra un allowlist fijo en código:
+    # su alcance real lo define el perfil configurado en SIGARH (arriba),
+    # igual que para cualquier otro rol hospitalario.
     permisos = set(perfil.modulos) if perfil else set(habilitados)
-    if usuario.role == "medico":
-        permisos &= MEDICO_MODULOS
-    if usuario.role == "enfermera":
-        permisos &= ENFERMERIA_MODULOS
     permisos = sorted(c for c in permisos if modulo_padre(c) in habilitados)
     return {"sub": str(usuario.id), "name": usuario.name, "email": usuario.email,
         "role": usuario.role, "panel": usuario.panel, "tenant_id": str(hospital.id),

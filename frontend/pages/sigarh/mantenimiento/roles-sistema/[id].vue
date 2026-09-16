@@ -232,16 +232,10 @@ const saving = ref(false)
 const error = ref('')
 
 const catalogoModulos = ref<Modulo[]>([])
-const modulosClinicos = (tipo: string) => tipo === 'medico'
-  ? ['consulta_externa.programacion', 'consulta_externa.atenciones']
-  : tipo === 'enfermera'
-    ? ['consulta_externa.confirmacion', 'consulta_externa.triaje', 'hospitalizacion.seguimiento'] : null
-const todosModulos = computed(() => {
-  const permitidos = form.panel === 'app' ? modulosClinicos(form.tipo_usuario) : null
-  if (!permitidos) return catalogoModulos.value
-  return catalogoModulos.value.map(m => ({ ...m, submodulos: (m.submodulos || []).filter(s => permitidos.includes(`${m.code}.${s.code}`)) }))
-    .filter(m => m.submodulos?.length)
-})
+// Medico y enfermera ya no tienen un catalogo de modulos recortado a mano:
+// el alcance real de cada rol lo define el admin en este mismo formulario,
+// igual que para cualquier otro tipo_usuario (ver hospital_access.py).
+const todosModulos = computed(() => catalogoModulos.value)
 const gruposOcupacionales = ref<GrupoOcupacional[]>([])
 
 const PERMISOS_ACCION = [
@@ -310,7 +304,7 @@ const toggleModulo = (mod: Modulo) => {
   const estabaCompleto = estadoModulo(mod) === 'all'
   form.modulos_permitidos = form.modulos_permitidos.filter(c => c !== mod.code && !codigosSubmodulo.includes(c))
   if (!estabaCompleto) {
-    form.modulos_permitidos.push(...(form.panel === 'app' && modulosClinicos(form.tipo_usuario) ? codigosSubmodulo : [mod.code]))
+    form.modulos_permitidos.push(mod.code)
   }
 }
 
@@ -329,7 +323,7 @@ const toggleSub = (mod: Modulo, sub: Submodulo) => {
   }
   const todosCodigos = (mod.submodulos || []).map(s => `${mod.code}.${s.code}`)
   const seleccionadosAhora = todosCodigos.filter(c => actuales.includes(c))
-  if (!(form.panel === 'app' && modulosClinicos(form.tipo_usuario)) && todosCodigos.length && seleccionadosAhora.length === todosCodigos.length) {
+  if (todosCodigos.length && seleccionadosAhora.length === todosCodigos.length) {
     actuales = actuales.filter(c => !todosCodigos.includes(c))
     actuales.push(mod.code)
   }
@@ -339,7 +333,7 @@ const toggleSub = (mod: Modulo, sub: Submodulo) => {
 const todosSeleccionados = computed(() => todosModulos.value.every(m => estadoModulo(m) === 'all'))
 
 const toggleTodosModulos = () => {
-  form.modulos_permitidos = todosSeleccionados.value ? [] : todosModulos.value.flatMap(m => form.panel === 'app' && modulosClinicos(form.tipo_usuario) ? (m.submodulos || []).map(s => `${m.code}.${s.code}`) : [m.code])
+  form.modulos_permitidos = todosSeleccionados.value ? [] : todosModulos.value.map(m => m.code)
 }
 
 const toggleTodosGrupos = () => {

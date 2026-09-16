@@ -15,12 +15,10 @@ const modulos = ref<string[]>([])
 const activo = ref(true)
 let solicitud = 0
 const opciones = computed(() => perfiles.value.filter(p => p.role === props.role))
-const MODULOS_ROL: Record<string, string[]> = {
-  medico: ['consulta_externa.programacion', 'consulta_externa.atenciones'],
-  enfermera: ['consulta_externa.confirmacion', 'consulta_externa.triaje', 'hospitalizacion.seguimiento'],
-}
-const permitidos = computed(() => MODULOS_ROL[props.role]
-  ? catalogo.value.filter(m => MODULOS_ROL[props.role]!.includes(m.code)) : catalogo.value)
+// Medico y enfermera ya no tienen un catalogo recortado a mano: el backend
+// valida el alcance real contra el rol del sistema configurado en Seguridad
+// (SystemRole.allowed_modules), igual que para cualquier otro rol.
+const permitidos = computed(() => catalogo.value)
 const seleccionado = computed(() => perfiles.value.find(p => p.id === perfilId.value))
 async function cargar() {
   const actual = ++solicitud
@@ -44,7 +42,7 @@ function abrir(editar = false) {
   const p = editar ? seleccionado.value : undefined
   editarId.value = p?.id || ''
   nombre.value = p?.nombre || (props.role === 'medico' ? 'Médico de consulta externa' : props.role === 'enfermera' ? 'Enfermería asistencial' : '')
-  modulos.value = p ? [...p.modulos] : MODULOS_ROL[props.role] ? permitidos.value.map(m => m.code) : []
+  modulos.value = p ? [...p.modulos] : []
   activo.value = p?.is_active ?? true
   editor.value = true
 }

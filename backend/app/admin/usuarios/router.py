@@ -55,7 +55,6 @@ async def guardar_perfil_hospital(data: PerfilHospitalInput, tenant_id: uuid.UUI
     perfil_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user)):
     from app.auth.models import PerfilHospital, User
-    from app.auth.hospital_access import MEDICO_MODULOS, ENFERMERIA_MODULOS
     from app.core.tenant_db import get_tenant_sessionmaker
     from app.admin.roles.models import SystemRole
     from app.admin.auditoria.service import create_audit_log
@@ -69,10 +68,6 @@ async def guardar_perfil_hospital(data: PerfilHospitalInput, tenant_id: uuid.UUI
     catalogo = await catalogo_perfiles(tenant_id, db, current_user)
     if not set(data.modulos) <= {m["code"] for m in catalogo}:
         raise HTTPException(400, "El perfil contiene módulos que no están habilitados para este hospital")
-    if data.role == "medico" and not set(data.modulos) <= MEDICO_MODULOS:
-        raise HTTPException(400, "El perfil médico admite programación en lectura y atenciones médicas")
-    if data.role == "enfermera" and not set(data.modulos) <= ENFERMERIA_MODULOS:
-        raise HTTPException(400, "El perfil de enfermería admite confirmación, triaje y seguimiento hospitalario")
     async with get_tenant_sessionmaker(hospital.database_name)() as tdb:
         from sqlalchemy import func
         duplicado = select(PerfilHospital.id).where(PerfilHospital.tenant_id == tenant_id,

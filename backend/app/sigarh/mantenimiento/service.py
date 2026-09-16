@@ -416,15 +416,14 @@ async def validar_relaciones(db, modelo, tenant_id, values):
         from app.tenants.modulos.submodulos import modulo_padre
         habilitados = {module.code for module in await modulos_habilitados(db, tenant_id, values.get("panel", "sigarh"))}
         if values.get("panel") == "app":
-            from app.auth.hospital_access import MEDICO_MODULOS, ENFERMERIA_MODULOS
             if not values.get("tipo_usuario"):
                 raise HTTPException(422, "Seleccione el tipo de cuenta hospitalaria")
             if values.get("permisos_accion"):
                 raise HTTPException(422, "Las acciones SIGARH no se asignan al panel hospitalario")
-            if values["tipo_usuario"] == "medico" and not set(values["modulos_permitidos"]) <= MEDICO_MODULOS:
-                raise HTTPException(422, "El m?dico admite programaci?n y atenciones m?dicas")
-            if values["tipo_usuario"] == "enfermera" and not set(values["modulos_permitidos"]) <= ENFERMERIA_MODULOS:
-                raise HTTPException(422, "Enfermería admite confirmación, triaje y seguimiento hospitalario")
+            # medico/enfermera ya no se recortan contra un allowlist fijo en
+            # código: quedan sujetos solo a la regla general de abajo (deben
+            # existir y estar habilitados para este hospital), igual que
+            # cualquier otro tipo_usuario.
         elegidos = set(values["modulos_permitidos"])
         requerido = values.get("modulo_requerido")
         # Un código puede venir con submódulo (ej. "sigarh_recursos_humanos.empleados"):
