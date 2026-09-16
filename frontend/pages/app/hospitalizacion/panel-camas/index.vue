@@ -276,6 +276,7 @@
 definePageMeta({ layout: 'app', middleware: ['auth'] })
 
 const { api } = useApi()
+const route = useRoute()
 
 // Estado
 const pisos = ref<any[]>([])
@@ -330,6 +331,8 @@ onMounted(async () => {
     pisos.value = await api('/app/hospitalizacion/pisos')
   } catch (e: any) { /* silencioso */ }
   await cargar()
+  const camaId = typeof route.query.cama === 'string' ? route.query.cama : ''
+  if (camaId) camaDetalle.value = camas.value.find(c => String(c.id) === camaId) || null
 })
 </script>
 

@@ -248,14 +248,20 @@
               </tbody>
             </table>
             <div v-if="['pendiente','en_pruebas_cruzadas'].includes(s.estado)" class="row-actions" style="margin-top:0.5rem">
-              <input v-model="componentePorSolicitud[s.id]" class="input-clinical input-sm" placeholder="ID de componente disponible" />
+              <select v-model="componentePorSolicitud[s.id]" class="input-clinical input-sm">
+                <option value="">Seleccione un componente compatible</option>
+                <option v-for="c in componentesPara(s)" :key="c.id" :value="c.id">
+                  {{ c.codigo }} · {{ c.tipo.replaceAll('_',' ') }} · {{ c.grupo_sanguineo }}{{ c.factor_rh }} · vence {{ c.fecha_vencimiento }}
+                </option>
+              </select>
               <button class="btn-secondary btn-sm" :disabled="busy || !componentePorSolicitud[s.id]" @click="asignarComponente(s)"><UIcon name="i-heroicons-link" class="w-4 h-4" />Asignar componente</button>
               <button class="btn-secondary btn-sm" :disabled="busy" @click="anularSolicitud(s)"><UIcon name="i-heroicons-x-circle" class="w-4 h-4" />Anular</button>
             </div>
+            <p v-if="['pendiente','en_pruebas_cruzadas'].includes(s.estado) && !componentesPara(s).length" class="field-hint">No hay componentes disponibles del tipo solicitado. Revise el inventario.</p>
           </div>
           <p v-if="!solicitudes.length" class="field-hint">No hay solicitudes registradas todavía.</p>
         </div>
-        <p class="field-hint" style="margin-top:0.75rem">Busque componentes disponibles del mismo tipo en Movimientos → Inventario y pegue aquí su ID para asignarlo.</p>
+        <p class="field-hint" style="margin-top:0.75rem">Seleccione una unidad del inventario; el sistema valida tipo y compatibilidad ABO/Rh antes de reservarla.</p>
       </section>
     </template>
   </div>
@@ -385,8 +391,17 @@ const componentePorSolicitud = reactive<Record<string, string>>({})
 async function cargarSolicitudes() {
   loading.value = true; error.value = ''
   try {
-    solicitudes.value = await api(endpoint + '/solicitud-transfusional', { query: filtroEstado.value ? { estado: filtroEstado.value } : {} })
+    const [lista, stock] = await Promise.all([
+      api<any[]>(endpoint + '/solicitud-transfusional', { query: filtroEstado.value ? { estado: filtroEstado.value } : {} }),
+      api<any[]>(endpoint + '/componentes', { query: { estado: 'disponible' } }),
+    ])
+    solicitudes.value = lista
+    componentes.value = stock
   } catch (e) { error.value = err(e) } finally { loading.value = false }
+}
+
+function componentesPara(s: any) {
+  return componentes.value.filter(c => c.estado === 'disponible' && c.tipo === s.tipo_componente)
 }
 
 async function crearSolicitud() {
@@ -410,6 +425,7 @@ async function asignarComponente(s: any) {
   try {
     await api(endpoint + '/solicitud-transfusional/' + s.id + '/asignar-componente', { method: 'POST', body: { componente_id: componentePorSolicitud[s.id] } })
     notice.value = 'Componente asignado.'
+    componentePorSolicitud[s.id] = ''
     await cargarSolicitudes()
   } catch (e) { error.value = err(e) } finally { busy.value = false }
 }

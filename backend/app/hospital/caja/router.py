@@ -8,6 +8,9 @@ from app.hospital.caja import schemas, service
 
 router = APIRouter()
 caja_user = require_any_module_jwt("caja")
+# Estado de Cuenta es el único item de nav del módulo "facturacion" (RM 573 exige
+# transparencia de cuenta al paciente/asegurador) — se habilita también sin "caja".
+cuentas_user = require_any_module_jwt("caja", "facturacion")
 
 
 def tid(user):
@@ -20,12 +23,12 @@ async def catalogos(kind: str, q: str = Query("", max_length=200), db: AsyncSess
 
 
 @router.get("/cuentas/buscar")
-async def buscar_cuentas(q: str = Query(min_length=2, max_length=200), db: AsyncSession = Depends(get_db), user=Depends(caja_user)):
+async def buscar_cuentas(q: str = Query(min_length=2, max_length=200), db: AsyncSession = Depends(get_db), user=Depends(cuentas_user)):
     return await service.buscar_cuentas(db, tid(user), q)
 
 
 @router.get("/cuentas/{numero_cuenta}")
-async def cuenta(numero_cuenta: str, db: AsyncSession = Depends(get_db), user=Depends(caja_user)):
+async def cuenta(numero_cuenta: str, db: AsyncSession = Depends(get_db), user=Depends(cuentas_user)):
     return await service.cuenta_detalle(db, tid(user), numero_cuenta)
 
 

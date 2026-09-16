@@ -9,6 +9,9 @@ from app.hospital.hospitalizacion import schemas, service
 
 router = APIRouter()
 hosp_user = require_any_module_jwt("hospitalizacion")
+# Seguimiento Paciente es el único item de nav del módulo "seguimiento" — necesita
+# listar/ver hospitalizaciones y sus notas de evolución sin el módulo "hospitalizacion" completo.
+seguimiento_user = require_any_module_jwt("hospitalizacion", "seguimiento")
 
 
 def tid(user):
@@ -51,13 +54,13 @@ async def admitir_desde_emergencia(data: schemas.AdmisionDesdeEmergencia, db: As
 @router.get("/hospitalizaciones")
 async def hospitalizaciones(q: str | None = None, estado: str | None = None, origen: str | None = None,
                             page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
-                            db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+                            db: AsyncSession = Depends(get_db), user=Depends(seguimiento_user)):
     f = {"q": q, "estado": estado, "origen": origen}
     return await service.list_hospitalizaciones(db, tid(user), f, page, page_size)
 
 
 @router.get("/hospitalizaciones/{hosp_id}")
-async def hospitalizacion(hosp_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+async def hospitalizacion(hosp_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(seguimiento_user)):
     return await service.hospitalizacion_detalle(db, tid(user), hosp_id)
 
 
@@ -68,12 +71,12 @@ async def dar_alta(hosp_id: uuid.UUID, data: schemas.AltaHospitalizacion, db: As
 
 # --- Seguimiento del paciente (notas de evolución) ---
 @router.get("/hospitalizaciones/{hosp_id}/notas")
-async def notas(hosp_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+async def notas(hosp_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(seguimiento_user)):
     return await service.listar_notas(db, tid(user), hosp_id)
 
 
 @router.post("/hospitalizaciones/{hosp_id}/notas", status_code=201)
-async def crear_nota(hosp_id: uuid.UUID, data: schemas.NotaEvolucionCreate, db: AsyncSession = Depends(get_db), user=Depends(hosp_user)):
+async def crear_nota(hosp_id: uuid.UUID, data: schemas.NotaEvolucionCreate, db: AsyncSession = Depends(get_db), user=Depends(seguimiento_user)):
     return await service.crear_nota(db, tid(user), user, hosp_id, data)
 
 
