@@ -11,7 +11,7 @@ from app.hospital.consulta_externa.service import buscar_cie10, create_atencion_
 from app.hospital.consulta_externa.service import get_examenes_imagen, create_orden_imagen, get_orden_imagen, create_interconsulta, get_interconsulta, list_interconsultas_pendientes, programar_interconsulta
 from app.hospital.consulta_externa.service import get_camas_disponibles, create_hospitalizacion, get_hospitalizacion, dar_alta_hospitalizacion
 from app.core.database import get_db
-from app.tenants.entitlements import require_module_jwt
+from app.tenants.entitlements import require_module_jwt, require_any_module_jwt
 from app.hospital.consulta_externa.schemas import (
     ProgramacionMedicaCreate, ProgramacionMedicaUpdate, ProgramacionMedicaResponse, SincronizacionSIGARHResponse,
     ServicioOut, EspecialidadOut, MedicoOut, CupoOut, ConsultorioOut,
@@ -29,6 +29,12 @@ from app.hospital.consulta_externa.schemas import TriajeCreate,TriajeUpdate, Tri
 from app.hospital.consulta_externa.service import confirmar_cita, list_citas_para_triaje, create_triaje, get_triaje_by_cita, update_triaje
 
 router = APIRouter()
+# Agendamiento (citas, programacion-medica y sus catalogos) es un area
+# compartida de facto con Admision: sus paginas de Citados/Agendamiento/
+# Programacion Medica llaman directo a estos mismos endpoints. Lo clinico
+# (triaje, atenciones, ordenes, firma, etc.) se mantiene exclusivo de
+# "consulta_externa".
+agenda_user = require_any_module_jwt("consulta_externa", "admision")
 
 
 @router.get("/estado-citas-medico")
@@ -72,17 +78,17 @@ def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
 
 # --- Catalogos ---
 @router.get("/programacion-medica/servicios", response_model=list[ServicioOut])
-async def listar_servicios(request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def listar_servicios(request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     return await get_servicios(db, get_tenant_id(current_user, request))
 
 
 @router.get("/programacion-medica/especialidades", response_model=list[EspecialidadOut])
-async def listar_especialidades(request: Request, servicio_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def listar_especialidades(request: Request, servicio_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     return await get_especialidades(db, get_tenant_id(current_user, request), servicio_id)
 
 
 @router.get("/programacion-medica/medicos/{especialidad_id}", response_model=list[MedicoOut])
-async def listar_medicos(especialidad_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def listar_medicos(especialidad_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     medicos = await get_medicos_por_especialidad(db, get_tenant_id(current_user, request), especialidad_id)
     return [{"id": m.id, "nombre_completo": m.nombre_completo} for m in medicos]
 
@@ -93,7 +99,7 @@ async def listar_consultorios(request: Request, db: AsyncSession = Depends(get_d
 
 
 @router.get("/seguros")
-async def listar_seguros(request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def listar_seguros(request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     return await get_seguros(db, get_tenant_id(current_user, request))
 
 
@@ -129,7 +135,7 @@ async def listar_programaciones(
     descripcion: str | None = None,
     tipo_servicio: str | None = None,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_module_jwt("consulta_externa")),
+    current_user: dict = Depends(agenda_user),
 ):
     tenant_id = get_tenant_id(current_user, request)
     return await list_programaciones(
@@ -139,12 +145,12 @@ async def listar_programaciones(
 
 
 @router.post("/programacion-medica", response_model=ProgramacionMedicaResponse, status_code=201)
-async def crear_programacion(data: ProgramacionMedicaCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def crear_programacion(data: ProgramacionMedicaCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     return await create_programacion(db, get_tenant_id(current_user, request), data)
 
 
 @router.get("/programacion-medica/{prog_id}", response_model=ProgramacionMedicaResponse)
-async def obtener_programacion(prog_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def obtener_programacion(prog_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     prog = await get_programacion_by_id(db, get_tenant_id(current_user, request), prog_id)
     if not prog:
         raise HTTPException(404, detail="Programación no encontrada")
@@ -152,7 +158,7 @@ async def obtener_programacion(prog_id: uuid.UUID, request: Request, db: AsyncSe
 
 
 @router.patch("/programacion-medica/{prog_id}", response_model=ProgramacionMedicaResponse)
-async def actualizar_programacion(prog_id: uuid.UUID, data: ProgramacionMedicaUpdate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def actualizar_programacion(prog_id: uuid.UUID, data: ProgramacionMedicaUpdate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     prog = await update_programacion(db, get_tenant_id(current_user, request), prog_id, data)
     if not prog:
         raise HTTPException(404, detail="Programación no encontrada")
@@ -173,7 +179,7 @@ async def eliminar_programacion(prog_id: uuid.UUID, request: Request, db: AsyncS
 
 
 @router.post("/citas/{cita_id}/confirmar", response_model=CitaResponse)
-async def confirmar_cita_endpoint(cita_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def confirmar_cita_endpoint(cita_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     try:
         cita = await confirmar_cita(db, get_tenant_id(current_user, request), cita_id)
     except ValueError as exc:
@@ -216,7 +222,7 @@ async def registrar_triaje(cita_id: uuid.UUID, data: TriajeCreate, request: Requ
     
 # --- Cupos ---
 @router.get("/citas/cupos/{programacion_id}", response_model=list[CupoOut])
-async def listar_cupos(programacion_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def listar_cupos(programacion_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     cupos = await get_cupos(db, get_tenant_id(current_user, request), programacion_id)
     if cupos is None:
         raise HTTPException(404, detail="Programación no encontrada")
@@ -238,14 +244,14 @@ async def listar_citas_endpoint(
     apellido: str | None = None,
     medico_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_module_jwt("consulta_externa")),
+    current_user: dict = Depends(agenda_user),
 ):
     tenant_id = get_tenant_id(current_user, request)
     return await list_citas(db, tenant_id, programacion_medica_id, estado, fecha, fecha_desde, fecha_hasta, dni, cuenta, historia, apellido, uuid.UUID(current_user["empleado_id"]) if current_user.get("role") == "medico" else medico_id)
 
 
 @router.get("/citas/{cita_id}", response_model=CitaResponse)
-async def obtener_cita(cita_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def obtener_cita(cita_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     cita = await get_cita_by_id(db, get_tenant_id(current_user, request), cita_id)
     if not cita:
         raise HTTPException(404, detail="Cita no encontrada")
@@ -255,7 +261,7 @@ async def obtener_cita(cita_id: uuid.UUID, request: Request, db: AsyncSession = 
 @router.get("/citas/{cita_id}/comprobante.pdf")
 async def descargar_comprobante_cita(
     cita_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_module_jwt("consulta_externa")),
+    current_user: dict = Depends(agenda_user),
 ):
     resultado = await generar_comprobante_cita_pdf(db, get_tenant_id(current_user, request), cita_id)
     if not resultado:
@@ -268,7 +274,7 @@ async def descargar_comprobante_cita(
 
 
 @router.post("/citas", response_model=CitaResponse, status_code=201)
-async def crear_cita(data: CitaCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def crear_cita(data: CitaCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     try:
         return await create_cita(db, get_tenant_id(current_user, request), data)
     except ValueError as exc:
@@ -276,7 +282,7 @@ async def crear_cita(data: CitaCreate, request: Request, db: AsyncSession = Depe
 
 
 @router.patch("/citas/{cita_id}", response_model=CitaResponse)
-async def actualizar_cita(cita_id: uuid.UUID, data: CitaUpdate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def actualizar_cita(cita_id: uuid.UUID, data: CitaUpdate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     try:
         cita = await update_cita(db, get_tenant_id(current_user, request), cita_id, data)
     except ValueError as exc:
@@ -287,7 +293,7 @@ async def actualizar_cita(cita_id: uuid.UUID, data: CitaUpdate, request: Request
 
 
 @router.post("/citas/{cita_id}/reprogramar", response_model=CitaResponse)
-async def reprogramar_cita_endpoint(cita_id: uuid.UUID, data: CitaReprogramar, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def reprogramar_cita_endpoint(cita_id: uuid.UUID, data: CitaReprogramar, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     try:
         cita = await reprogramar_cita(db, get_tenant_id(current_user, request), cita_id, data.programacion_medica_id, data.hora_inicio, data.hora_fin, data.mensaje)
     except ValueError as exc:
@@ -298,7 +304,7 @@ async def reprogramar_cita_endpoint(cita_id: uuid.UUID, data: CitaReprogramar, r
 
 
 @router.post("/citas/acciones/reprogramar-bloque", response_model=list[CitaResponse])
-async def reprogramar_bloque_endpoint(data: CitasReprogramarBloque, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+async def reprogramar_bloque_endpoint(data: CitasReprogramarBloque, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(agenda_user)):
     try:
         return await reprogramar_citas_bloque(db, get_tenant_id(current_user, request), data.cita_ids, data.programacion_medica_id, data.mensaje)
     except ValueError as exc:

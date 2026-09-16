@@ -27,6 +27,12 @@ from app.hospital.admision.service import (
 router = APIRouter()
 
 MODULO_CODIGO = "admision"
+# Buscar/registrar paciente por DNI es el paso inicial compartido con la
+# Admision de Emergencia (un hospital con "emergencia" pero sin "admision"
+# igual necesita poder atender a alguien que llega por la puerta de
+# emergencia). El resto de Admision (altas, lista de espera, anuncios,
+# mensajito, mover historia clinica) sigue exclusivo de "admision".
+paciente_o_emergencia_user = require_any_module_jwt("admision", "emergencia")
 
 
 def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
@@ -108,7 +114,7 @@ async def buscar_por_dni(
     dni: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_module_jwt("admision")),
+    current_user: dict = Depends(paciente_o_emergencia_user),
 ):
     tenant_id = get_tenant_id(current_user, request)
     patient = await get_patient_by_dni(db, tenant_id, dni)
@@ -310,7 +316,7 @@ async def registrar_paciente(
     data: PatientCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_module_jwt("admision")),
+    current_user: dict = Depends(paciente_o_emergencia_user),
 ):
     tenant_id = get_tenant_id(current_user, request)
     if data.dni:
