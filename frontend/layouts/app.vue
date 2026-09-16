@@ -1,6 +1,6 @@
 <!-- frontend/layouts/app.vue -->
 <template>
-  <div class="h-screen flex overflow-hidden" style="background: var(--mist)">
+  <div class="h-screen flex overflow-hidden app-shell" style="background: var(--mist)">
 
     <!-- SIDEBAR -->
     <aside
@@ -235,6 +235,26 @@ const handleLogout = async () => {
 </script>
 
 <style scoped>
+/* Identidad de color exclusiva del panel hospitalario: un solo verde para
+   todo (antes el sidebar/header usaban --navy, un azul oscuro, mientras el
+   resto del panel usaba --teal, un verde azulado -- dos colores distintos
+   compitiendo). Se sobreescriben las variables SOLO dentro de este layout
+   (".app-shell"): como son custom properties de CSS, heredan hacia
+   cualquier página/componente hijo renderizado adentro sin tocar la
+   paleta global que usan Admin y SIGARH.
+   --navy/--navy-hover/--navy-soft: fondo del sidebar y sus estados.
+   --teal/--teal-dark/--teal-soft: acento (botones, íconos, activos) en
+   todas las páginas de /app/*. Misma familia de verde, solo varía el tono
+   para mantener contraste. */
+.app-shell {
+  --navy: #1f7a52;
+  --navy-hover: #185f40;
+  --navy-soft: #e3f5ec;
+  --teal: #2f9e6b;
+  --teal-dark: #1f7a52;
+  --teal-soft: #e3f5ec;
+}
+
 /* Links generales (Escritorio, submódulos, cerrar sesión) */
 .nav-link {
   display: flex;
