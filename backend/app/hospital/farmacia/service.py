@@ -2,9 +2,7 @@ import csv, io, uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
-from sqlalchemy import and_, func, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, or_, select
 from app.hospital.farmacia.models import (
     FarmaciaCorrelativo, FarmaciaLote, FarmaciaMovimiento, FarmaciaMovimientoItem,
     FarmaciaDispensacion, FarmaciaDispensacionItem, FarmacotecniaOrden,
@@ -15,7 +13,6 @@ from app.hospital.caja.models import Cobro, CobroItem
 from app.sigarh.config_farmacia.models import Almacen, Medicamento
 from app.sigarh.config_financiera.models import Seguro
 from app.sigarh.mantenimiento.models import Servicio
-from app.admin.auditoria.models import AuditLog
 
 # actor()/audit() en el mismo formato que el resto de la app (Laboratorio,
 # Caja, Hospitalizacion, ...): "Nombre (uuid)" para trazabilidad de auditoria.
@@ -24,10 +21,6 @@ def d(v): return float(v or 0)
 def mov_dict(m):
     return {c.name: getattr(m,c.name) for c in m.__table__.columns}
 
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 async def next_number(db, tid, kind):
     year=datetime.utcnow().year
@@ -147,7 +140,6 @@ async def create_movement(db, tid, user, data):
     # (CobroItem origen='FARMACIA', origen_id=movimiento.id) -- movement_detail
     # calcula estado_pago leyendo esos cobros, igual que Laboratorio/Imagenología.
     await db.flush()
-    audit(db, tid, user, "FarmaciaMovimiento", m.id, "confirmar" if data.confirmar else "crear", after=mov_dict(m))
     await db.commit()
     return await movement_detail(db, tid, m.id)
 
@@ -226,8 +218,6 @@ async def dispense(db, tid, user, rid, data):
         .where(FarmaciaDispensacion.receta_id == rid, FarmaciaDispensacion.estado != "ANULADA"))
     r.estado = "despachada" if Decimal(str(dispatched or 0)) >= prescribed else "parcial"
     await db.flush()
-    audit(db, tid, user, "FarmaciaMovimiento", movement.id, "dispensar", after=mov_dict(movement))
-    audit(db, tid, user, "FarmaciaDispensacion", disp.id, "crear", after=mov_dict(disp))
     await db.commit()
     return {"id": disp.id, "numero": disp.numero, "estado": disp.estado, "total": d(total)}
 
@@ -239,7 +229,7 @@ async def cancel_movement(db, tid, user, mid, motivo):
         raise HTTPException(404, "Movimiento no encontrado")
     if m.estado != "CONFIRMADO":
         raise HTTPException(409, "Solo se anulan movimientos confirmados")
-    before = mov_dict(m)
+    mov_dict(m)
     items = (await db.execute(select(FarmaciaMovimientoItem).where(
         FarmaciaMovimientoItem.movimiento_id == mid, FarmaciaMovimientoItem.tenant_id == tid))).scalars().all()
     for item in items:
@@ -261,7 +251,6 @@ async def cancel_movement(db, tid, user, mid, motivo):
     if disp:
         disp.estado = "ANULADA"
     await db.flush()
-    audit(db, tid, user, "FarmaciaMovimiento", m.id, "anular", before=before, after=mov_dict(m))
     await db.commit()
     return await movement_detail(db, tid, mid)
 
@@ -303,7 +292,6 @@ async def create_farmacotecnia(db, tid, user, data):
     row = FarmacotecniaOrden(tenant_id=tid, numero=await next_number(db, tid, "FARMACOTECNIA"), **data.model_dump())
     db.add(row)
     await db.flush()
-    audit(db, tid, user, "FarmacotecniaOrden", row.id, "crear", after=mov_dict(row))
     await db.commit()
     await db.refresh(row)
     return mov_dict(row)
@@ -314,13 +302,12 @@ async def update_farmacotecnia_estado(db, tid, user, oid, data):
         FarmacotecniaOrden.tenant_id == tid).with_for_update())).scalar_one_or_none()
     if not row:
         raise HTTPException(404, "Orden no encontrada")
-    before = mov_dict(row)
+    mov_dict(row)
     row.estado = data.estado.upper()
     row.control_calidad = data.control_calidad
     row.observaciones = data.observaciones
     row.responsable = actor(user)
     await db.flush()
-    audit(db, tid, user, "FarmacotecniaOrden", row.id, "actualizar_estado", before=before, after=mov_dict(row))
     await db.commit()
     await db.refresh(row)
     return mov_dict(row)

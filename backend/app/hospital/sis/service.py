@@ -1,10 +1,6 @@
-import uuid
-from datetime import datetime
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select, func, or_, and_
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.hospital.sis.models import SisCorrelativo, FormatoFua
 from app.hospital.admision.models import Patient, ClinicalRecord
@@ -13,7 +9,6 @@ from app.hospital.emergencia.models import AtencionEmergencia, AdmisionEmergenci
 from app.sigarh.config_financiera.models import Seguro
 from app.sigarh.general.models import DiagnosticoCIE10
 from app.sigarh.rrhh.models import Empleado
-from app.admin.auditoria.models import AuditLog
 
 
 def actor(user):
@@ -22,12 +17,6 @@ def actor(user):
 
 def columns(obj):
     return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 async def own(db, model, tid, obj_id, lock=False):
@@ -123,7 +112,6 @@ async def generar_fua(db, tid, user, data):
         numero_fua=await number(db, tid), fecha_atencion=fecha_atencion, registrado_por=actor(user))
     db.add(fua)
     await db.flush()
-    audit(db, tid, user, "FormatoFua", fua.id, "generar", after=columns(fua))
     await db.commit()
     return await fua_detalle(db, tid, fua.id)
 
@@ -168,7 +156,7 @@ async def fua_detalle(db, tid, fua_id):
     if fua.atencion_medica_id:
         atencion = await db.get(AtencionMedica, fua.atencion_medica_id)
         cita = await db.get(Cita, atencion.cita_id)
-        prog = await db.get(ProgramacionMedica, cita.programacion_medica_id) if cita else None
+        await db.get(ProgramacionMedica, cita.programacion_medica_id) if cita else None
         profesional = await db.get(Empleado, atencion.firmado_por_id) if atencion.firmado_por_id else None
         dx_rows = (await db.execute(select(AtencionDiagnostico, DiagnosticoCIE10).join(
             DiagnosticoCIE10, DiagnosticoCIE10.id == AtencionDiagnostico.diagnostico_cie10_id
@@ -207,12 +195,11 @@ async def cambiar_estado_fua(db, tid, user, fua_id, data):
         "observado": {"enviado", "anulado"}}
     if data.estado not in transiciones.get(fua.estado, set()):
         raise HTTPException(409, detail=f"No se puede pasar de '{fua.estado}' a '{data.estado}'")
-    before = columns(fua)
+    columns(fua)
     fua.estado = data.estado
     if data.observaciones:
         fua.observaciones = data.observaciones
     await db.flush()
-    audit(db, tid, user, "FormatoFua", fua.id, "cambiar_estado", before=before, after=columns(fua))
     await db.commit()
     return await fua_detalle(db, tid, fua.id)
 

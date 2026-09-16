@@ -1,7 +1,6 @@
 import uuid
 from datetime import date, datetime, timedelta
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select, func, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +13,6 @@ from app.hospital.admision.models import Patient
 from app.hospital.consulta_externa.models import AtencionMedica, Cita, Hospitalizacion
 from app.hospital.emergencia.models import AtencionEmergencia, AdmisionEmergencia
 from app.sigarh.rrhh.models import Empleado
-from app.admin.auditoria.models import AuditLog
 
 # Vida útil de referencia por tipo de hemocomponente (estándar de medicina
 # transfusional; el banco de sangre real puede ajustar según su sistema de
@@ -36,12 +34,6 @@ _COMPATIBLES_CELULARES = {"O": {"O"}, "A": {"A", "O"}, "B": {"B", "O"}, "AB": {"
 
 def actor(user):
     return f"{(user.get('name') or 'Usuario')[:210]} ({user['sub']})"
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 async def _siguiente(db: AsyncSession, tid: uuid.UUID, tipo: str, prefijo: str) -> str:
@@ -86,7 +78,6 @@ async def crear_donante(db: AsyncSession, tid: uuid.UUID, user: dict, data) -> D
     donante = Donante(id=uuid.uuid4(), tenant_id=tid, **data.model_dump())
     db.add(donante)
     await db.flush()
-    audit(db, tid, user, "Donante", donante.id, "crear", after={"dni": data.dni})
     await db.commit()
     return donante
 
@@ -123,7 +114,6 @@ async def crear_unidad(db: AsyncSession, tid: uuid.UUID, user: dict, data) -> di
     donante.factor_rh = data.factor_rh
     donante.fecha_ultima_donacion = date.today()
     await db.flush()
-    audit(db, tid, user, "UnidadSangre", unidad.id, "crear", after={"numero_unidad": numero, "donante_id": str(data.donante_id)})
     await db.commit()
     return await _unidad_out(db, unidad)
 
@@ -176,8 +166,6 @@ async def registrar_tamizaje(db: AsyncSession, tid: uuid.UUID, user: dict, unida
     else:
         unidad.apto = True
 
-    audit(db, tid, user, "UnidadSangre", unidad.id, "tamizaje",
-        after={"apto": unidad.apto, "reactivo": algun_reactivo})
     await db.commit()
     return await _unidad_out(db, unidad)
 
@@ -204,7 +192,6 @@ async def fraccionar_unidad(db: AsyncSession, tid: uuid.UUID, user: dict, unidad
         componentes.append(componente)
 
     unidad.estado = "fraccionada"
-    audit(db, tid, user, "UnidadSangre", unidad.id, "fraccionar", after={"tipos": data.tipos})
     await db.commit()
     return [_componente_out(c) for c in componentes]
 
@@ -283,7 +270,6 @@ async def crear_solicitud(db: AsyncSession, tid: uuid.UUID, user: dict, data) ->
         urgencia=data.urgencia, motivo_clinico=data.motivo_clinico, registrado_por=actor(user))
     db.add(solicitud)
     await db.flush()
-    audit(db, tid, user, "SolicitudTransfusional", solicitud.id, "crear", after={"numero_solicitud": numero})
     await db.commit()
     return await _solicitud_out(db, solicitud)
 
@@ -348,7 +334,6 @@ async def asignar_componente(db: AsyncSession, tid: uuid.UUID, user: dict, solic
     db.add(MovimientoSangre(id=uuid.uuid4(), tenant_id=tid, componente_id=componente.id, tipo="reserva",
         solicitud_id=solicitud_id, registrado_por=actor(user)))
     solicitud.estado = "en_pruebas_cruzadas"
-    audit(db, tid, user, "SolicitudTransfusional", solicitud.id, "asignar_componente", after={"componente_id": str(data.componente_id)})
     await db.commit()
     return await _solicitud_out(db, solicitud)
 
@@ -381,7 +366,6 @@ async def registrar_prueba_cruzada(db: AsyncSession, tid: uuid.UUID, user: dict,
         if pendientes_o_incompatibles == 0 and compatibles >= solicitud.cantidad_unidades:
             solicitud.estado = "lista_para_dispensar"
 
-    audit(db, tid, user, "SolicitudComponenteAsignado", asignacion.id, "prueba_cruzada", after={"resultado": data.resultado})
     await db.commit()
     return await _solicitud_out(db, solicitud)
 
@@ -410,7 +394,6 @@ async def dispensar(db: AsyncSession, tid: uuid.UUID, user: dict, asignacion_id:
     if pendientes == 0:
         solicitud.estado = "dispensada"
 
-    audit(db, tid, user, "SolicitudComponenteAsignado", asignacion.id, "dispensar")
     await db.commit()
     return await _solicitud_out(db, solicitud)
 
@@ -432,6 +415,5 @@ async def anular_solicitud(db: AsyncSession, tid: uuid.UUID, user: dict, solicit
                 solicitud_id=solicitud.id, observaciones="Solicitud anulada", registrado_por=actor(user)))
 
     solicitud.estado = "anulada"
-    audit(db, tid, user, "SolicitudTransfusional", solicitud.id, "anular", after={"motivo": data.motivo})
     await db.commit()
     return await _solicitud_out(db, solicitud)

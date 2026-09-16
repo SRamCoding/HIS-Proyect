@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,17 +13,10 @@ from app.hospital.consulta_externa.models import AtencionMedica, Cita, Hospitali
 from app.hospital.emergencia.models import AtencionEmergencia, AdmisionEmergencia
 from app.sigarh.rrhh.models import Empleado
 from app.sigarh.general.models import TiempoProcedimiento
-from app.admin.auditoria.models import AuditLog
 
 
 def actor(user):
     return f"{(user.get('name') or 'Usuario')[:210]} ({user['sub']})"
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 async def _siguiente(db: AsyncSession, tid: uuid.UUID) -> str:
@@ -85,7 +77,6 @@ async def crear_asignacion(db: AsyncSession, tid: uuid.UUID, user: dict, data) -
     else:
         db.add(ProcedimientoAsignacion(id=uuid.uuid4(), tenant_id=tid, tiempo_procedimiento_id=data.tiempo_procedimiento_id,
             empleado_id=data.empleado_id))
-    audit(db, tid, user, "ProcedimientoAsignacion", data.tiempo_procedimiento_id, "asignar", after={"empleado_id": str(data.empleado_id)})
     await db.commit()
     return {"tiempo_procedimiento_id": data.tiempo_procedimiento_id, "tiempo_procedimiento_nombre": procedimiento.nombre,
             "empleado_id": data.empleado_id, "empleado_nombre": empleado.nombre_completo}
@@ -98,7 +89,6 @@ async def desasignar(db: AsyncSession, tid: uuid.UUID, user: dict, tiempo_proced
     if asignacion is None or not asignacion.is_active:
         raise HTTPException(404, detail="Asignación no encontrada")
     asignacion.is_active = False
-    audit(db, tid, user, "ProcedimientoAsignacion", tiempo_procedimiento_id, "desasignar", after={"empleado_id": str(empleado_id)})
     await db.commit()
     return {"ok": True}
 
@@ -163,7 +153,6 @@ async def crear_atencion(db: AsyncSession, tid: uuid.UUID, user: dict, data) -> 
         registrado_por=actor(user))
     db.add(atencion)
     await db.flush()
-    audit(db, tid, user, "AtencionProcedimiento", atencion.id, "crear", after={"numero_atencion": numero})
     await db.commit()
     return await _atencion_out(db, atencion)
 
@@ -202,7 +191,6 @@ async def confirmar_consentimiento(db: AsyncSession, tid: uuid.UUID, user: dict,
     if a.estado != "programado":
         raise HTTPException(409, detail=f"La atención está en estado '{a.estado}'")
     a.consentimiento_informado = True
-    audit(db, tid, user, "AtencionProcedimiento", a.id, "confirmar_consentimiento")
     await db.commit()
     return await _atencion_out(db, a)
 
@@ -218,7 +206,6 @@ async def realizar_atencion(db: AsyncSession, tid: uuid.UUID, user: dict, atenci
     a.estado = "realizado"
     a.hallazgos = data.hallazgos
     a.complicaciones = data.complicaciones
-    audit(db, tid, user, "AtencionProcedimiento", a.id, "realizar")
     await db.commit()
     return await _atencion_out(db, a)
 
@@ -231,6 +218,5 @@ async def cancelar_atencion(db: AsyncSession, tid: uuid.UUID, user: dict, atenci
         raise HTTPException(409, detail=f"La atención está en estado '{a.estado}'")
     a.estado = "cancelado"
     a.motivo_cancelacion = data.motivo
-    audit(db, tid, user, "AtencionProcedimiento", a.id, "cancelar", after={"motivo": data.motivo})
     await db.commit()
     return await _atencion_out(db, a)

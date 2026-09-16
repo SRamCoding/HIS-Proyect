@@ -1,21 +1,19 @@
 import uuid
 from datetime import date, datetime
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select, func, or_, and_
+from sqlalchemy import select, func, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.hospital.hospitalizacion.models import HospCorrelativo, NotaEvolucion, ConsentimientoInformado
-from app.sigarh.infraestructura_hosp.models import Piso, Sala, Cama
+from app.sigarh.infraestructura_hosp.models import Piso, Cama
 from app.hospital.admision.models import Patient, ClinicalRecord
 from app.hospital.consulta_externa.models import (
-    Hospitalizacion, AtencionMedica, Cita, Interconsulta,
+    Hospitalizacion, AtencionMedica, Interconsulta,
 )
 from app.sigarh.general.models import DiagnosticoCIE10
 from app.hospital.emergencia.models import DestinoEmergencia, AtencionEmergencia, AdmisionEmergencia
 from app.sigarh.rrhh.models import Empleado, Especialidad
-from app.admin.auditoria.models import AuditLog
 
 
 def actor(user):
@@ -24,12 +22,6 @@ def actor(user):
 
 def columns(obj):
     return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 async def own(db, model, tid, obj_id, active=False, lock=False):
@@ -187,7 +179,6 @@ async def admitir_desde_emergencia(db, tid, user, data):
     destino.observacion = f"Hospitalizado en cama {cama.codigo}"
     admision.estado = "derivado"
     await db.flush()
-    audit(db, tid, user, "Hospitalizacion", hosp.id, "admitir_desde_emergencia", after=columns(hosp))
     await db.commit()
     return await hospitalizacion_detalle(db, tid, hosp.id)
 
@@ -196,12 +187,11 @@ async def dar_alta(db, tid, user, hosp_id, data):
     hosp = await own(db, Hospitalizacion, tid, hosp_id, lock=True)
     if hosp.estado == "alta":
         raise HTTPException(409, detail="Esta hospitalización ya tiene alta registrada")
-    before = columns(hosp)
+    columns(hosp)
     cama = await own(db, Cama, tid, hosp.cama_id, lock=True)
     cama.estado = "DISPONIBLE"
     hosp.estado, hosp.fecha_alta, hosp.resumen_alta = "alta", datetime.utcnow(), data.resumen_alta
     await db.flush()
-    audit(db, tid, user, "Hospitalizacion", hosp.id, "alta", before, columns(hosp))
     await db.commit()
     return await hospitalizacion_detalle(db, tid, hosp.id)
 
@@ -221,7 +211,6 @@ async def crear_nota(db, tid, user, hosp_id, data):
         registrado_por=actor(user), **data.model_dump())
     db.add(nota)
     await db.flush()
-    audit(db, tid, user, "NotaEvolucion", nota.id, "crear", after=columns(nota))
     await db.commit()
     return columns(nota)
 
@@ -255,7 +244,6 @@ async def crear_interconsulta(db, tid, user, hosp_id, data):
         solicitado_por=actor(user), **data.model_dump())
     db.add(interc)
     await db.flush()
-    audit(db, tid, user, "Interconsulta", interc.id, "crear", after=columns(interc))
     await db.commit()
     return columns(interc)
 
@@ -315,7 +303,6 @@ async def admitir_interconsulta_desde_emergencia(db, tid, user, data):
     destino.estado, destino.resolved_at = "completado", datetime.utcnow()
     destino.observacion = "Interconsulta generada"
     await db.flush()
-    audit(db, tid, user, "Interconsulta", interc.id, "admitir_desde_emergencia", after=columns(interc))
     await db.commit()
     especialidad = await db.get(Especialidad, interc.especialidad_destino_id)
     paciente = await db.get(Patient, interc.patient_id)
@@ -327,7 +314,7 @@ async def admitir_interconsulta_desde_emergencia(db, tid, user, data):
 # ─── Consentimientos informados ─────────────────────────────────────────────
 
 async def crear_consentimiento(db, tid, user, hosp_id, data):
-    hosp = await own(db, Hospitalizacion, tid, hosp_id)
+    await own(db, Hospitalizacion, tid, hosp_id)
     empleado_id = uuid.UUID(user["empleado_id"]) if user.get("empleado_id") else None
     if not empleado_id:
         raise HTTPException(422, detail="La cuenta debe estar vinculada a un empleado para registrar consentimientos")
@@ -335,7 +322,6 @@ async def crear_consentimiento(db, tid, user, hosp_id, data):
         numero=await number(db, tid, "CI"), registrado_por=actor(user), **data.model_dump())
     db.add(consent)
     await db.flush()
-    audit(db, tid, user, "ConsentimientoInformado", consent.id, "crear", after=columns(consent))
     await db.commit()
     return columns(consent)
 
@@ -352,10 +338,9 @@ async def revocar_consentimiento(db, tid, user, consentimiento_id, data):
     consent = await own(db, ConsentimientoInformado, tid, consentimiento_id, lock=True)
     if consent.estado == "revocado":
         raise HTTPException(409, detail="Este consentimiento ya fue revocado")
-    before = columns(consent)
+    columns(consent)
     consent.estado, consent.motivo_revocacion = "revocado", data.motivo_revocacion
     await db.flush()
-    audit(db, tid, user, "ConsentimientoInformado", consent.id, "revocar", before, columns(consent))
     await db.commit()
     return columns(consent)
 

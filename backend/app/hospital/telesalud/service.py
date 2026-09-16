@@ -1,7 +1,6 @@
 import uuid
 from datetime import date, datetime
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,17 +8,10 @@ from app.hospital.telesalud.models import TelesaludSolicitud
 from app.hospital.admision.models import Patient
 from app.hospital.consulta_externa.models import ProgramacionMedica, Cita, AtencionMedica
 from app.sigarh.rrhh.models import Empleado, Especialidad, EmpleadoEspecialidad
-from app.admin.auditoria.models import AuditLog
 
 
 def actor(user):
     return f"{(user.get('name') or 'Usuario')[:210]} ({user['sub']})"
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 def _dia(fecha: date, fin: bool = False) -> datetime:
@@ -50,7 +42,6 @@ async def crear_solicitud(db: AsyncSession, tid: uuid.UUID, user: dict, data) ->
         contacto=data.contacto, registrado_por=actor(user))
     db.add(solicitud)
     await db.flush()
-    audit(db, tid, user, "TelesaludSolicitud", solicitud.id, "crear", after={"patient_id": str(data.patient_id), "motivo": data.motivo})
     await db.commit()
     return _solicitud_out(solicitud, paciente, especialidad)
 
@@ -85,11 +76,9 @@ async def programar_solicitud(db: AsyncSession, tid: uuid.UUID, user: dict, soli
     if ya_enlazada:
         raise HTTPException(409, detail="Esa cita ya está enlazada a otra solicitud")
 
-    before = {"estado": solicitud.estado}
     solicitud.estado = "programada"
     solicitud.cita_id = data.cita_id
     solicitud.atendido_at = datetime.utcnow()
-    audit(db, tid, user, "TelesaludSolicitud", solicitud.id, "programar", before=before, after={"estado": "programada", "cita_id": str(data.cita_id)})
     await db.commit()
 
     paciente = await db.get(Patient, solicitud.patient_id)
@@ -104,11 +93,9 @@ async def rechazar_solicitud(db: AsyncSession, tid: uuid.UUID, user: dict, solic
     if solicitud.estado != "pendiente":
         raise HTTPException(409, detail=f"La solicitud ya está en estado '{solicitud.estado}'")
 
-    before = {"estado": solicitud.estado}
     solicitud.estado = "rechazada"
     solicitud.motivo_rechazo = data.motivo_rechazo
     solicitud.atendido_at = datetime.utcnow()
-    audit(db, tid, user, "TelesaludSolicitud", solicitud.id, "rechazar", before=before, after={"estado": "rechazada", "motivo_rechazo": data.motivo_rechazo})
     await db.commit()
 
     paciente = await db.get(Patient, solicitud.patient_id)

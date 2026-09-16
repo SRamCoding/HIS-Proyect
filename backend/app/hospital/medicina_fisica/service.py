@@ -1,7 +1,6 @@
 import uuid
-from datetime import date, datetime
+from datetime import date
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,17 +10,10 @@ from app.hospital.medicina_fisica.models import (
 from app.hospital.consulta_externa.service import _generar_slots
 from app.hospital.admision.models import Patient
 from app.sigarh.rrhh.models import Empleado
-from app.admin.auditoria.models import AuditLog
 
 
 def actor(user):
     return f"{(user.get('name') or 'Usuario')[:210]} ({user['sub']})"
-
-
-def audit(db, tid, user, model, obj_id, action, before=None, after=None):
-    db.add(AuditLog(tenant_id=tid, user_id=uuid.UUID(user["sub"]), user_name=user.get("name"),
-        model=model, model_id=str(obj_id), action=action,
-        old_values=jsonable_encoder(before), new_values=jsonable_encoder(after)))
 
 
 # ─── Programas ───────────────────────────────────────────────────────────
@@ -34,7 +26,6 @@ async def crear_programa(db: AsyncSession, tid: uuid.UUID, user: dict, data) -> 
     programa = ProgramaMedicinaFisica(id=uuid.uuid4(), tenant_id=tid, **data.model_dump())
     db.add(programa)
     await db.flush()
-    audit(db, tid, user, "ProgramaMedicinaFisica", programa.id, "crear", after={"nombre": data.nombre})
     await db.commit()
     return programa
 
@@ -64,7 +55,6 @@ async def update_programa(db: AsyncSession, tid: uuid.UUID, user: dict, programa
     cambios = data.model_dump(exclude_unset=True)
     for k, v in cambios.items():
         setattr(programa, k, v)
-    audit(db, tid, user, "ProgramaMedicinaFisica", programa.id, "actualizar", after=cambios)
     await db.commit()
     return programa
 
@@ -84,7 +74,6 @@ async def asignar_tecnologo(db: AsyncSession, tid: uuid.UUID, user: dict, progra
         existente.is_active = True
     else:
         db.add(TecnologoPrograma(id=uuid.uuid4(), tenant_id=tid, programa_id=programa_id, empleado_id=data.empleado_id))
-    audit(db, tid, user, "TecnologoPrograma", programa_id, "asignar", after={"empleado_id": str(data.empleado_id)})
     await db.commit()
     return {"programa_id": programa_id, "empleado_id": data.empleado_id, "empleado_nombre": empleado.nombre_completo}
 
@@ -96,7 +85,6 @@ async def desasignar_tecnologo(db: AsyncSession, tid: uuid.UUID, user: dict, pro
     if asignacion is None or not asignacion.is_active:
         raise HTTPException(404, detail="Asignación no encontrada")
     asignacion.is_active = False
-    audit(db, tid, user, "TecnologoPrograma", programa_id, "desasignar", after={"empleado_id": str(empleado_id)})
     await db.commit()
     return {"ok": True}
 
@@ -132,7 +120,6 @@ async def crear_programacion(db: AsyncSession, tid: uuid.UUID, user: dict, data)
         tiempo_sesion_minutos=data.tiempo_sesion_minutos or programa.duracion_sesion_minutos, registrado_por=actor(user))
     db.add(prog)
     await db.flush()
-    audit(db, tid, user, "ProgramacionMF", prog.id, "crear", after={"programa_id": str(data.programa_id), "fecha": str(data.fecha)})
     await db.commit()
     return _programacion_out(prog, programa, tecnologo, len(_generar_slots(prog.hora_inicio, prog.hora_fin, prog.tiempo_sesion_minutos)), 0)
 
@@ -178,7 +165,6 @@ async def bloquear_programacion(db: AsyncSession, tid: uuid.UUID, user: dict, pr
         raise HTTPException(409, detail=f"La programación ya está en estado '{prog.estado}'")
     prog.estado = "bloqueado"
     prog.motivo_bloqueo = data.motivo
-    audit(db, tid, user, "ProgramacionMF", prog.id, "bloquear", after={"motivo": data.motivo})
     await db.commit()
     programa = await db.get(ProgramaMedicinaFisica, prog.programa_id)
     tecnologo = await db.get(Empleado, prog.tecnologo_id)
@@ -193,7 +179,6 @@ async def desbloquear_programacion(db: AsyncSession, tid: uuid.UUID, user: dict,
         raise HTTPException(409, detail="La programación no está bloqueada")
     prog.estado = "activo"
     prog.motivo_bloqueo = None
-    audit(db, tid, user, "ProgramacionMF", prog.id, "desbloquear")
     await db.commit()
     programa = await db.get(ProgramaMedicinaFisica, prog.programa_id)
     tecnologo = await db.get(Empleado, prog.tecnologo_id)
@@ -235,7 +220,6 @@ async def crear_sesion(db: AsyncSession, tid: uuid.UUID, user: dict, data) -> di
         patient_id=data.patient_id, hora_inicio=data.hora_inicio, hora_fin=data.hora_fin, registrado_por=actor(user))
     db.add(sesion)
     await db.flush()
-    audit(db, tid, user, "SesionMF", sesion.id, "crear", after={"patient_id": str(data.patient_id)})
     await db.commit()
     return await _sesion_out(db, sesion)
 
@@ -260,12 +244,10 @@ async def ejecutar_sesion(db: AsyncSession, tid: uuid.UUID, user: dict, sesion_i
     if sesion.estado != "programada":
         raise HTTPException(409, detail=f"La sesión ya está en estado '{sesion.estado}'")
 
-    before = {"estado": sesion.estado}
     sesion.estado = data.estado
     sesion.escala_dolor_eva = data.escala_dolor_eva
     sesion.actividades_realizadas = data.actividades_realizadas
     sesion.evolucion = data.evolucion
-    audit(db, tid, user, "SesionMF", sesion.id, "ejecutar", before=before, after={"estado": data.estado})
     await db.commit()
     return await _sesion_out(db, sesion)
 
@@ -294,7 +276,7 @@ async def reprogramar_bloque(db: AsyncSession, tid: uuid.UUID, user: dict, data)
     for i, sesion in enumerate(sesiones):
         if sesion.estado != "programada":
             raise HTTPException(409, detail=f"La sesión {sesion.id} no está en estado 'programada'")
-        before = {"programacion_mf_id": str(sesion.programacion_mf_id), "hora_inicio": sesion.hora_inicio}
+        {"programacion_mf_id": str(sesion.programacion_mf_id), "hora_inicio": sesion.hora_inicio}
         sesion.programacion_mf_id = destino.id
         sesion.hora_inicio = libres[i]
         duracion = destino.tiempo_sesion_minutos
@@ -303,8 +285,6 @@ async def reprogramar_bloque(db: AsyncSession, tid: uuid.UUID, user: dict, data)
         sesion.hora_fin = f"{(total // 60) % 24:02d}:{total % 60:02d}"
         if data.mensaje:
             sesion.evolucion = ((sesion.evolucion or "") + f"\n[Reprogramado] {data.mensaje}").strip()
-        audit(db, tid, user, "SesionMF", sesion.id, "reprogramar_bloque", before=before,
-            after={"programacion_mf_id": str(destino.id), "hora_inicio": libres[i]})
         resultado.append(sesion)
     await db.commit()
     return [await _sesion_out(db, s) for s in resultado]
