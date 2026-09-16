@@ -101,22 +101,30 @@ async def get_patient_by_id(db: AsyncSession, tenant_id: uuid.UUID, patient_id: 
     return result.scalar_one_or_none()
 
 
-async def search_patients(db: AsyncSession, tenant_id: uuid.UUID, query: str) -> list[Patient]:
-    result = await db.execute(
-        select(Patient)
-        .options(selectinload(Patient.clinical_record))
-        .where(
-            Patient.tenant_id == tenant_id,
+async def search_patients(db: AsyncSession, tenant_id: uuid.UUID, query: str | None = None,
+                          page: int = 1, page_size: int = 20) -> tuple[list[Patient], int]:
+    """Sin `query`, lista todos los pacientes del hospital (paginado) -- antes
+    la pantalla de Pacientes exigia escribir algo para ver cualquier cosa.
+    Con `query`, también busca por número de historia clínica además de
+    DNI/nombres/apellidos, que es lo que el buscador ya prometía en su
+    placeholder sin cumplirlo."""
+    stmt = select(Patient).options(selectinload(Patient.clinical_record)).where(Patient.tenant_id == tenant_id)
+    if query:
+        stmt = stmt.outerjoin(ClinicalRecord, ClinicalRecord.patient_id == Patient.id).where(
             or_(
                 Patient.dni.ilike(f"%{query}%"),
                 Patient.first_name.ilike(f"%{query}%"),
                 Patient.last_name_paterno.ilike(f"%{query}%"),
                 Patient.last_name_materno.ilike(f"%{query}%"),
+                ClinicalRecord.record_number.ilike(f"%{query}%"),
             )
         )
-        .limit(20)
+    total = await db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
+    result = await db.execute(
+        stmt.order_by(Patient.last_name_paterno, Patient.last_name_materno, Patient.first_name)
+        .offset((page - 1) * page_size).limit(page_size)
     )
-    return result.scalars().all()
+    return result.scalars().all(), total
 
 
 async def update_patient(db: AsyncSession, tenant_id: uuid.UUID, patient_id: uuid.UUID, data: PatientUpdate) -> Patient | None:

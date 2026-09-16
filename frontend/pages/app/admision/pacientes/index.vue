@@ -68,8 +68,8 @@
     <div v-if="resultados.length" class="table-card">
       <div class="table-header">
         <div class="table-header-left">
-          <span class="table-title">Resultados de búsqueda</span>
-          <span class="table-count">{{ resultados.length }} pacientes encontrados</span>
+          <span class="table-title">{{ q.trim() ? 'Resultados de búsqueda' : 'Todos los pacientes' }}</span>
+          <span class="table-count">{{ total }} paciente{{ total === 1 ? '' : 's' }}</span>
         </div>
       </div>
       <div class="table-responsive">
@@ -144,28 +144,36 @@
           </tbody>
         </table>
       </div>
+      <div class="table-footer">
+        <span class="pagination-info">
+          Página {{ page }} de {{ totalPages }} · {{ total }} paciente{{ total === 1 ? '' : 's' }} en total
+        </span>
+        <div class="pagination-controls">
+          <button class="pagination-btn" :disabled="page <= 1 || cargando" @click="irPagina(page - 1)">
+            <UIcon name="i-heroicons-chevron-left" class="w-4 h-4" />
+            Anterior
+          </button>
+          <button class="pagination-btn" :disabled="page >= totalPages || cargando" @click="irPagina(page + 1)">
+            Siguiente
+            <UIcon name="i-heroicons-chevron-right" class="w-4 h-4" />
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="buscoAlguna && !resultados.length" class="empty-state">
+    <div v-else-if="!cargando" class="empty-state">
       <div class="empty-icon" style="background: var(--mist)">
         <UIcon name="i-heroicons-user-group" class="w-12 h-12" style="color: var(--ink-soft)" />
       </div>
-      <h3 style="color: var(--ink)">No se encontraron pacientes</h3>
-      <p style="color: var(--ink-soft)">No hay pacientes que coincidan con tu búsqueda</p>
-      <button class="btn-secondary" @click="limpiar">
+      <h3 style="color: var(--ink)">{{ q.trim() ? 'No se encontraron pacientes' : 'No hay pacientes registrados' }}</h3>
+      <p style="color: var(--ink-soft)">
+        {{ q.trim() ? 'No hay pacientes que coincidan con tu búsqueda' : 'Aún no se registró ningún paciente en este hospital' }}
+      </p>
+      <button v-if="q.trim()" class="btn-secondary" @click="limpiar">
         <UIcon name="i-heroicons-arrow-path" class="w-4 h-4" />
         Limpiar búsqueda
       </button>
-    </div>
-
-    <!-- Initial State -->
-    <div v-else-if="!buscoAlguna && !resultados.length" class="initial-state">
-      <div class="initial-icon" style="background: var(--mist)">
-        <UIcon name="i-heroicons-magnifying-glass" class="w-12 h-12" style="color: var(--ink-soft)" />
-      </div>
-      <h3 style="color: var(--ink)">Buscar pacientes</h3>
-      <p style="color: var(--ink-soft)">Ingresa DNI, número de historia, nombres o apellidos</p>
     </div>
   </div>
 </template>
@@ -180,7 +188,10 @@ const q = ref('')
 const resultados = ref<any[]>([])
 const cargando = ref(false)
 const error = ref('')
-const buscoAlguna = ref(false)
+const page = ref(1)
+const pageSize = 20
+const total = ref(0)
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 
 const getInitials = (name: string) => {
   if (!name || name === '—') return '?'
@@ -210,29 +221,45 @@ const getPatientColor = (name: string) => {
   return colors[Math.abs(hash) % colors.length]
 }
 
-async function buscar() {
-  error.value = ''
-  if (q.value.trim().length < 2) {
+async function cargar() {
+  const texto = q.value.trim()
+  if (texto && texto.length < 2) {
     error.value = 'Ingresa al menos 2 caracteres'
     return
   }
+  error.value = ''
   cargando.value = true
   try {
-    resultados.value = await api(`/app/admision/buscar?q=${encodeURIComponent(q.value)}`)
-    buscoAlguna.value = true
+    const query: Record<string, any> = { page: page.value, page_size: pageSize }
+    if (texto) query.q = texto
+    const data = await api<{ items: any[]; total: number }>('/app/admision/buscar', { query })
+    resultados.value = data.items
+    total.value = data.total
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error al buscar pacientes'
+    error.value = e?.data?.detail || 'Error al cargar pacientes'
   } finally {
     cargando.value = false
   }
 }
 
+function buscar() {
+  page.value = 1
+  cargar()
+}
+
+function irPagina(p: number) {
+  if (p < 1 || p > totalPages.value) return
+  page.value = p
+  cargar()
+}
+
 function limpiar() {
   q.value = ''
-  resultados.value = []
-  buscoAlguna.value = false
-  error.value = ''
+  page.value = 1
+  cargar()
 }
+
+onMounted(cargar)
 </script>
 
 <style scoped>
@@ -517,6 +544,52 @@ function limpiar() {
   border-radius: 12px;
 }
 
+/* Table Footer / Pagination */
+.table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.pagination-info {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.4375rem 0.875rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--mist);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .table-responsive {
   overflow-x: auto;
 }
@@ -663,8 +736,7 @@ function limpiar() {
 }
 
 /* Empty State */
-.empty-state,
-.initial-state {
+.empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -676,8 +748,7 @@ function limpiar() {
   border: 1px solid var(--line);
 }
 
-.empty-icon,
-.initial-icon {
+.empty-icon {
   width: 80px;
   height: 80px;
   border-radius: 50%;
@@ -686,14 +757,12 @@ function limpiar() {
   justify-content: center;
 }
 
-.empty-state h3,
-.initial-state h3 {
+.empty-state h3 {
   font-size: 1.125rem;
   margin: 0;
 }
 
-.empty-state p,
-.initial-state p {
+.empty-state p {
   margin: 0;
 }
 

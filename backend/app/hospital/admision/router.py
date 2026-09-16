@@ -1,6 +1,6 @@
 import uuid
 from datetime import date as date_type
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, get_db_central
@@ -8,7 +8,7 @@ from app.core.dependencies import get_current_user
 from app.tenants.entitlements import require_module_jwt, require_any_module_jwt
 from app.hospital.admision.schemas import (
     PatientCreate, PatientUpdate, PatientResponse,
-    PatientSearchResult, ClinicalRecordMovementCreate,
+    PatientSearchResult, PatientSearchPage, ClinicalRecordMovementCreate,
     UbigeoDepartamentoOut, UbigeoProvinciaOut, UbigeoDistritoOut,
     AltaItem, ListaEsperaCreate, ListaEsperaUpdate, ListaEsperaAtender, ListaEsperaResponse,
     AnuncioCreate, AnuncioUpdate, AnuncioResponse,
@@ -84,29 +84,36 @@ def _to_response(patient) -> PatientResponse:
     )
 
 
-@router.get("/buscar", response_model=list[PatientSearchResult], summary="Buscar pacientes")
+@router.get("/buscar", response_model=PatientSearchPage, summary="Listar/buscar pacientes (paginado)")
 async def buscar_pacientes(
-    q: str,
     request: Request,
+    q: str | None = Query(None, max_length=200),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_module_jwt("admision")),
 ):
     tenant_id = get_tenant_id(current_user, request)
-    if len(q) < 2:
+    if q and len(q.strip()) < 2:
         raise HTTPException(400, detail="Ingresa al menos 2 caracteres")
-    patients = await search_patients(db, tenant_id, q)
-    return [
-        PatientSearchResult(
-            id=p.id,
-            dni=p.dni,
-            full_name=p.full_name,
-            age=p.age,
-            gender=p.gender,
-            insurance_type=p.insurance_type,
-            record_number=p.clinical_record.record_number if p.clinical_record else None,
-        )
-        for p in patients
-    ]
+    patients, total = await search_patients(db, tenant_id, q.strip() if q else None, page, page_size)
+    return PatientSearchPage(
+        items=[
+            PatientSearchResult(
+                id=p.id,
+                dni=p.dni,
+                full_name=p.full_name,
+                age=p.age,
+                gender=p.gender,
+                insurance_type=p.insurance_type,
+                record_number=p.clinical_record.record_number if p.clinical_record else None,
+            )
+            for p in patients
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/dni/{dni}", response_model=PatientResponse, summary="Buscar por DNI")

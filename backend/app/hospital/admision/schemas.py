@@ -143,6 +143,13 @@ class PatientSearchResult(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PatientSearchPage(BaseModel):
+    items: list[PatientSearchResult]
+    total: int
+    page: int
+    page_size: int
+
+
 class ClinicalRecordMovementCreate(BaseModel):
     clinical_record_id: uuid.UUID
     to_location: str = Field(min_length=1, max_length=50)
