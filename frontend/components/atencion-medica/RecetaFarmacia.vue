@@ -49,6 +49,7 @@
     </div>
 
     <!-- Formulario para generar receta -->
+    <p v-else-if="soloLectura" role="status">Guarda los cambios antes de generar la receta. Una atención cerrada permite solo consulta.</p>
     <template v-else>
       <div class="receta-search">
         <div class="form-group full-width" style="margin-bottom: 0.75rem;">
@@ -157,8 +158,7 @@
 const props = defineProps<{
   citaId: string
   recetaExistente: any | null
-  generandoReceta: boolean
-  error: string
+  soloLectura?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -204,6 +204,7 @@ function agregarMedicamento(m: any) {
 }
 
 async function generarReceta() {
+  if (props.soloLectura) return
   if (itemsReceta.value.some((i) => !i.cantidad || i.cantidad < 1)) {
     emit('error', 'Todos los medicamentos deben tener una cantidad válida')
     return

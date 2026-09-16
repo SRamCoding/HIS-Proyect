@@ -395,12 +395,25 @@
             </div>
           </section>
 
+          <section class="form-card">
+            <h3 class="card-title">Órdenes clínicas</h3>
+            <p class="card-subtitle">Selecciona las prestaciones necesarias y guarda antes de generar sus documentos. Pueden combinarse con el destino del paciente.</p>
+            <label v-for="p in ['FARMACIA', 'LABORATORIO', 'IMAGEN', 'INTERCONSULTA']" :key="p" style="display: block; margin: 12px">
+              <input v-model="form.prestaciones" type="checkbox" :value="p" :disabled="firmado" /> {{ getDestinoLabel(p) }}
+            </label>
+            <p v-if="!existeAtencion || seleccionSinGuardar" class="warning-message" role="status">Guarda la atención para habilitar las órdenes seleccionadas.</p>
+            <button v-if="!firmado" class="btn-secondary" :disabled="!accesoClinico || guardando" @click="guardar">{{ guardando ? 'Guardando...' : 'Guardar y habilitar órdenes' }}</button>
+            <div v-if="form.destino_atencion === 'ALTA'">
+              <label class="form-label">Indicaciones de alta</label>
+              <textarea v-model="form.indicaciones_alta" class="input-clinical" rows="3" :disabled="firmado" placeholder="Indicaciones, seguimiento y signos de alarma según la evaluación médica" />
+            </div>
+          </section>
           <!-- ============================================ -->
           <!-- RECETA DE FARMACIA (Componente) -->
           <!-- ============================================ -->
-          <AtencionMedicaRecetaFarmacia
-            v-if="form.prestaciones.includes('FARMACIA') && existeAtencion && !firmado"
-            :cita-id="citaId"
+          <RecetaFarmacia
+            v-if="(atencion.prestaciones || []).includes('FARMACIA') && existeAtencion"
+            :cita-id="citaId" :solo-lectura="firmado || !accesoClinico || seleccionSinGuardar"
             :receta-existente="recetaExistente"
             @receta-generada="recetaExistente = $event"
             @error="error = $event"
@@ -409,8 +422,8 @@
           <!-- ============================================ -->
           <!-- HOSPITALIZACIÓN (Componente) -->
           <!-- ============================================ -->
-          <AtencionMedicaHospitalizacion 
-            v-if="form.destino_atencion === 'HOSPITALIZACION' && existeAtencion"
+          <Hospitalizacion
+            v-if="atencion.destino_atencion === 'HOSPITALIZACION' && existeAtencion"
             :cita-id="citaId"
             :hospitalizacion-existente="hospitalizacionExistente"
             :camas-disponibles="camasDisponibles"
@@ -420,29 +433,18 @@
             @error="error = $event"
           />
 
-          <AtencionMedicaOrdenLaboratorio
-  v-if="form.prestaciones.includes('LABORATORIO') && existeAtencion && !firmado"
-  :cita-id="citaId"
+          <OrdenLaboratorio
+  v-if="(atencion.prestaciones || []).includes('LABORATORIO') && existeAtencion"
+  :cita-id="citaId" :solo-lectura="firmado || !accesoClinico || seleccionSinGuardar"
   @generada="exito = 'Orden de laboratorio generada correctamente'"
 />
 
 
-<AtencionMedicaOrdenImagen v-if="form.prestaciones.includes('IMAGEN') && existeAtencion && !firmado" :cita-id="citaId" @generada="exito = 'Orden de imagen generada correctamente'" />
-<AtencionMedicaInterconsultaForm v-if="form.prestaciones.includes('INTERCONSULTA') && existeAtencion && !firmado" :cita-id="citaId" @generada="exito = 'Interconsulta generada correctamente'" />
+<OrdenImagen v-if="(atencion.prestaciones || []).includes('IMAGEN') && existeAtencion" :cita-id="citaId" :solo-lectura="firmado || !accesoClinico || seleccionSinGuardar" @generada="exito = 'Orden de imagen generada correctamente'" />
+<InterconsultaForm v-if="(atencion.prestaciones || []).includes('INTERCONSULTA') && existeAtencion" :cita-id="citaId" :solo-lectura="firmado || !accesoClinico || seleccionSinGuardar" @generada="exito = 'Interconsulta generada correctamente'" />
 
-<AtencionMedicaReferenciaForm v-if="form.destino_atencion === 'REFERENCIA' && existeAtencion" :cita-id="citaId" @generada="exito = 'Referencia generada correctamente'" />
+<ReferenciaForm v-if="atencion.destino_atencion === 'REFERENCIA' && existeAtencion" :cita-id="citaId" :solo-lectura="firmado || !accesoClinico || seleccionSinGuardar" @generada="exito = 'Referencia generada correctamente'" />
 
-          <section class="form-card">
-            <h3 class="card-title">Órdenes clínicas</h3>
-            <p class="card-subtitle">Selecciona las prestaciones necesarias y guarda antes de generar sus documentos. Pueden combinarse con el destino del paciente.</p>
-            <label v-for="p in ['FARMACIA', 'LABORATORIO', 'IMAGEN', 'INTERCONSULTA']" :key="p" style="display: block; margin: 12px">
-              <input v-model="form.prestaciones" type="checkbox" :value="p" :disabled="firmado" /> {{ getDestinoLabel(p) }}
-            </label>
-            <div v-if="form.destino_atencion === 'ALTA'">
-              <label class="form-label">Indicaciones de alta</label>
-              <textarea v-model="form.indicaciones_alta" class="input-clinical" rows="3" :disabled="firmado" placeholder="Indicaciones, seguimiento y signos de alarma según la evaluación médica" />
-            </div>
-          </section>
           <section class="form-card" role="note">
             <p>El cierre interno identifica al médico y bloquea la edición. Todavía no incorpora una firma digital con certificado.</p>
             <p v-if="atencion.cierre_evidencia">Responsable: {{ atencion.cierre_evidencia.medico_nombre }} · Colegiatura: {{ atencion.cierre_evidencia.colegiatura }}</p>
@@ -684,6 +686,8 @@ const filledFields = computed(() => {
 const totalFields = 5
 
 // Helpers
+const seleccionSinGuardar = computed(() => form.destino_atencion !== atencion.value.destino_atencion || JSON.stringify([...form.prestaciones].sort()) !== JSON.stringify([...(atencion.value.prestaciones || [])].sort()))
+
 const getDestinoLabel = (destino: string) => {
   const map: Record<string, string> = {
     'ALTA': 'Alta / Domicilio',
@@ -775,6 +779,12 @@ async function guardar() {
     const payload = { ...form, antecedentes: { ...antecedentes }, diagnosticos: diagnosticosSeleccionados.value.map(d => ({ diagnostico_cie10_id: d.diagnostico_cie10_id, tipo: d.tipo })) }
     atencion.value = await api(`/app/consulta-externa/atenciones-medicas/${citaId}`, { method: existeAtencion.value ? 'PATCH' : 'POST', body: payload })
     existeAtencion.value = true
+    if (form.destino_atencion === 'HOSPITALIZACION') {
+      try {
+        camasDisponibles.value = await api('/app/consulta-externa/hospitalizacion/camas-disponibles')
+        especialidadesIngreso.value = await api('/app/consulta-externa/programacion-medica/especialidades')
+      } catch (e) { error.value = apiErr(e, 'No se pudieron cargar las camas disponibles') }
+    }
     exito.value = 'Guardado correctamente'
     setTimeout(() => { exito.value = '' }, 3000)
     return true

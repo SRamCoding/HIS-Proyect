@@ -1,13 +1,6 @@
-<template>
-  <div>
-    <div class="flex items-center gap-2 text-sm mb-2" style="color: var(--ink-soft)">
-      <span>Hospitalizacion</span><span>/</span><span>Censo Diario</span>
-    </div>
-    <h1 class="text-lg font-semibold" style="color: var(--ink)">Crear - Censo Diario</h1>
-    <p class="text-sm mt-1" style="color: var(--ink-soft)">Esta seccion estara disponible proximamente.</p>
-  </div>
-</template>
-
 <script setup lang="ts">
-definePageMeta({ layout: 'app', middleware: ['auth'] })
+// Censo Diario es un reporte, no tiene alta manual.
+definePageMeta({ layout: 'app', middleware: ['auth', 'panel'] })
+await navigateTo('/app/hospitalizacion/censo-diario')
 </script>
+<template><div /></template>

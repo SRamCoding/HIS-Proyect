@@ -18,7 +18,7 @@ from app.hospital.consulta_externa.schemas import (
     CitaCreate, CitaUpdate, CitaResponse, CitaReprogramar, CitasReprogramarBloque,
 )
 from app.hospital.consulta_externa.service import (
-    get_servicios, get_especialidades, get_medicos_por_especialidad, get_consultorios,
+    get_servicios, get_especialidades, get_medicos_por_especialidad, get_consultorios, get_seguros,
     create_programacion, get_programacion_by_id, list_programaciones, update_programacion,
     delete_programacion, sincronizar_programacion_sigarh,
     get_cupos, create_cita, get_cita_by_id, list_citas, update_cita, generar_comprobante_cita_pdf,
@@ -90,6 +90,11 @@ async def listar_medicos(especialidad_id: uuid.UUID, request: Request, db: Async
 @router.get("/programacion-medica/consultorios", response_model=list[ConsultorioOut])
 async def listar_consultorios(request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
     return await get_consultorios(db, get_tenant_id(current_user, request))
+
+
+@router.get("/seguros")
+async def listar_seguros(request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
+    return await get_seguros(db, get_tenant_id(current_user, request))
 
 
 # --- Programaciones ---
@@ -326,11 +331,12 @@ async def listar_historial_atenciones(
     especialidad_id: uuid.UUID | None = None,
     medico_id: uuid.UUID | None = None,
     paciente_dni: str | None = None,
+    estado: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_module_jwt("consulta_externa")),
 ):
     tenant_id = get_tenant_id(current_user, request)
-    return await list_atenciones_medicas(db, tenant_id, fecha, especialidad_id, uuid.UUID(current_user["empleado_id"]) if current_user.get("role") == "medico" else medico_id, paciente_dni)
+    return await list_atenciones_medicas(db, tenant_id, fecha, especialidad_id, uuid.UUID(current_user["empleado_id"]) if current_user.get("role") == "medico" else medico_id, paciente_dni, estado)
 
 @router.get("/atenciones-medicas/{cita_id}", response_model=AtencionMedicaResponse)
 async def obtener_atencion_medica(cita_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
@@ -539,16 +545,19 @@ async def crear_referencia(cita_id: uuid.UUID, data: ReferenciaCreate, request: 
         raise HTTPException(400, detail=str(exc)) from exc
 
 
-@router.get("/ficha-covid", summary="Estado de Ficha Covid (placeholder)")
-async def estado_ficha_covid(
+# Ficha Covid: no vive aqui. Es el mismo registro clinico de Laboratorio
+# (LabFichaCovid) -- se reutiliza la pagina y los endpoints de /app/laboratorio,
+# cuyo gate ahora acepta tambien el modulo consulta_externa (ver covid_user en
+# app/hospital/laboratorio/router.py), para no duplicar tabla ni UI.
+
+
+@router.get("/bandeja-electronica", summary="Tareas pendientes del médico")
+async def bandeja_electronica_endpoint(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_module_jwt("consulta_externa")),
 ):
-    return {
-        "modulo": "consulta_externa",
-        "submodulo": "ficha-covid",
-        "nombre": "Ficha Covid",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+    from app.hospital.consulta_externa.service import bandeja_electronica
+    tenant_id = get_tenant_id(current_user, request)
+    empleado_id = uuid.UUID(current_user["empleado_id"]) if current_user.get("empleado_id") else None
+    return await bandeja_electronica(db, tenant_id, empleado_id)

@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
 from app.tenants.entitlements import require_module_jwt
 from app.hospital.emergencia.schemas import (
     AdmisionEmergenciaCreate, AdmisionEmergenciaResponse, TriajeEmergenciaCreate, TriajeEmergenciaResponse,
@@ -13,7 +12,7 @@ from app.hospital.emergencia.schemas import (
 from app.hospital.emergencia.service import (
     create_admision, get_admision, list_admisiones, create_triaje_emergencia, get_triaje_emergencia,
     create_atencion_emergencia, get_atencion_emergencia, update_atencion_emergencia, firmar_atencion_emergencia,
-    list_atenciones_emergencia, list_destinos_emergencia, resolver_destino_emergencia,
+    list_atenciones_emergencia, list_destinos_emergencia, resolver_destino_emergencia, get_seguros,
 )
 
 router = APIRouter()
@@ -26,6 +25,11 @@ def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
     if not tid:
         raise HTTPException(403, detail="Sin tenant asignado")
     return uuid.UUID(str(tid))
+
+
+@router.get("/seguros")
+async def listar_seguros(request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt(MODULO_CODIGO))):
+    return await get_seguros(db, get_tenant_id(current_user, request))
 
 
 # --- Admisiones (real, ya no placeholder) ---
@@ -156,7 +160,7 @@ async def firmar_atencion(
     current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
 ):
     try:
-        atencion = await firmar_atencion_emergencia(db, get_tenant_id(current_user, request), admision_id)
+        atencion = await firmar_atencion_emergencia(db, get_tenant_id(current_user, request), admision_id, current_user)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
     if not atencion:
@@ -192,23 +196,6 @@ async def resolver_destino(
         raise HTTPException(404, detail="Destino no encontrado")
     return item
 
-
-# --- Compatibilidad de submódulos ---
-@router.get("/observacion", summary="Estado de Observacion (placeholder)")
-async def estado_observacion(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return await list_destinos_emergencia(db, get_tenant_id(current_user, request), "HOSPITALIZACION")
-
-
-@router.get("/referencias", summary="Estado de Referencias (placeholder)")
-async def estado_referencias(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return await list_destinos_emergencia(db, get_tenant_id(current_user, request), "REFERENCIA")
+# Nota: no hay endpoints /observacion ni /referencias aqui -- el frontend
+# consulta la cola real con GET /destinos?destino=HOSPITALIZACION|REFERENCIA
+# (ver DestinoPanel.vue), asi que esos alias quedarian sin uso.

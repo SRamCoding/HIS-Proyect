@@ -709,6 +709,16 @@
       <template v-else>
         <div class="detail-info">
           <p>HC {{ detail.orden.historia }} · Cuenta {{ detail.orden.numero_cuenta }} · {{ detail.orden.servicio }} · Médico {{ detail.orden.medico }} · Toma examen {{ detail.toma_examen }}</p>
+          <p v-if="detail.total !== undefined">
+            Total S/ {{ Number(detail.total).toFixed(2) }} ·
+            <span class="badge" :class="'badge-' + detail.estado_pago">
+              {{ detail.estado_pago === 'pagado' ? 'Pagado' : detail.estado_pago === 'parcial' ? 'Pago parcial' : 'Pendiente de pago' }}
+            </span>
+            <span v-if="detail.estado_pago !== 'pagado'" class="field-hint">
+              (S/ {{ Number(detail.monto_pendiente).toFixed(2) }} pendiente ·
+              <NuxtLink :to="link('/app/caja/cobro-por-paciente')" style="color: var(--teal)">cobrar en Caja</NuxtLink>)
+            </span>
+          </p>
         </div>
 
         <div class="form-actions">
@@ -833,6 +843,7 @@ const props = defineProps<{
 }>()
 
 const { api } = useApi()
+const { link } = useHospitalNav()
 const endpoint = '/app/laboratorio'
 
 // Configuración
@@ -1951,6 +1962,16 @@ onBeforeUnmount(() => {
   color: var(--ink-soft);
   margin-top: 0.25rem;
 }
+
+.badge {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+}
+.badge-pagado { color: var(--green); background: var(--green-soft); }
+.badge-parcial { color: var(--amber); background: var(--amber-soft); }
+.badge-pendiente { color: var(--alert); background: var(--alert-soft); }
 
 .form-actions {
   display: flex;

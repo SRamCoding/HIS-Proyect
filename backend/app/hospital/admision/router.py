@@ -1,4 +1,5 @@
 import uuid
+from datetime import date as date_type
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,11 +10,18 @@ from app.hospital.admision.schemas import (
     PatientCreate, PatientUpdate, PatientResponse,
     PatientSearchResult, ClinicalRecordMovementCreate,
     UbigeoDepartamentoOut, UbigeoProvinciaOut, UbigeoDistritoOut,
+    AltaItem, ListaEsperaCreate, ListaEsperaUpdate, ListaEsperaAtender, ListaEsperaResponse,
+    AnuncioCreate, AnuncioUpdate, AnuncioResponse,
+    MensajeCreate, MensajeResponse, DestinatarioOut,
 )
 from app.hospital.admision.service import (
     create_patient, get_patient_by_dni, get_patient_by_id,
     search_patients, update_patient, move_clinical_record,
     get_departamentos, get_provincias, get_distritos,
+    list_altas,
+    list_lista_espera, create_lista_espera, update_lista_espera, atender_lista_espera, cancelar_lista_espera,
+    list_anuncios, create_anuncio, update_anuncio,
+    list_inbox, list_enviados, enviar_mensaje, marcar_leido, list_destinatarios,
 )
 
 router = APIRouter()
@@ -126,69 +134,175 @@ async def consultar_dni_externo(
     }
 
 
-# --- Placeholders nuevos: Citados, Agendamientos, Anuncios, Programaciones, ---
-# --- Lista Espera, Mensajito. IMPORTANTE: van ANTES de "/{patient_id}" mas   ---
-# --- abajo, porque si no esa ruta generica intercepta estos paths y nunca   ---
-# --- llegan aqui (FastAPI/Starlette matchea por orden de declaracion).      ---
+# --- Rutas de submodulos nuevos: Altas, Lista Espera, Anuncios, Mensajito.   ---
+# --- IMPORTANTE: van ANTES de "/{patient_id}" mas abajo, porque si no esa   ---
+# --- ruta generica intercepta estos paths y nunca llegan aqui (FastAPI/     ---
+# --- Starlette matchea por orden de declaracion).                          ---
 
-@router.get("/citados", summary="Estado de Citados (placeholder)")
-async def estado_citados(
+# --- Altas (vista de solo lectura sobre Hospitalizacion + AtencionEmergencia) ---
+@router.get("/altas", response_model=list[AltaItem], summary="Listar altas (hospitalizacion + emergencia)")
+async def listar_altas(
+    request: Request,
+    fecha_desde: date_type | None = None,
+    fecha_hasta: date_type | None = None,
+    q: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    from app.hospital.admision.service import list_altas
+    tenant_id = get_tenant_id(current_user, request)
+    return await list_altas(db, tenant_id, fecha_desde, fecha_hasta, q)
+
+
+# --- Lista de Espera ---
+@router.get("/lista-espera", response_model=list[ListaEsperaResponse], summary="Listar lista de espera")
+async def listar_lista_espera(
+    request: Request,
+    estado: str | None = None,
+    servicio_id: uuid.UUID | None = None,
+    especialidad_id: uuid.UUID | None = None,
+    q: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    tenant_id = get_tenant_id(current_user, request)
+    return await list_lista_espera(db, tenant_id, estado, servicio_id, especialidad_id, q)
+
+
+@router.post("/lista-espera", response_model=ListaEsperaResponse, status_code=201, summary="Registrar en lista de espera")
+async def crear_lista_espera(
+    data: ListaEsperaCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
 ):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "citados",
-        "nombre": "Citados",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+    tenant_id = get_tenant_id(current_user, request)
+    return await create_lista_espera(db, tenant_id, data, current_user)
 
 
-@router.get("/anuncios", summary="Estado de Anuncios (placeholder)")
-async def estado_anuncios(
+@router.patch("/lista-espera/{item_id}", response_model=ListaEsperaResponse, summary="Editar registro de lista de espera")
+async def editar_lista_espera(
+    item_id: uuid.UUID,
+    data: ListaEsperaUpdate,
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
 ):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "anuncios",
-        "nombre": "Anuncios",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+    tenant_id = get_tenant_id(current_user, request)
+    return await update_lista_espera(db, tenant_id, item_id, data, current_user)
 
 
-@router.get("/lista-espera", summary="Estado de Lista Espera (placeholder)")
-async def estado_lista_espera(
+@router.post("/lista-espera/{item_id}/atender", response_model=ListaEsperaResponse, summary="Marcar atendido (enlaza cita)")
+async def atender_lista_espera_endpoint(
+    item_id: uuid.UUID,
+    data: ListaEsperaAtender,
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
 ):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "lista-espera",
-        "nombre": "Lista Espera",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+    tenant_id = get_tenant_id(current_user, request)
+    return await atender_lista_espera(db, tenant_id, item_id, data.cita_id, current_user)
 
 
-@router.get("/mensajito", summary="Estado de Mensajito (placeholder)")
-async def estado_mensajito(
+@router.post("/lista-espera/{item_id}/cancelar", response_model=ListaEsperaResponse, summary="Cancelar registro de lista de espera")
+async def cancelar_lista_espera_endpoint(
+    item_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
 ):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "mensajito",
-        "nombre": "Mensajito",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+    tenant_id = get_tenant_id(current_user, request)
+    return await cancelar_lista_espera(db, tenant_id, item_id, current_user)
+
+
+# --- Anuncios ---
+@router.get("/anuncios", response_model=list[AnuncioResponse], summary="Listar anuncios")
+async def listar_anuncios(
+    request: Request,
+    incluir_inactivos: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    tenant_id = get_tenant_id(current_user, request)
+    return await list_anuncios(db, tenant_id, incluir_inactivos)
+
+
+@router.post("/anuncios", response_model=AnuncioResponse, status_code=201, summary="Publicar anuncio")
+async def crear_anuncio(
+    data: AnuncioCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    tenant_id = get_tenant_id(current_user, request)
+    return await create_anuncio(db, tenant_id, data, current_user)
+
+
+@router.patch("/anuncios/{anuncio_id}", response_model=AnuncioResponse, summary="Editar o desactivar anuncio")
+async def editar_anuncio(
+    anuncio_id: uuid.UUID,
+    data: AnuncioUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    tenant_id = get_tenant_id(current_user, request)
+    return await update_anuncio(db, tenant_id, anuncio_id, data, current_user)
+
+
+# --- Mensajito ---
+@router.get("/mensajito/destinatarios", response_model=list[DestinatarioOut], summary="Catalogo de destinatarios")
+async def catalogo_destinatarios(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    tenant_id = get_tenant_id(current_user, request)
+    users = await list_destinatarios(db, tenant_id)
+    return [DestinatarioOut(id=u.id, name=u.name, role=u.role) for u in users]
+
+
+@router.get("/mensajito/inbox", response_model=list[MensajeResponse], summary="Bandeja de entrada")
+async def bandeja_entrada(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    tenant_id = get_tenant_id(current_user, request)
+    return await list_inbox(db, tenant_id, current_user)
+
+
+@router.get("/mensajito/enviados", response_model=list[MensajeResponse], summary="Mensajes enviados")
+async def mensajes_enviados(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    tenant_id = get_tenant_id(current_user, request)
+    return await list_enviados(db, tenant_id, current_user)
+
+
+@router.post("/mensajito", response_model=MensajeResponse, status_code=201, summary="Enviar mensaje")
+async def enviar_mensaje_endpoint(
+    data: MensajeCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    tenant_id = get_tenant_id(current_user, request)
+    return await enviar_mensaje(db, tenant_id, data, current_user)
+
+
+@router.post("/mensajito/{mensaje_id}/leido", summary="Marcar mensaje como leido")
+async def marcar_mensaje_leido(
+    mensaje_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_module_jwt(MODULO_CODIGO)),
+):
+    tenant_id = get_tenant_id(current_user, request)
+    await marcar_leido(db, tenant_id, mensaje_id, current_user)
+    return {"ok": True}
 
 
 @router.post("/", response_model=PatientResponse, status_code=201, summary="Registrar paciente")

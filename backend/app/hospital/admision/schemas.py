@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 
 
 class PatientCreate(BaseModel):
@@ -175,3 +175,130 @@ class UbigeoDistritoOut(BaseModel):
     id: str
     nombre: str
     model_config = {"from_attributes": True}
+
+
+# --- Altas (vista de solo lectura, sin tabla propia) ---
+class AltaItem(BaseModel):
+    origen: str  # hospitalizacion | emergencia
+    id: uuid.UUID
+    patient_id: uuid.UUID
+    paciente_nombre: str
+    paciente_dni: str | None
+    numero: str | None = None  # numero_hospitalizacion o numero_cuenta
+    fecha_alta: datetime | None
+    resumen: str | None
+    servicio_o_especialidad: str | None = None
+
+
+# --- Lista de Espera ---
+class ListaEsperaCreate(BaseModel):
+    patient_id: uuid.UUID
+    servicio_id: uuid.UUID | None = None
+    especialidad_id: uuid.UUID | None = None
+    motivo: str | None = Field(default=None, max_length=2000)
+    prioridad: str = "normal"
+
+    @field_validator("prioridad")
+    @classmethod
+    def validar_prioridad(cls, v):
+        if v not in ("normal", "urgente"):
+            raise ValueError("prioridad debe ser 'normal' o 'urgente'")
+        return v
+
+    @model_validator(mode="after")
+    def requiere_servicio_o_especialidad(self):
+        if not self.servicio_id and not self.especialidad_id:
+            raise ValueError("Debe indicar al menos servicio_id o especialidad_id")
+        return self
+
+
+class ListaEsperaUpdate(BaseModel):
+    motivo: str | None = Field(default=None, max_length=2000)
+    prioridad: str | None = None
+
+    @field_validator("prioridad")
+    @classmethod
+    def validar_prioridad(cls, v):
+        if v is not None and v not in ("normal", "urgente"):
+            raise ValueError("prioridad debe ser 'normal' o 'urgente'")
+        return v
+
+
+class ListaEsperaAtender(BaseModel):
+    cita_id: uuid.UUID | None = None
+
+
+class ListaEsperaResponse(BaseModel):
+    id: uuid.UUID
+    patient_id: uuid.UUID
+    paciente_nombre: str
+    paciente_dni: str | None
+    servicio_id: uuid.UUID | None
+    servicio_nombre: str | None
+    especialidad_id: uuid.UUID | None
+    especialidad_nombre: str | None
+    cita_id: uuid.UUID | None
+    motivo: str | None
+    prioridad: str
+    estado: str
+    registrado_por: str | None
+    created_at: datetime
+    atendido_at: datetime | None
+
+
+# --- Anuncios ---
+class AnuncioCreate(BaseModel):
+    titulo: str = Field(min_length=1, max_length=150)
+    contenido: str = Field(min_length=1, max_length=5000)
+
+
+class AnuncioUpdate(BaseModel):
+    titulo: str | None = Field(default=None, min_length=1, max_length=150)
+    contenido: str | None = Field(default=None, min_length=1, max_length=5000)
+    is_active: bool | None = None
+
+
+class AnuncioResponse(BaseModel):
+    id: uuid.UUID
+    titulo: str
+    contenido: str
+    publicado_por: str | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# --- Mensajito ---
+class MensajeCreate(BaseModel):
+    contenido: str = Field(min_length=1, max_length=500)
+    destinatario_user_id: uuid.UUID | None = None
+    destinatario_role: str | None = None
+    patient_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def requiere_destinatario(self):
+        if not self.destinatario_user_id and not self.destinatario_role:
+            raise ValueError("Debe indicar destinatario_user_id o destinatario_role")
+        return self
+
+
+class MensajeResponse(BaseModel):
+    id: uuid.UUID
+    remitente_user_id: uuid.UUID
+    remitente_nombre: str | None
+    destinatario_user_id: uuid.UUID | None
+    destinatario_role: str | None
+    patient_id: uuid.UUID | None
+    paciente_nombre: str | None = None
+    contenido: str
+    leido: bool
+    leido_at: datetime | None
+    created_at: datetime
+
+
+class DestinatarioOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    role: str

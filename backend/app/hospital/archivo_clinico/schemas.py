@@ -51,3 +51,16 @@ class MovimientosPage(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class PersonalArchivoOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: str | None
+    role: str
+    is_active: bool
+    empleado_id: uuid.UUID | None
+    empleado_nombre: str | None
+    empleado_dni: str | None
+    perfil_nombre: str | None
+    created_at: datetime

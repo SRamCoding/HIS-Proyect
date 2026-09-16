@@ -5,6 +5,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
 
+# NOTA: los modelos de Citados/Agendamiento/Programacion Medica/Altas de este
+# grupo de nav NO viven aqui -- ya existen en consulta_externa (ProgramacionMedica,
+# Cita) y se reutilizan tal cual (misma logica que Auditoria/General/Fact-Config/
+# Seguridad: sin duplicar tablas). Aqui solo van las 3 tablas nuevas que
+# realmente le faltaban a Admision: ListaEspera, Anuncio y Mensaje.
+
 
 class Patient(Base):
     """NOTA: 'dni' mantiene su nombre por compatibilidad aunque ahora puede contener
@@ -120,3 +126,73 @@ class ClinicalRecordMovement(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     clinical_record: Mapped["ClinicalRecord"] = relationship(back_populates="movements")
+
+
+class ListaEspera(Base):
+    """Lista de espera de pacientes sin cupo disponible en la especialidad/servicio
+    solicitado. Cuando se libera un cupo (nueva ProgramacionMedica o cancelacion),
+    el personal de Admision convierte la espera en una Cita real desde Agendamiento
+    y la marca 'atendido' aqui, enlazando el cita_id resultante."""
+    __tablename__ = "admision_lista_espera"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    patient_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"))
+    servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="SET NULL"), nullable=True)
+    especialidad_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="SET NULL"), nullable=True)
+    cita_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("citas.id", ondelete="SET NULL"), nullable=True)
+
+    motivo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prioridad: Mapped[str] = mapped_column(String(20), default="normal")  # normal, urgente
+    estado: Mapped[str] = mapped_column(String(20), default="pendiente", index=True)  # pendiente, atendido, cancelado
+    registrado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    atendido_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<ListaEspera {self.patient_id} {self.estado}>"
+
+
+class Anuncio(Base):
+    """Tablero de avisos internos de Admision (cambios de horario, consultorios
+    cerrados, etc). Herramienta operativa interna -- no corresponde a una norma
+    MINSA especifica, igual que el modulo Seguridad."""
+    __tablename__ = "admision_anuncios"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    titulo: Mapped[str] = mapped_column(String(150))
+    contenido: Mapped[str] = mapped_column(Text)
+    publicado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<Anuncio {self.titulo}>"
+
+
+class Mensaje(Base):
+    """Mensajeria interna corta entre personal del hospital ('Mensajito'). Puede
+    dirigirse a un usuario puntual o transmitirse a todo un rol, y opcionalmente
+    referenciar a un paciente (ej. 'Paciente en sala de espera hace 2h'). No es
+    chat en tiempo real: se consulta por polling desde el panel."""
+    __tablename__ = "admision_mensajes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    remitente_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    remitente_nombre: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    destinatario_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    destinatario_role: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="SET NULL"), nullable=True)
+
+    contenido: Mapped[str] = mapped_column(String(500))
+    leido: Mapped[bool] = mapped_column(Boolean, default=False)
+    leido_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    def __repr__(self) -> str:
+        return f"<Mensaje {self.remitente_user_id} -> {self.destinatario_user_id or self.destinatario_role}>"

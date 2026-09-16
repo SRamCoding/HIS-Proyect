@@ -32,7 +32,10 @@
         <UInput v-model="form.numero_documento" placeholder="N.º documento" />
         <UInput v-model="form.numero_documento_origen" placeholder="Documento origen" />
         <UInput v-model="form.numero_cuenta" placeholder="N.º cuenta paciente" />
-        <UInput v-model="form.fuente_financiamiento" placeholder="SIS / particular / estrategia" />
+        <UInput v-model="form.fuente_financiamiento" placeholder="SIS / particular / estrategia" list="farmacia-seguros" />
+        <datalist id="farmacia-seguros">
+          <option v-for="s in seguros" :key="s.id" :value="s.nombre" />
+        </datalist>
         <UInput v-model="form.observaciones" placeholder="Observaciones" />
       </div>
       <div class="mt-4 grid gap-2 md:grid-cols-7">
@@ -58,12 +61,26 @@
 
     <UModal v-model:open="detailOpen"><template #content><UCard><template #header><b>Detalle</b></template>
       <div v-if="mode==='recetas'" class="space-y-3"><p><b>{{ detail.numero }}</b> · {{ detail.estado }}</p><USelect v-model="dispenseWarehouse" :items="warehouseOptions" placeholder="Farmacia que dispensa"/><div v-for="item in detail.items" :key="item.id" class="grid grid-cols-3 gap-2"><span class="col-span-2 text-sm">{{ item.codigo }} · {{ item.nombre }} (prescrito: {{ item.cantidad }})</span><UInput v-model.number="item.a_dispensar" type="number" min="0" :max="item.cantidad" /></div><UButton :disabled="!dispenseWarehouse" @click="dispenseRecipe">Dispensar por FEFO</UButton></div>
+      <div v-else-if="isMovement" class="space-y-3">
+        <p><b>{{ detail.numero }}</b> · {{ detail.concepto }} · {{ detail.estado }}</p>
+        <p v-if="detail.paciente" class="text-sm text-gray-600">Paciente: {{ detail.paciente }} ({{ detail.paciente_dni || 'NN' }})</p>
+        <div v-if="detail.concepto==='VENTA'" class="text-sm">
+          Total S/ {{ Number(detail.total || 0).toFixed(2) }} ·
+          <span :class="{'text-green-600':detail.estado_pago==='pagado','text-amber-600':detail.estado_pago==='parcial','text-red-600':detail.estado_pago==='pendiente'}">
+            {{ detail.estado_pago==='pagado' ? 'Pagado' : detail.estado_pago==='parcial' ? 'Pago parcial' : 'Pendiente de pago' }}
+          </span>
+          <span v-if="detail.estado_pago!=='pagado'" class="text-gray-500">(S/ {{ Number(detail.monto_pendiente || 0).toFixed(2) }} pendiente · cobrar en Caja)</span>
+        </div>
+        <table class="w-full text-sm"><thead><tr><th class="text-left">Medicamento</th><th class="text-left">Lote</th><th class="text-left">Vence</th><th class="text-right">Cantidad</th><th class="text-right">Precio</th></tr></thead>
+          <tbody><tr v-for="item in detail.items" :key="item.id"><td>{{ item.descripcion }}</td><td>{{ item.numero_lote }}</td><td>{{ item.fecha_vencimiento }}</td><td class="text-right">{{ item.cantidad }}</td><td class="text-right">{{ Number(item.precio_unitario).toFixed(4) }}</td></tr></tbody>
+        </table>
+      </div>
       <pre v-else class="max-h-[65vh] overflow-auto whitespace-pre-wrap text-xs">{{ JSON.stringify(detail,null,2) }}</pre></UCard></template></UModal>
   </div>
 </template>
 <script setup lang="ts">
 const props=defineProps<{mode:string}>(); const {api}=useApi()
-const loading=ref(false),saving=ref(false),error=ref(''),formError=ref(''),rows=ref<any[]>([]),warehouses=ref<any[]>([]),medicines=ref<any[]>([]),stockRows=ref<any[]>([]),showForm=ref(false),detailOpen=ref(false),detail=ref<any>({})
+const loading=ref(false),saving=ref(false),error=ref(''),formError=ref(''),rows=ref<any[]>([]),warehouses=ref<any[]>([]),medicines=ref<any[]>([]),seguros=ref<any[]>([]),stockRows=ref<any[]>([]),showForm=ref(false),detailOpen=ref(false),detail=ref<any>({})
 const today=new Date().toISOString().slice(0,10)
 const filters=reactive({almacen_id:'',fecha_desde:new Date().toISOString().slice(0,10),fecha_hasta:new Date().toISOString().slice(0,10),q:''})
 const map:any={recetas:'Recetas','ingreso-almacen':'Nota de Ingreso Almacén','salida-almacen':'Nota de Salida Almacén','ingreso-farmacia':'Nota de Ingreso Farmacia','salida-farmacia':'Nota de Salida Farmacia',medicamentos:'Medicamentos',farmacotecnia:'Farmacotecnia','ici-diario':'ICI Diario','idi-diario':'IDI Diario',saldos:'Saldos Farmacia',kardex:'Kardex','saldo-almacen':'Saldo Almacén',digemid:'DIGEMID','venta-farmacia':'Venta Farmacia'}
@@ -90,6 +107,6 @@ async function savePharma(){await api('/app/farmacia/farmacotecnia',{method:'POS
 async function dispenseRecipe(){const items=detail.value.items.filter((x:any)=>x.a_dispensar>0).map((x:any)=>({receta_item_id:x.id,cantidad:x.a_dispensar}));if(!items.length)return;await api(`/app/farmacia/recetas/${detail.value.id}/dispensar`,{method:'POST',body:{almacen_id:dispenseWarehouse.value,items}});detailOpen.value=false;await load()}
 async function openDetail(row:any){detail.value=isMovement.value?await api(`/app/farmacia/movimientos/${row.id}`):props.mode==='recetas'?await api(`/app/farmacia/recetas/${row.id}`):row;detailOpen.value=true}
 async function download(ext:string){const blob:any=await api(`/app/farmacia/reportes/${props.mode}.${ext}`,{query:{fecha_desde:filters.fecha_desde,fecha_hasta:filters.fecha_hasta,almacen_id:filters.almacen_id||undefined,q:filters.q||undefined},responseType:'blob'});const url=URL.createObjectURL(blob);window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000)}
-onMounted(async()=>{try{[warehouses.value,medicines.value]=await Promise.all([api('/app/farmacia/catalogos/almacenes'),api('/app/farmacia/catalogos/medicamentos')])}finally{load()}})
+onMounted(async()=>{try{[warehouses.value,medicines.value,seguros.value]=await Promise.all([api('/app/farmacia/catalogos/almacenes'),api('/app/farmacia/catalogos/medicamentos'),api('/app/farmacia/catalogos/seguros')])}finally{load()}})
 watch(()=>form.almacen_origen_id,()=>{if(form.almacen_destino_id===form.almacen_origen_id)form.almacen_destino_id='';loadStock()})
 </script>

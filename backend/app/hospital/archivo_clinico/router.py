@@ -1,12 +1,11 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
-from app.tenants.entitlements import require_module_jwt, require_any_module_jwt
+from app.tenants.entitlements import require_any_module_jwt
 from app.hospital.archivo_clinico.schemas import (
-    DigitalizarRequest, HistoriaOut, HistoriasPage, MovimientosPage,
+    DigitalizarRequest, HistoriaOut, HistoriasPage, MovimientosPage, PersonalArchivoOut,
 )
 from app.hospital.archivo_clinico import service
 
@@ -61,72 +60,15 @@ async def digitalizar_historia(
     return result
 
 
-def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
-    tid = current_user.get("tenant_id") or request.headers.get("X-Tenant-ID")
-    if not tid:
-        raise HTTPException(403, detail="Sin tenant asignado")
-    return uuid.UUID(str(tid))
+# Nota: no hay endpoints separados /hc-electronica, /historias-clinicas ni
+# /movimientos-hc -- las 3 paginas del menu con esos nombres son vistas del
+# mismo recurso real (/historias, /historias/{id}/movimientos), filtradas o
+# tituladas distinto en el frontend (ver ArchivoClinicoPanel.vue).
 
 
-@router.get("/hc-electronica", summary="Estado de HC Electronica (placeholder)")
-async def estado_hc_electronica(
-    request: Request,
+@router.get("/personal-archivo", response_model=list[PersonalArchivoOut], summary="Personal con rol de archivo en este hospital")
+async def personal_archivo(
     db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(archivo_user),
 ):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "hc-electronica",
-        "nombre": "HC Electronica",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
-
-
-@router.get("/historias-clinicas", summary="Estado de Historias Clinicas (placeholder)")
-async def estado_historias_clinicas(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "historias-clinicas",
-        "nombre": "Historias Clinicas",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
-
-
-@router.get("/movimientos-hc", summary="Estado de Movimientos de H.C. (placeholder)")
-async def estado_movimientos_hc(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "movimientos-hc",
-        "nombre": "Movimientos de H.C.",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
-
-
-@router.get("/personal-archivo", summary="Estado de Personal de Archivo (placeholder)")
-async def estado_personal_archivo(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "personal-archivo",
-        "nombre": "Personal de Archivo",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+    return await service.list_personal_archivo(db, uuid.UUID(current_user["tenant_id"]))

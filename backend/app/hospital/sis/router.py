@@ -1,50 +1,57 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
-from app.tenants.entitlements import require_module_jwt
+from app.tenants.entitlements import require_any_module_jwt
+from app.hospital.sis import schemas, service
 
 router = APIRouter()
-
-MODULO_CODIGO = "sis"
-
-
-def get_tenant_id(current_user: dict, request: Request) -> uuid.UUID:
-    tid = current_user.get("tenant_id") or request.headers.get("X-Tenant-ID")
-    if not tid:
-        raise HTTPException(403, detail="Sin tenant asignado")
-    return uuid.UUID(str(tid))
+sis_user = require_any_module_jwt("sis")
 
 
-@router.get("/formato-fua", summary="Estado de Formato FUA (placeholder)")
-async def estado_formato_fua(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "formato-fua",
-        "nombre": "Formato FUA",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+def tid(user):
+    return uuid.UUID(user["tenant_id"])
 
 
-@router.get("/afiliaciones", summary="Estado de Afiliaciones SIS (placeholder)")
-async def estado_afiliaciones(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    tenant=Depends(require_module_jwt(MODULO_CODIGO)),
-    current_user: dict = Depends(get_current_user),
-):
-    return {
-        "modulo": MODULO_CODIGO,
-        "submodulo": "afiliaciones",
-        "nombre": "Afiliaciones SIS",
-        "tenant_id": str(get_tenant_id(current_user, request)),
-        "status": "pendiente de implementar",
-    }
+# --- Formato FUA ---
+@router.get("/formato-fua/pendientes")
+async def pendientes(db: AsyncSession = Depends(get_db), user=Depends(sis_user)):
+    return await service.list_atenciones_pendientes_fua(db, tid(user))
+
+
+@router.post("/formato-fua", status_code=201)
+async def generar(data: schemas.GenerarFuaIn, db: AsyncSession = Depends(get_db), user=Depends(sis_user)):
+    return await service.generar_fua(db, tid(user), user, data)
+
+
+@router.get("/formato-fua")
+async def listar(estado: str | None = None, q: str | None = Query(None, max_length=200),
+                 page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+                 db: AsyncSession = Depends(get_db), user=Depends(sis_user)):
+    return await service.list_fua(db, tid(user), estado, q, page, page_size)
+
+
+@router.get("/formato-fua/{fua_id}")
+async def detalle(fua_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(sis_user)):
+    return await service.fua_detalle(db, tid(user), fua_id)
+
+
+@router.post("/formato-fua/{fua_id}/estado")
+async def cambiar_estado(fua_id: uuid.UUID, data: schemas.CambiarEstadoFuaIn,
+                         db: AsyncSession = Depends(get_db), user=Depends(sis_user)):
+    return await service.cambiar_estado_fua(db, tid(user), user, fua_id, data)
+
+
+@router.get("/formato-fua/{fua_id}/reporte.pdf")
+async def pdf(fua_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(sis_user)):
+    return Response(await service.fua_pdf(db, tid(user), fua_id), media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="fua.pdf"', "Cache-Control": "no-store"})
+
+
+# --- Afiliaciones SIS ---
+@router.get("/afiliaciones")
+async def afiliaciones(q: str | None = Query(None, max_length=200), page: int = Query(1, ge=1),
+                       page_size: int = Query(20, ge=1, le=100),
+                       db: AsyncSession = Depends(get_db), user=Depends(sis_user)):
+    return await service.list_afiliaciones_sis(db, tid(user), q, page, page_size)

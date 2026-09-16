@@ -11,6 +11,8 @@ from app.sigarh.laboratorio.models import ExamenLaboratorio
 from app.sigarh.mantenimiento.models import Servicio
 from app.sigarh.rrhh.models import Empleado
 from app.hospital.laboratorio.models import LabMovimiento, LabMovimientoItem
+from app.sigarh.config_financiera.models import Caja as CajaFisica
+from app.hospital.caja.models import CajaSesion, Cobro, CobroItem
 
 
 class LaboratorioTests(archive.ArchivoClinicoTests):
@@ -186,6 +188,44 @@ class LaboratorioTests(archive.ArchivoClinicoTests):
         self.assertEqual(r.json()["numero_cuenta"],"LEGACY")
         self.assertEqual(r.json()["patient_id"],str(self.pid))
         await self.movement({"id":str(oid)})
+
+
+    async def test_lab_estado_pago_reflejado_desde_caja(self):
+        # El estado de pago del movimiento se calcula a partir de los cobros
+        # reales de Caja (CobroItem origen='LABORATORIO'), no de un campo de
+        # texto libre -- verificamos que pendiente/parcial/pagado reflejen
+        # exactamente lo que Caja registró.
+        mov = await self.movement()
+        r = await self.client.get(self.prefix + f"/movimientos/{mov['id']}")
+        self.assertEqual(r.json()["estado_pago"], "pendiente")
+        self.assertEqual(float(r.json()["monto_cobrado"]), 0)
+        total = float(r.json()["total"])  # 18.1234 * 2 = 36.2468
+
+        async with self.session() as db:
+            caja_id = uuid.uuid4()
+            sesion_id = uuid.uuid4()
+            db.add(CajaFisica(id=caja_id, tenant_id=self.tenant_id, nombre="Caja de prueba"))
+            db.add(CajaSesion(id=sesion_id, tenant_id=self.tenant_id, caja_id=caja_id, cajero_id=self.staff,
+                numero="CS-TEST-1", estado="abierta"))
+            cobro_id = uuid.uuid4()
+            db.add(Cobro(id=cobro_id, tenant_id=self.tenant_id, caja_sesion_id=sesion_id, numero="CB-TEST-1",
+                numero_cuenta="CUENTA-TEST", forma_pago="EFECTIVO", monto=20, registrado_por="Prueba"))
+            db.add(CobroItem(tenant_id=self.tenant_id, cobro_id=cobro_id, origen="LABORATORIO",
+                origen_id=mov["id"], descripcion="Pago parcial de prueba", monto=20))
+            await db.commit()
+
+        r = await self.client.get(self.prefix + f"/movimientos/{mov['id']}")
+        self.assertEqual(r.json()["estado_pago"], "parcial")
+        self.assertAlmostEqual(float(r.json()["monto_pendiente"]), total - 20, places=2)
+
+        async with self.session() as db:
+            db.add(CobroItem(tenant_id=self.tenant_id, cobro_id=cobro_id, origen="LABORATORIO",
+                origen_id=mov["id"], descripcion="Resto de la cuenta", monto=total - 20))
+            await db.commit()
+
+        r = await self.client.get(self.prefix + f"/movimientos/{mov['id']}")
+        self.assertEqual(r.json()["estado_pago"], "pagado")
+        self.assertAlmostEqual(float(r.json()["monto_pendiente"]), 0, places=2)
 
 
 def load_tests(loader, tests, pattern):

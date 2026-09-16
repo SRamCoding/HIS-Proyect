@@ -566,7 +566,10 @@ class InterconsultaCreate(BaseModel):
 
 class InterconsultaResponse(BaseModel):
     id: uuid.UUID
-    atencion_medica_id: uuid.UUID
+    atencion_medica_id: uuid.UUID | None = None
+    hospitalizacion_id: uuid.UUID | None = None
+    atencion_emergencia_id: uuid.UUID | None = None
+    origen: str = "CONSULTA_EXTERNA"
     paciente_nombre: str
     paciente_dni: str | None
     especialidad_destino_id: uuid.UUID

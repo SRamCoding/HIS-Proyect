@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Nueva Tarifa' })
-const { $api } = useNuxtApp()
+const { api: $api } = useApi()
 const route = useRoute()
 const router = useRouter()
 const tenant = route.query.tenant as string

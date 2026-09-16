@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'sigarh', title: 'Reportes de Nutrición' })
-const { $api } = useNuxtApp()
+const { api: $api } = useApi()
 const route = useRoute()
 const tenant = route.query.tenant as string
 const fecha = ref(new Date().toISOString().split('T')[0])

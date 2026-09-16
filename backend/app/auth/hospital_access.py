@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from app.auth.models import PerfilHospital
 
-MEDICO_MODULOS = {"consulta_externa.programacion", "consulta_externa.atenciones"}
+MEDICO_MODULOS = {"consulta_externa.programacion", "consulta_externa.atenciones", "firma_electronica"}
 
 async def validar_rol_hospital(central, role):
     from app.admin.roles.models import SystemRole

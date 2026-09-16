@@ -105,6 +105,14 @@ async def get_consultorios(db: AsyncSession, tenant_id: uuid.UUID) -> list[Consu
     return result.scalars().all()
 
 
+async def get_seguros(db: AsyncSession, tenant_id: uuid.UUID) -> list[dict]:
+    from app.sigarh.config_financiera.models import Seguro
+    result = await db.execute(
+        select(Seguro).where(Seguro.tenant_id == tenant_id, Seguro.is_active == True).order_by(Seguro.nombre)
+    )
+    return [{"id": s.id, "nombre": s.nombre} for s in result.scalars().all()]
+
+
 async def get_especialidades(
     db: AsyncSession, tenant_id: uuid.UUID, servicio_id: uuid.UUID | None = None
 ) -> list[Especialidad]:
@@ -1563,6 +1571,7 @@ async def list_atenciones_medicas(
     especialidad_id: uuid.UUID | None = None,
     medico_id: uuid.UUID | None = None,
     paciente_dni: str | None = None,
+    estado: str | None = None,
 ) -> list[dict]:
     query = (
         select(
@@ -1587,6 +1596,8 @@ async def list_atenciones_medicas(
         query = query.where(ProgramacionMedica.fecha == fecha)
     if especialidad_id:
         query = query.where(ProgramacionMedica.especialidad_id == especialidad_id)
+    if estado:
+        query = query.where(AtencionMedica.estado == estado)
     if medico_id:
         query = query.where(ProgramacionMedica.medico_id == medico_id)
     if paciente_dni:
@@ -1611,6 +1622,42 @@ async def list_atenciones_medicas(
             }
         )
     return items
+
+
+async def bandeja_electronica(db: AsyncSession, tenant_id: uuid.UUID, empleado_id: uuid.UUID | None) -> dict:
+    """Bandeja de tareas pendientes del médico: atenciones sin firmar, citas de
+    hoy aún no atendidas e interconsultas de Consulta Externa dirigidas a su
+    especialidad. Sin tabla propia -- agrega datos ya existentes, igual que
+    Auditoría/General/Fact-Config."""
+    atenciones_pendientes = (
+        await list_atenciones_medicas(db, tenant_id, medico_id=empleado_id, estado="borrador")
+        if empleado_id else []
+    )
+    citas_hoy_pendientes = (
+        await list_citas(db, tenant_id, estado="separada", fecha=date_type.today(), medico_id=empleado_id)
+        if empleado_id else []
+    )
+
+    interconsultas_pendientes: list[dict] = []
+    if empleado_id:
+        especialidad_ids = (await db.scalars(select(EmpleadoEspecialidad.especialidad_id).where(
+            EmpleadoEspecialidad.empleado_id == empleado_id))).all()
+        if especialidad_ids:
+            query = (
+                select(Interconsulta, Patient, Especialidad)
+                .join(Patient, Patient.id == Interconsulta.patient_id)
+                .join(Especialidad, Especialidad.id == Interconsulta.especialidad_destino_id)
+                .where(Interconsulta.tenant_id == tenant_id, Interconsulta.estado == "pendiente",
+                       Interconsulta.especialidad_destino_id.in_(especialidad_ids))
+                .order_by(Interconsulta.urgente.desc(), Interconsulta.created_at)
+            )
+            interconsultas_pendientes = [await _interconsulta_row_to_dict(db, row) for row in (await db.execute(query)).all()]
+
+    return {
+        "atenciones_pendientes_firma": atenciones_pendientes,
+        "citas_hoy_pendientes": citas_hoy_pendientes,
+        "interconsultas_pendientes": interconsultas_pendientes,
+    }
 
 
 from app.sigarh.config_farmacia.models import Medicamento
@@ -1798,14 +1845,17 @@ async def create_hospitalizacion(
             f"La cama {cama.codigo} no esta disponible (estado actual: {cama.estado})"
         )
 
-    count = await db.scalar(select(func.count(Hospitalizacion.id)))
+    from app.hospital.hospitalizacion.service import number as numero_hospitalizacion
+    cita_de_atencion = await db.scalar(select(Cita).where(Cita.id == atencion.cita_id))
     hosp = Hospitalizacion(
         tenant_id=tenant_id,
         atencion_medica_id=atencion.id,
+        patient_id=cita_de_atencion.patient_id if cita_de_atencion else None,
         cama_id=cama.id,
         especialidad_ingreso_id=data.especialidad_ingreso_id,
         diagnostico_ingreso_id=data.diagnostico_ingreso_id,
-        numero_hospitalizacion=_generar_numero_hospitalizacion((count or 0) + 1),
+        numero_hospitalizacion=await numero_hospitalizacion(db, tenant_id, "HOSP"),
+        registrado_por=(user.get("name") if user else None),
     )
     db.add(hosp)
     cama.estado = "OCUPADA"
@@ -2056,11 +2106,20 @@ async def create_orden_imagen(
     if existing.scalar_one_or_none():
         raise ValueError("Esta atencion ya tiene una orden de imagen generada")
 
-    count = await db.scalar(select(func.count(OrdenImagen.id)))
+    if not data.examen_ids or len(set(data.examen_ids)) != len(data.examen_ids):
+        raise ValueError("Seleccione estudios de imagen sin duplicados.")
+    validos = (await db.scalars(select(ExamenImagenologia.id).where(
+        ExamenImagenologia.tenant_id == tenant_id,
+        ExamenImagenologia.is_active.is_(True),
+        ExamenImagenologia.id.in_(data.examen_ids),
+    ))).all()
+    if len(validos) != len(data.examen_ids):
+        raise ValueError("Estudio de imagen no disponible en este hospital.")
+    from app.hospital.imagenes.service import number
     orden = OrdenImagen(
         tenant_id=tenant_id,
         atencion_medica_id=atencion.id,
-        numero_orden=_generar_numero_orden_imagen((count or 0) + 1),
+        numero_orden=await number(db, tenant_id, "OI"),
         indicacion_clinica=data.indicacion_clinica,
     )
     db.add(orden)
@@ -2128,8 +2187,8 @@ async def create_interconsulta(
         raise ValueError(
             "Debe registrar la atencion medica antes de generar la interconsulta"
         )
+    cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id))
     if user:
-        cita = await db.scalar(select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id))
         await validar_autor_clinico(db, tenant_id, cita, user)
     if atencion.estado != "borrador":
         raise ValueError("La atención está cerrada; no puede generar documentos nuevos.")
@@ -2152,7 +2211,8 @@ async def create_interconsulta(
         raise ValueError("Esta atencion ya tiene una interconsulta generada")
 
     interc = Interconsulta(
-        tenant_id=tenant_id, atencion_medica_id=atencion.id, **data.model_dump()
+        tenant_id=tenant_id, atencion_medica_id=atencion.id, patient_id=cita.patient_id if cita else None,
+        **data.model_dump()
     )
     db.add(interc)
     await db.commit()
@@ -2163,7 +2223,7 @@ async def get_interconsulta(
     db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID
 ) -> dict | None:
     result = await db.execute(
-        select(Interconsulta, AtencionMedica, Cita, Patient, Especialidad)
+        select(Interconsulta, Patient, Especialidad)
         .join(AtencionMedica, AtencionMedica.id == Interconsulta.atencion_medica_id)
         .join(Cita, Cita.id == AtencionMedica.cita_id)
         .join(Patient, Patient.id == Cita.patient_id)
@@ -2179,11 +2239,14 @@ async def get_interconsulta(
 async def list_interconsultas_pendientes(
     db: AsyncSession, tenant_id: uuid.UUID, especialidad_id: uuid.UUID | None = None
 ) -> list[dict]:
+    # La interconsulta puede originarse en una Atencion Medica (Consulta Externa),
+    # una Hospitalizacion o una Atencion de Emergencia -- en los 3 casos el
+    # paciente ya queda resuelto en Interconsulta.patient_id desde su creacion
+    # (igual que en Laboratorio/Imagenologia), asi que no hace falta reconstruirlo
+    # via outerjoin/coalesce por cada origen.
     query = (
-        select(Interconsulta, AtencionMedica, Cita, Patient, Especialidad)
-        .join(AtencionMedica, AtencionMedica.id == Interconsulta.atencion_medica_id)
-        .join(Cita, Cita.id == AtencionMedica.cita_id)
-        .join(Patient, Patient.id == Cita.patient_id)
+        select(Interconsulta, Patient, Especialidad)
+        .join(Patient, Patient.id == Interconsulta.patient_id)
         .join(Especialidad, Especialidad.id == Interconsulta.especialidad_destino_id)
         .where(
             Interconsulta.tenant_id == tenant_id, Interconsulta.estado == "pendiente"
@@ -2197,7 +2260,7 @@ async def list_interconsultas_pendientes(
 
 
 async def _interconsulta_row_to_dict(db: AsyncSession, row) -> dict:
-    interc, atencion, cita, paciente, especialidad = row
+    interc, paciente, especialidad = row
     diagnostico_codigo = diagnostico_desc = None
     if interc.diagnostico_id:
         dx_result = await db.execute(
@@ -2209,6 +2272,9 @@ async def _interconsulta_row_to_dict(db: AsyncSession, row) -> dict:
     return {
         "id": interc.id,
         "atencion_medica_id": interc.atencion_medica_id,
+        "hospitalizacion_id": interc.hospitalizacion_id,
+        "atencion_emergencia_id": interc.atencion_emergencia_id,
+        "origen": "HOSPITALIZACION" if interc.hospitalizacion_id else ("EMERGENCIA" if interc.atencion_emergencia_id else "CONSULTA_EXTERNA"),
         "paciente_nombre": paciente.full_name,
         "paciente_dni": paciente.dni,
         "especialidad_destino_id": interc.especialidad_destino_id,
@@ -2242,19 +2308,18 @@ async def programar_interconsulta(
     if interc.estado != "pendiente":
         raise ValueError("Esta interconsulta ya fue programada")
 
-    atencion_result = await db.execute(
-        select(AtencionMedica).where(AtencionMedica.id == interc.atencion_medica_id)
-    )
-    atencion = atencion_result.scalar_one_or_none()
-    cita_result = await db.execute(select(Cita).where(Cita.id == atencion.cita_id))
-    cita_original = cita_result.scalar_one_or_none()
+    # El paciente ya queda resuelto en Interconsulta.patient_id desde su creacion,
+    # cualquiera sea el origen (Consulta Externa, Hospitalizacion o Emergencia).
+    patient_id = interc.patient_id
+    if not patient_id:
+        raise ValueError("No se pudo determinar el paciente de esta interconsulta")
 
     nueva_cita = await create_cita(
         db,
         tenant_id,
         CitaCreate(
             programacion_medica_id=programacion_medica_id,
-            patient_id=cita_original.patient_id,
+            patient_id=patient_id,
             hora_inicio=hora_inicio,
             hora_fin=hora_fin,
             tipo_consulta="Interconsulta",
@@ -2265,11 +2330,7 @@ async def programar_interconsulta(
     interc.estado = "programada"
     interc.cita_generada_id = nueva_cita["id"]
     await db.commit()
-    return (
-        await get_interconsulta(db, tenant_id, cita_original.id)
-        if False
-        else nueva_cita
-    )
+    return nueva_cita
 
 
 def _generar_numero_referencia(secuencia: int) -> str:
@@ -2319,11 +2380,13 @@ async def create_referencia(
     if existing.scalar_one_or_none():
         raise ValueError("Esta atencion ya tiene una referencia generada")
 
-    count = await db.scalar(select(func.count(Referencia.id)))
+    from app.hospital.referencias.service import number as numero_referencia
     ref = Referencia(
         tenant_id=tenant_id,
         atencion_medica_id=atencion.id,
-        numero_referencia=_generar_numero_referencia((count or 0) + 1),
+        patient_id=cita.patient_id if user else (await db.scalar(select(Cita.patient_id).where(Cita.id == cita_id))),
+        registrado_por=(user.get("name") if user else None),
+        numero_referencia=await numero_referencia(db, tenant_id, "REF"),
         **data.model_dump(),
     )
     db.add(ref)

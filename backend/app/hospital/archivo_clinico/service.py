@@ -3,6 +3,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.hospital.archivo_clinico.models import ClinicalRecord, ClinicalRecordMovement
 from app.hospital.admision.models import Patient
+from app.auth.models import User, PerfilHospital
+from app.sigarh.rrhh.models import Empleado
+from app.sigarh.mantenimiento.models import PerfilUsuario
 
 
 def _historias(tenant_id: uuid.UUID):
@@ -71,3 +74,27 @@ async def set_digitalizada(db: AsyncSession, tenant_id: uuid.UUID,
     record.is_digitized = is_digitized
     await db.flush()
     return _historia_out(record, patient)
+
+
+async def list_personal_archivo(db: AsyncSession, tenant_id: uuid.UUID):
+    # Personal de Archivo = cuentas panel='app' con role='archivo' en este
+    # hospital. Mismo motivo que en Seguridad: User.tenant_id no se llena para
+    # panel='app' -- SIGARH > Mantenimiento > Usuarios las crea directo en la
+    # BD fisica del hospital, donde esa columna es redundante (el aislamiento
+    # ya lo da la BD). `tenant_id` se mantiene en la firma por consistencia
+    # con el resto del modulo, aunque esta consulta no lo necesite.
+    query = (select(User, Empleado, PerfilUsuario, PerfilHospital)
+        .outerjoin(Empleado, Empleado.id == User.empleado_id)
+        .outerjoin(PerfilUsuario, PerfilUsuario.id == User.perfil_usuario_id)
+        .outerjoin(PerfilHospital, PerfilHospital.id == User.perfil_hospital_id)
+        .where(User.panel == "app", User.role == "archivo")
+        .order_by(User.name))
+    rows = (await db.execute(query)).all()
+    return [{
+        "id": u.id, "name": u.name, "email": u.email, "role": u.role, "is_active": u.is_active,
+        "empleado_id": empleado.id if empleado else None,
+        "empleado_nombre": empleado.nombre_completo if empleado else None,
+        "empleado_dni": empleado.dni if empleado else None,
+        "perfil_nombre": (perfil.nombre if perfil else perfil_legacy.nombre if perfil_legacy else None),
+        "created_at": u.created_at,
+    } for u, empleado, perfil, perfil_legacy in rows]

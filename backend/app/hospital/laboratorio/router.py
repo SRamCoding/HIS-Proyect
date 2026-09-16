@@ -8,6 +8,10 @@ from app.hospital.laboratorio import schemas, service
 
 router = APIRouter()
 lab_user = require_any_module_jwt("laboratorio")
+# Ficha Covid: mismo registro clinico, accesible tambien desde Consulta Externa
+# (el clinico puede llenarla ahi mismo sin necesitar el modulo Laboratorio activo) --
+# sin duplicar la tabla ni el servicio, solo el gate de acceso es mas amplio.
+covid_user = require_any_module_jwt("laboratorio", "consulta_externa")
 
 
 def filters(q: str | None = Query(None, max_length=200),
@@ -32,7 +36,7 @@ async def catalogos(kind: str, q: str = Query("", max_length=200), db: AsyncSess
 
 
 @router.get("/pacientes")
-async def pacientes(q: str = Query(min_length=2, max_length=200), db: AsyncSession = Depends(get_db), user=Depends(lab_user)):
+async def pacientes(q: str = Query(min_length=2, max_length=200), db: AsyncSession = Depends(get_db), user=Depends(covid_user)):
     return await service.patients(db, tid(user), q)
 
 
@@ -122,22 +126,22 @@ async def editar_cupo(data: schemas.CupoEntrada, db: AsyncSession = Depends(get_
 
 @router.get("/ficha-covid")
 async def fichas(f=Depends(filters), page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
-                 db: AsyncSession = Depends(get_db), user=Depends(lab_user)):
+                 db: AsyncSession = Depends(get_db), user=Depends(covid_user)):
     return await service.list_covid(db, tid(user), f, page, page_size)
 
 
 @router.post("/ficha-covid", status_code=201)
-async def crear_ficha(data: schemas.CovidEntrada, db: AsyncSession = Depends(get_db), user=Depends(lab_user)):
+async def crear_ficha(data: schemas.CovidEntrada, db: AsyncSession = Depends(get_db), user=Depends(covid_user)):
     return await service.save_covid(db, tid(user), user, data)
 
 
 @router.patch("/ficha-covid/{cid}")
-async def editar_ficha(cid: uuid.UUID, data: schemas.CovidUpdate, db: AsyncSession = Depends(get_db), user=Depends(lab_user)):
+async def editar_ficha(cid: uuid.UUID, data: schemas.CovidUpdate, db: AsyncSession = Depends(get_db), user=Depends(covid_user)):
     return await service.save_covid(db, tid(user), user, data, cid)
 
 
 @router.get("/ficha-covid/{cid}/reporte.pdf")
-async def ficha_pdf(cid: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(lab_user)):
+async def ficha_pdf(cid: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(covid_user)):
     return Response(await service.covid_pdf(db, tid(user), cid), media_type="application/pdf",
                     headers={"Content-Disposition": 'inline; filename="ficha-covid.pdf"', "Cache-Control": "no-store"})
 

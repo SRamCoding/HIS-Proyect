@@ -402,7 +402,10 @@
                 <label class="form-label">Fuente Financiamiento</label>
                 <div class="input-wrapper">
                   <UIcon name="i-heroicons-currency-dollar" class="input-icon" />
-                  <input v-model="formCita.fuente_financiamiento" class="input-clinical" placeholder="SIS, EsSalud, Particular..." />
+                  <input v-model="formCita.fuente_financiamiento" class="input-clinical" placeholder="SIS, EsSalud, Particular..." list="admision-seguros" />
+                  <datalist id="admision-seguros">
+                    <option v-for="s in seguros" :key="s.id" :value="s.nombre" />
+                  </datalist>
                 </div>
               </div>
 
@@ -442,6 +445,7 @@ const { link } = useHospitalNav()
 
 const servicios = ref<any[]>([])
 const especialidades = ref<any[]>([])
+const seguros = ref<any[]>([])
 const programaciones = ref<any[]>([])
 const progSeleccionada = ref<any>(null)
 const cupos = ref<any[]>([])
@@ -663,6 +667,7 @@ onMounted(async () => {
   try {
     servicios.value = await api('/app/consulta-externa/programacion-medica/servicios')
     especialidades.value = await api('/app/consulta-externa/programacion-medica/especialidades')
+    seguros.value = await api('/app/consulta-externa/seguros')
   } catch (e: any) {
     error.value = e?.data?.detail || 'Error al cargar catálogos'
   }
