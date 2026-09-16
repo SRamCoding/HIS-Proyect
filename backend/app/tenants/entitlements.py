@@ -54,7 +54,7 @@ def require_module_jwt(module_code: str):
 
         if current_user.get("panel") == "app":
             from app.auth.hospital_access import permiso_recurso, verificar_ambito_medico
-            requerido = permiso_recurso(request.url.path, request.method, module_code)
+            requerido = permiso_recurso(request.url.path, request.method, module_code, current_user)
             if not permiso_incluye(current_user.get("active_modules", []), requerido):
                 raise HTTPException(403, detail="Su perfil hospitalario no permite esta operación")
             await verificar_ambito_medico(request, current_user)

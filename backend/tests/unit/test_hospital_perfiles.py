@@ -22,6 +22,24 @@ def test_recursos_separan_operaciones(ruta, metodo, esperado):
     assert permiso_recurso('/app/consulta-externa/' + ruta, metodo, 'consulta_externa') == 'consulta_externa.' + esperado
 
 
+@pytest.mark.parametrize("ruta,metodo,esperado", [
+    ("citas", "GET", "consulta_externa.confirmacion"),
+    ("triaje/pendientes", "GET", "consulta_externa.triaje"),
+    ("programacion-medica/servicios", "GET", "consulta_externa.triaje"),
+])
+def test_enfermeria_usa_recursos_asistenciales(ruta, metodo, esperado):
+    user = {"role": "enfermera"}
+    assert permiso_recurso('/app/consulta-externa/' + ruta, metodo, 'consulta_externa', user) == esperado
+
+
+def test_seguimiento_hospitalario_separa_notas_de_altas():
+    user = {"role": "enfermera"}
+    base = "/app/hospitalizacion/hospitalizaciones/00000000-0000-0000-0000-000000000001"
+    assert permiso_recurso(base, "GET", "hospitalizacion", user) == "hospitalizacion.seguimiento"
+    assert permiso_recurso(base + "/notas", "POST", "hospitalizacion", user) == "hospitalizacion.seguimiento"
+    assert permiso_recurso(base + "/alta", "POST", "hospitalizacion", user) == "hospitalizacion"
+
+
 def cuenta(**kwargs):
     return SimpleNamespace(id=uuid.uuid4(), name="Prueba", email="prueba@example.test", panel="app",
         role=kwargs.get("role", "medico"), perfil_hospital_id=kwargs.get("perfil_hospital_id"),
@@ -52,6 +70,20 @@ def test_medico_no_recibe_modulos_extra_ni_no_habilitados():
     r = asyncio.run(contexto_hospital(db, user, SimpleNamespace(id=uuid.uuid4()), {"consulta_externa"}))
     assert r['active_modules'] == ['consulta_externa.atenciones', 'consulta_externa.programacion']
     assert r['empleado_id'] == str(empleado.id)
+
+
+def test_enfermeria_solo_recibe_sus_modulos_asistenciales():
+    perfil = SimpleNamespace(id=uuid.uuid4(), role="enfermera", modulos=[
+        "consulta_externa.confirmacion", "consulta_externa.triaje",
+        "consulta_externa.atenciones", "hospitalizacion.seguimiento",
+    ])
+    empleado = SimpleNamespace(id=uuid.uuid4())
+    db = SimpleNamespace(scalar=AsyncMock(side_effect=[perfil, empleado]))
+    user = cuenta(role="enfermera", perfil_hospital_id=perfil.id, empleado_id=empleado.id)
+    r = asyncio.run(contexto_hospital(db, user, SimpleNamespace(id=uuid.uuid4()), {"consulta_externa", "hospitalizacion"}))
+    assert r['active_modules'] == [
+        "consulta_externa.confirmacion", "consulta_externa.triaje", "hospitalizacion.seguimiento",
+    ]
 
 
 def test_perfil_de_otro_hospital_no_se_asigna():

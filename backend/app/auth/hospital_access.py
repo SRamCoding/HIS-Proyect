@@ -5,6 +5,10 @@ from sqlalchemy import select
 from app.auth.models import PerfilHospital
 
 MEDICO_MODULOS = {"consulta_externa.programacion", "consulta_externa.atenciones", "firma_electronica"}
+ENFERMERIA_MODULOS = {
+    "consulta_externa.confirmacion", "consulta_externa.triaje",
+    "hospitalizacion.seguimiento",
+}
 
 async def validar_rol_hospital(central, role):
     from app.admin.roles.models import SystemRole
@@ -26,19 +30,33 @@ RECURSOS = [
     {"code": "consulta_externa.confirmacion", "label": "Confirmación de citas"},
     {"code": "consulta_externa.triaje", "label": "Registro de triaje"},
     {"code": "consulta_externa.agendamiento", "label": "Agendamiento y gestión de agendas"},
+    {"code": "hospitalizacion.seguimiento", "label": "Seguimiento de pacientes hospitalizados"},
 ]
 
-def permiso_recurso(path, method, modulo):
+def permiso_recurso(path, method, modulo, user=None):
+    if modulo == "hospitalizacion":
+        ruta = path.split("/hospitalizacion/", 1)[-1]
+        if method == "GET" and (ruta == "panel-camas" or ruta.startswith("hospitalizaciones")):
+            return "hospitalizacion.seguimiento"
+        if ruta.startswith("hospitalizaciones/") and ruta.endswith("/notas"):
+            return "hospitalizacion.seguimiento"
+        return modulo
     if modulo != "consulta_externa":
         return modulo
     ruta = path.split("/consulta-externa/", 1)[-1]
     if ruta.startswith("programacion-medica"):
+        if method == "GET" and user and user.get("role") == "enfermera":
+            return "consulta_externa.triaje"
         return "consulta_externa.programacion" if method == "GET" else "consulta_externa.agendamiento"
     if ruta.startswith("citas"):
         if "confirmar" in ruta:
             return "consulta_externa.confirmacion"
+        if method == "GET" and user and user.get("role") == "enfermera":
+            return "consulta_externa.confirmacion"
         return "consulta_externa.atenciones" if method == "GET" else "consulta_externa.agendamiento"
     if ruta == "triaje/pendientes":
+        if user and user.get("role") == "enfermera":
+            return "consulta_externa.triaje"
         return "consulta_externa.atenciones" if method == "GET" else "consulta_externa.triaje"
     if ruta.startswith("triaje"):
         return "consulta_externa.atenciones" if method == "GET" and ruta != "triaje" else "consulta_externa.triaje"
@@ -83,6 +101,8 @@ async def contexto_hospital(db, usuario, hospital, habilitados):
             Empleado.tenant_id == hospital.id, Empleado.is_active.is_(True)))
         if not empleado:
             raise HTTPException(403, "El empleado vinculado está inactivo o pertenece a otro hospital")
+    if usuario.role == "enfermera" and not empleado:
+        raise HTTPException(403, "Vincule la cuenta de enfermería a un empleado del hospital")
     if usuario.role == "medico" and not empleado:
         raise HTTPException(403, "Vincule la cuenta médica a un empleado del hospital")
     if shared_id:
@@ -92,6 +112,8 @@ async def contexto_hospital(db, usuario, hospital, habilitados):
     permisos = set(perfil.modulos) if perfil else set(habilitados)
     if usuario.role == "medico":
         permisos &= MEDICO_MODULOS
+    if usuario.role == "enfermera":
+        permisos &= ENFERMERIA_MODULOS
     permisos = sorted(c for c in permisos if modulo_padre(c) in habilitados)
     return {"sub": str(usuario.id), "name": usuario.name, "email": usuario.email,
         "role": usuario.role, "panel": usuario.panel, "tenant_id": str(hospital.id),
@@ -118,6 +140,14 @@ async def validar_perfil(db, tid, perfil_id, role, empleado_id, panel):
         profesion = await db.get(Profesion, empleado.profesion_id) if empleado and empleado.profesion_id else None
         if not empleado or not profesion or profesion.codigo != "MED":
             raise HTTPException(400, "La cuenta médica debe vincularse a un empleado con profesión Médico Cirujano")
+
+    if role == "enfermera":
+        from app.sigarh.rrhh.models import Empleado
+        from app.sigarh.mantenimiento.models import Profesion
+        empleado = await db.get(Empleado, empleado_id) if empleado_id else None
+        profesion = await db.get(Profesion, empleado.profesion_id) if empleado and empleado.profesion_id else None
+        if not empleado or not profesion or profesion.codigo != "ENF":
+            raise HTTPException(400, "La cuenta de enfermería debe vincularse a un empleado con profesión Enfermería")
 
 async def verificar_ambito_medico(request, user):
     """Impide abrir citas/agendas ajenas, incluso con un UUID conocido."""

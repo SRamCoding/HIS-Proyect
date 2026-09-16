@@ -49,7 +49,7 @@
           </div>
         </div>
 
-        <div v-if="form.panel === 'app'" class="form-group"><label class="form-label">Tipo de cuenta hospitalaria</label><select v-model="form.tipo_usuario" class="input-clinical"><option value="medico">Médico</option><option value="enfermera">Enfermería</option><option value="administrador">Administrativo</option><option value="farmaceutico">Farmacéutico</option><option value="laboratorista">Laboratorista</option><option value="cajero">Cajero</option><option value="tuasis">TUASIS</option></select></div>
+        <div v-if="form.panel === 'app'" class="form-group"><label class="form-label">Tipo de cuenta hospitalaria</label><select v-model="form.tipo_usuario" class="input-clinical" @change="cambiarTipoUsuario"><option value="medico">Médico</option><option value="enfermera">Enfermería</option><option value="administrador">Administrativo</option><option value="farmaceutico">Farmacéutico</option><option value="laboratorista">Laboratorista</option><option value="cajero">Cajero</option><option value="tuasis">TUASIS</option></select></div>
 <div class="form-group">
           <label class="form-label">Modulo requerido</label>
           <div class="input-wrapper">
@@ -223,8 +223,16 @@ const saving = ref(false)
 const error = ref('')
 
 const catalogoModulos = ref<Modulo[]>([])
-const todosModulos = computed(() => form.panel === 'app' && form.tipo_usuario === 'medico'
-  ? catalogoModulos.value.filter(m => m.code === 'consulta_externa').map(m => ({ ...m, submodulos: (m.submodulos || []).filter(s => ['programacion', 'atenciones'].includes(s.code)) })) : catalogoModulos.value)
+const modulosClinicos = (tipo: string) => tipo === 'medico'
+  ? ['consulta_externa.programacion', 'consulta_externa.atenciones']
+  : tipo === 'enfermera'
+    ? ['consulta_externa.confirmacion', 'consulta_externa.triaje', 'hospitalizacion.seguimiento'] : null
+const todosModulos = computed(() => {
+  const permitidos = form.panel === 'app' ? modulosClinicos(form.tipo_usuario) : null
+  if (!permitidos) return catalogoModulos.value
+  return catalogoModulos.value.map(m => ({ ...m, submodulos: (m.submodulos || []).filter(s => permitidos.includes(`${m.code}.${s.code}`)) }))
+    .filter(m => m.submodulos?.length)
+})
 const gruposOcupacionales = ref<GrupoOcupacional[]>([])
 
 const PERMISOS_ACCION = [
@@ -254,6 +262,12 @@ watch(() => form.panel, async (panel, anterior) => {
   try { const modulos = await api<Modulo[]>(`/sigarh/mantenimiento/modulos-catalogo?panel=${panel}`); if (actual === cargaModulos) catalogoModulos.value = modulos }
   catch (e) { error.value = apiErr(e, 'No se pudieron cargar los módulos del panel') }
 })
+
+function cambiarTipoUsuario() {
+  form.modulos_permitidos = []
+  form.grupos_ocupacionales_permitidos = []
+  form.modulo_requerido = ''
+}
 
 
 // --- Arbol de modulos/submodulos permitidos ---
@@ -294,7 +308,7 @@ const toggleModulo = (mod: Modulo) => {
   const estabaCompleto = estadoModulo(mod) === 'all'
   form.modulos_permitidos = form.modulos_permitidos.filter(c => c !== mod.code && !codigosSubmodulo.includes(c))
   if (!estabaCompleto) {
-    form.modulos_permitidos.push(...(form.panel === 'app' && form.tipo_usuario === 'medico' ? codigosSubmodulo : [mod.code]))
+    form.modulos_permitidos.push(...(form.panel === 'app' && modulosClinicos(form.tipo_usuario) ? codigosSubmodulo : [mod.code]))
   }
 }
 
@@ -317,7 +331,7 @@ const toggleSub = (mod: Modulo, sub: Submodulo) => {
   // codigo del modulo completo (mas simple y ya cubre nuevos submodulos futuros).
   const todosCodigos = (mod.submodulos || []).map(s => `${mod.code}.${s.code}`)
   const seleccionadosAhora = todosCodigos.filter(c => actuales.includes(c))
-  if (!(form.panel === 'app' && form.tipo_usuario === 'medico') && todosCodigos.length && seleccionadosAhora.length === todosCodigos.length) {
+  if (!(form.panel === 'app' && modulosClinicos(form.tipo_usuario)) && todosCodigos.length && seleccionadosAhora.length === todosCodigos.length) {
     actuales = actuales.filter(c => !todosCodigos.includes(c))
     actuales.push(mod.code)
   }
@@ -327,7 +341,7 @@ const toggleSub = (mod: Modulo, sub: Submodulo) => {
 const todosSeleccionados = computed(() => todosModulos.value.every(m => estadoModulo(m) === 'all'))
 
 const toggleTodosModulos = () => {
-  form.modulos_permitidos = todosSeleccionados.value ? [] : todosModulos.value.flatMap(m => form.panel === 'app' && form.tipo_usuario === 'medico' ? (m.submodulos || []).map(s => `${m.code}.${s.code}`) : [m.code])
+  form.modulos_permitidos = todosSeleccionados.value ? [] : todosModulos.value.flatMap(m => form.panel === 'app' && modulosClinicos(form.tipo_usuario) ? (m.submodulos || []).map(s => `${m.code}.${s.code}`) : [m.code])
 }
 
 const toggleTodosGrupos = () => {

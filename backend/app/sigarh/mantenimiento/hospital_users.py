@@ -36,6 +36,10 @@ async def guardar(db, tid, data, actor, item=None):
         profesion = await db.get(Profesion, empleado.profesion_id) if empleado and empleado.profesion_id else None
         if not profesion or profesion.codigo != 'MED':
             raise HTTPException(422, 'Vincule un empleado con profesión Médico Cirujano')
+    if rol.tipo_usuario == 'enfermera':
+        profesion = await db.get(Profesion, empleado.profesion_id) if empleado and empleado.profesion_id else None
+        if not profesion or profesion.codigo != 'ENF':
+            raise HTTPException(422, 'Vincule un empleado con profesión Enfermería')
     query = select(User.id).where(or_(func.lower(User.email).in_([entrada.email,entrada.username]),
         func.lower(User.username).in_([entrada.email,entrada.username])))
     if item: query = query.where(User.id != item.id)

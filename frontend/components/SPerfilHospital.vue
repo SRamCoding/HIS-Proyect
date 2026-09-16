@@ -15,9 +15,12 @@ const modulos = ref<string[]>([])
 const activo = ref(true)
 let solicitud = 0
 const opciones = computed(() => perfiles.value.filter(p => p.role === props.role))
-const permitidos = computed(() => props.role === 'medico'
-  ? catalogo.value.filter(m => ['consulta_externa.programacion', 'consulta_externa.atenciones'].includes(m.code))
-  : catalogo.value)
+const MODULOS_ROL: Record<string, string[]> = {
+  medico: ['consulta_externa.programacion', 'consulta_externa.atenciones'],
+  enfermera: ['consulta_externa.confirmacion', 'consulta_externa.triaje', 'hospitalizacion.seguimiento'],
+}
+const permitidos = computed(() => MODULOS_ROL[props.role]
+  ? catalogo.value.filter(m => MODULOS_ROL[props.role]!.includes(m.code)) : catalogo.value)
 const seleccionado = computed(() => perfiles.value.find(p => p.id === perfilId.value))
 async function cargar() {
   const actual = ++solicitud
@@ -40,8 +43,8 @@ watch(() => props.role, () => { if (seleccionado.value && seleccionado.value.rol
 function abrir(editar = false) {
   const p = editar ? seleccionado.value : undefined
   editarId.value = p?.id || ''
-  nombre.value = p?.nombre || (props.role === 'medico' ? 'Médico de consulta externa' : '')
-  modulos.value = p ? [...p.modulos] : props.role === 'medico' ? permitidos.value.map(m => m.code) : []
+  nombre.value = p?.nombre || (props.role === 'medico' ? 'Médico de consulta externa' : props.role === 'enfermera' ? 'Enfermería asistencial' : '')
+  modulos.value = p ? [...p.modulos] : MODULOS_ROL[props.role] ? permitidos.value.map(m => m.code) : []
   activo.value = p?.is_active ?? true
   editor.value = true
 }
@@ -76,6 +79,7 @@ async function guardar() {
         <button v-if="seleccionado" type="button" class="underline" @click="abrir(true)">Editar accesos del perfil</button>
       </div>
       <p v-if="role === 'medico'" class="text-sm text-slate-500">El médico consulta su programación y atiende sus citas. Debe estar vinculado al empleado médico correspondiente.</p>
+      <p v-if="role === 'enfermera'" class="text-sm text-slate-500">Enfermería confirma citas, registra triaje y documenta el seguimiento del paciente hospitalizado. La cuenta debe vincularse a un empleado de Enfermería.</p>
       <div v-if="editor" class="border rounded-lg p-4 space-y-3">
         <p class="text-sm">Estos cambios se aplican a todos los usuarios que tienen este perfil.</p>
         <label class="block">Nombre del perfil <input v-model="nombre" class="input-clinical" maxlength="100" /></label>

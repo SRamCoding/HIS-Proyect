@@ -4,6 +4,8 @@ export function hospitalPermiso(path: string): string | null {
   if (path.startsWith('/app/consulta-externa/atenciones-medicas')) return 'consulta_externa.atenciones'
   if (path.startsWith('/app/consulta-externa/citas-por-confirmar')) return 'consulta_externa.confirmacion'
   if (path.startsWith('/app/consulta-externa/triaje')) return 'consulta_externa.triaje'
+  if (path.startsWith('/app/hospitalizacion/seguimiento-paciente')) return 'hospitalizacion.seguimiento'
+  if (path.startsWith('/app/hospitalizacion/panel-camas')) return 'hospitalizacion.seguimiento'
   if (path.startsWith('/app/admision/agendamiento')) return 'consulta_externa.agendamiento'
   const seccion = path.split('/')[2]?.replaceAll('-', '_')
   return seccion ? seccion : null

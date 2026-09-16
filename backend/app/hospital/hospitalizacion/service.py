@@ -215,6 +215,8 @@ async def crear_nota(db, tid, user, hosp_id, data):
     empleado_id = uuid.UUID(user["empleado_id"]) if user.get("empleado_id") else None
     if not empleado_id:
         raise HTTPException(422, detail="La cuenta debe estar vinculada a un empleado para registrar notas")
+    if user.get("role") == "enfermera" and data.tipo != "ENFERMERIA":
+        raise HTTPException(403, detail="La cuenta de enfermería solo puede registrar notas de Enfermería")
     nota = NotaEvolucion(tenant_id=tid, hospitalizacion_id=hosp_id, autor_id=empleado_id,
         registrado_por=actor(user), **data.model_dump())
     db.add(nota)

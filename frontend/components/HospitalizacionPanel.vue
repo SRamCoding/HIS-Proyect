@@ -22,7 +22,7 @@
 
     <!-- Tabs -->
     <div class="lab-tabs">
-      <NuxtLink v-for="(title, key) in titles" :key="key" :to="'/app/hospitalizacion/'+key" class="tab-link" :class="{ 'tab-link--active': key === mode }">{{ title }}</NuxtLink>
+      <NuxtLink v-for="(title, key) in visibleTitles" :key="key" :to="'/app/hospitalizacion/'+key" class="tab-link" :class="{ 'tab-link--active': key === mode }">{{ title }}</NuxtLink>
     </div>
 
     <div v-if="error" class="error-banner"><UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />{{ error }}</div>
@@ -147,7 +147,7 @@
         </div>
         <form v-if="detalle.estado==='internado'" class="editor-form" @submit.prevent="agregarNota">
           <div class="form-grid">
-            <div class="form-group"><label class="form-label">Tipo</label>
+            <div v-if="!esEnfermera" class="form-group"><label class="form-label">Tipo</label>
               <select v-model="notaForm.tipo" class="input-clinical"><option value="MEDICA">Médica</option><option value="ENFERMERIA">Enfermería</option></select>
             </div>
             <div class="form-group"><label class="form-label">Pulso</label><input v-model.number="notaForm.pulso" type="number" class="input-clinical" /></div>
@@ -170,7 +170,7 @@
             </tbody>
           </table>
         </div>
-        <form v-if="detalle.estado==='internado' && !detalle.interconsultas.length" class="editor-form" @submit.prevent="solicitarInterconsulta">
+        <form v-if="!esEnfermera && detalle.estado==='internado' && !detalle.interconsultas.length" class="editor-form" @submit.prevent="solicitarInterconsulta">
           <div class="form-grid">
             <div class="form-group"><label class="form-label">Especialidad</label>
               <select v-model="intercForm.especialidad_destino_id" class="input-clinical" required>
@@ -204,11 +204,11 @@
             </tbody>
           </table>
         </div>
-        <form v-if="revocarConsentimientoId" class="cancel-form" @submit.prevent="revocarConsentimiento">
+        <form v-if="!esEnfermera && revocarConsentimientoId" class="cancel-form" @submit.prevent="revocarConsentimiento">
           <div class="form-group"><label class="form-label">Motivo de revocación</label><textarea v-model="motivoRevocacion" class="input-clinical" required rows="2"></textarea></div>
           <div class="form-actions"><button class="btn-danger" :disabled="busy">Revocar</button><button type="button" class="btn-secondary" @click="revocarConsentimientoId=null">Cancelar</button></div>
         </form>
-        <form v-if="detalle.estado==='internado'" class="editor-form" @submit.prevent="agregarConsentimiento">
+        <form v-if="!esEnfermera && detalle.estado==='internado'" class="editor-form" @submit.prevent="agregarConsentimiento">
           <div class="form-grid">
             <div class="form-group"><label class="form-label">Procedimiento</label><input v-model="consentForm.procedimiento" class="input-clinical" required maxlength="255" /></div>
             <div class="form-group"><label class="form-label">Fecha</label><input v-model="consentForm.fecha" type="date" class="input-clinical" required /></div>
@@ -224,7 +224,7 @@
         </form>
 
         <!-- Alta -->
-        <form v-if="detalle.estado==='internado'" class="cancel-form" @submit.prevent="darAlta">
+        <form v-if="!esEnfermera && detalle.estado==='internado'" class="cancel-form" @submit.prevent="darAlta">
           <div class="form-group"><label class="form-label">Resumen de alta</label><textarea v-model="altaForm.resumen_alta" class="input-clinical" rows="2" maxlength="4000"></textarea></div>
           <button class="btn-danger" :disabled="busy"><UIcon name="i-heroicons-arrow-right-end-on-rectangle" class="w-4 h-4" />Dar de alta</button>
         </form>
@@ -308,7 +308,9 @@
 type Mode = 'hospitalizaciones' | 'seguimiento-paciente' | 'censo-diario' | 'interconsultas' | 'consentimientos'
 const props = defineProps<{ mode: Mode; initialId?: string; admitir?: boolean }>()
 const { api } = useApi()
+const authStore = useAuthStore()
 const endpoint = '/app/hospitalizacion'
+const esEnfermera = computed(() => authStore.user?.role === 'enfermera')
 
 const titles = {
   'hospitalizaciones': 'Hospitalizaciones',
@@ -317,6 +319,9 @@ const titles = {
   'interconsultas': 'Interconsultas',
   'consentimientos': 'Consentimientos'
 }
+const visibleTitles = computed(() => esEnfermera.value
+  ? { 'seguimiento-paciente': titles['seguimiento-paciente'] }
+  : titles)
 
 const error = ref('')
 const notice = ref('')
@@ -438,12 +443,12 @@ async function verHospitalizacion(id: string, target?: string) {
   if (target && target !== props.mode) { await navigateTo('/app/hospitalizacion/' + target + '/' + id); return }
   await run(async () => {
     detalle.value = await api(endpoint + '/hospitalizaciones/' + id)
-    Object.assign(notaForm, { tipo: 'MEDICA', pulso: null, temperatura: null, saturacion_o2: null, contenido: '', plan_indicaciones: '' })
+    Object.assign(notaForm, { tipo: esEnfermera.value ? 'ENFERMERIA' : 'MEDICA', pulso: null, temperatura: null, saturacion_o2: null, contenido: '', plan_indicaciones: '' })
     Object.assign(intercForm, { especialidad_destino_id: '', motivo: '', urgente: false })
     Object.assign(consentForm, { procedimiento: '', riesgos_beneficios: '', firmante_nombre: '', firmante_documento: '', relacion_firmante: 'PACIENTE', testigo_nombre: '', fecha: today() })
     altaForm.resumen_alta = ''
     revocarConsentimientoId.value = ''
-    if (!catalogs.especialidades.length) await getCatalogs()
+    if (!esEnfermera.value && !catalogs.especialidades.length) await getCatalogs()
   })
 }
 
