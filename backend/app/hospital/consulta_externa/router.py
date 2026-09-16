@@ -208,7 +208,7 @@ async def obtener_triaje(cita_id: uuid.UUID, request: Request, db: AsyncSession 
 @router.post("/triaje/{cita_id}", response_model=TriajeResponse, status_code=201)
 async def registrar_triaje(cita_id: uuid.UUID, data: TriajeCreate, request: Request, db: AsyncSession = Depends(get_db), current_user: dict = Depends(require_module_jwt("consulta_externa"))):
     try:
-        return await create_triaje(db, get_tenant_id(current_user, request), cita_id, data)
+        return await create_triaje(db, get_tenant_id(current_user, request), cita_id, data, current_user)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
 

@@ -1,1 +1,387 @@
-import uuid\nfrom datetime import datetime, date\nfrom sqlalchemy import String, Boolean, DateTime, Date, Text, Integer, Float, ForeignKey, UniqueConstraint, Index, text, JSON\nfrom sqlalchemy.orm import Mapped, mapped_column\nfrom sqlalchemy.dialects.postgresql import UUID\nfrom app.core.database import Base\n\n\nclass ProgramacionMedica(Base):\n    """Programacion de horarios de atencion — generica para cualquier servicio\n    (Consulta Externa, Imagenologia, Laboratorio, etc). especialidad_id es opcional\n    porque servicios como Imagenes/Lab no siempre tienen especialidad medica asociada."""\n    __tablename__ = "programaciones_medicas"\n    __table_args__ = (\n        UniqueConstraint("tenant_id", "origen_sigarh_turno_id", "fecha", name="uq_programacion_sigarh_turno_fecha"),\n    )\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)\n\n    medico_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="CASCADE"))\n    servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="SET NULL"), nullable=True)\n    especialidad_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="SET NULL"), nullable=True)\n    origen_sigarh_turno_id: Mapped[uuid.UUID | None] = mapped_column(\n        UUID(as_uuid=True), ForeignKey("sigarh_roles_turno_turnos.id", ondelete="SET NULL"), nullable=True, index=True\n    )\n\n    # Correlativo legible; lo asigna la secuencia en cualquier inserción (sync o manual).\n    codigo: Mapped[str] = mapped_column(\n        String(20), index=True,\n        server_default=text("nextval('programacion_medica_codigo_seq')::text"),\n    )\n    consultorio_id: Mapped[uuid.UUID | None] = mapped_column(\n        UUID(as_uuid=True), ForeignKey("sigarh_consultorios.id", ondelete="SET NULL"), nullable=True\n    )\n\n    fecha: Mapped[date] = mapped_column(Date)\n    turno: Mapped[str] = mapped_column(String(20))\n    hora_inicio: Mapped[str] = mapped_column(String(5))\n    hora_fin: Mapped[str] = mapped_column(String(5))\n    tiempo_promedio_atencion: Mapped[int] = mapped_column(Integer, default=15)\n\n    tipo_servicio: Mapped[str] = mapped_column(String(50), default="CONSULTORIO_EXTERNO")\n    modalidad: Mapped[str] = mapped_column(String(20), default="PRESENCIAL", server_default="PRESENCIAL")\n    mostrar_en_consultorio: Mapped[bool] = mapped_column(Boolean, default=False)\n    descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)\n    estado: Mapped[str] = mapped_column(String(20), default="activo")\n\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)\n\n    def __repr__(self) -> str:\n        return f"<ProgramacionMedica {self.medico_id} {self.fecha} {self.turno}>"\n\n\nclass Cita(Base):\n    """Cita agendada dentro de un cupo de una ProgramacionMedica."""\n    __tablename__ = "citas"\n    __table_args__ = (\n        # Evita doble reserva del mismo cupo bajo concurrencia (dos operadores\n        # reservando el mismo horario a la vez); las canceladas no cuentan.\n        Index(\n            "ux_citas_cupo_activo", "programacion_medica_id", "hora_inicio",\n            unique=True, postgresql_where=text("estado <> 'cancelada'"),\n        ),\n    )\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)\n\n    programacion_medica_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("programaciones_medicas.id", ondelete="CASCADE"))\n    patient_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"))\n\n    hora_inicio: Mapped[str] = mapped_column(String(5))\n    hora_fin: Mapped[str] = mapped_column(String(5))\n\n    tipo_consulta: Mapped[str | None] = mapped_column(String(50), nullable=True)\n    observacion: Mapped[str | None] = mapped_column(Text, nullable=True)\n\n    # Campos de facturacion -- stub simple, la logica real de vinculacion vive en Caja/Cobros\n    numero_cuenta: Mapped[str | None] = mapped_column(String(50), nullable=True)\n    cuenta_vinculada: Mapped[str | None] = mapped_column(String(100), nullable=True)\n    fuente_financiamiento: Mapped[str | None] = mapped_column(String(100), nullable=True)\n    producto_plan: Mapped[str | None] = mapped_column(String(100), nullable=True)\n\n    estado: Mapped[str] = mapped_column(String(20), default="separada")  # separada, atendida, cancelada, no_asistio\n\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)\n\n    def __repr__(self) -> str:\n        return f"<Cita {self.patient_id} {self.hora_inicio}>"\n\n\nclass Triaje(Base):\n    """Registro de signos vitales realizado por enfermeria antes de la atencion medica."""\n    __tablename__ = "triajes"\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)\n    cita_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("citas.id", ondelete="CASCADE"), unique=True)\n    realizado_por_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="SET NULL"), nullable=True)\n\n    pulso: Mapped[int | None] = mapped_column(Integer, nullable=True)\n    temperatura: Mapped[float | None] = mapped_column(Float, nullable=True)\n    presion_sistolica: Mapped[int | None] = mapped_column(Integer, nullable=True)\n    presion_diastolica: Mapped[int | None] = mapped_column(Integer, nullable=True)\n    frecuencia_cardiaca: Mapped[int | None] = mapped_column(Integer, nullable=True)\n    frecuencia_respiratoria: Mapped[int | None] = mapped_column(Integer, nullable=True)\n    peso: Mapped[float | None] = mapped_column(Float, nullable=True)       # kg\n    talla: Mapped[float | None] = mapped_column(Float, nullable=True)      # cm\n    perimetro_abdominal: Mapped[float | None] = mapped_column(Float, nullable=True)\n    perimetro_cefalico: Mapped[float | None] = mapped_column(Float, nullable=True)\n    saturacion_o2: Mapped[float | None] = mapped_column(Float, nullable=True)\n\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n\n    @property\n    def imc(self) -> float | None:\n        if not self.peso or not self.talla:\n            return None\n\n        talla_m = self.talla / 100\n        return round(self.peso / (talla_m ** 2), 1)\n\n    def __repr__(self) -> str:\n        return f"<Triaje cita={self.cita_id}>"\n\nclass AtencionMedica(Base):\n    """Atencion medica de consulta externa (formato MINSA). Antecedentes viven en Patient."""\n    __tablename__ = "atenciones_medicas"\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)\n    cita_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("citas.id", ondelete="CASCADE"), unique=True)\n\n    motivo_consulta: Mapped[str] = mapped_column(Text)\n    enfermedad_actual: Mapped[str | None] = mapped_column(Text, nullable=True)\n    antecedentes_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)\n    prestaciones: Mapped[list | None] = mapped_column(JSON, nullable=True)\n    cierre_evidencia: Mapped[dict | None] = mapped_column(JSON, nullable=True)\n    examen_clinico: Mapped[str | None] = mapped_column(Text, nullable=True)\n    plan_tratamiento: Mapped[str | None] = mapped_column(Text, nullable=True)\n    observaciones: Mapped[str | None] = mapped_column(Text, nullable=True)\n    indicaciones_alta: Mapped[str | None] = mapped_column(Text, nullable=True)\n    destino_atencion: Mapped[str] = mapped_column(String(30), default="ALTA")\n\n    estado: Mapped[str] = mapped_column(String(20), default="borrador")  # borrador, firmado\n    firmado_por_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="SET NULL"), nullable=True)\n    firmado_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)\n\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)\n\n    def __repr__(self) -> str:\n        return f"<AtencionMedica cita={self.cita_id}>"\n\n\nclass AtencionDiagnostico(Base):\n    """Diagnosticos CIE-10 asociados a una atencion medica."""\n    __tablename__ = "atencion_diagnosticos"\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    atencion_medica_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"))\n    diagnostico_cie10_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_diagnosticos_cie10.id", ondelete="CASCADE"))\n    tipo: Mapped[str] = mapped_column(String(20), default="definitivo")  # presuntivo, definitivo, repetitivo\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n\n    def __repr__(self) -> str:\n        return f"<AtencionDiagnostico {self.diagnostico_cie10_id} ({self.tipo})>"\n\n\nclass Receta(Base):\n    """Receta medica generada desde una Atencion Medica (destino=FARMACIA).\n    Solo la prescripcion; el despacho real lo maneja el modulo Farmacia."""\n    __tablename__ = "recetas"\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)\n    atencion_medica_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"), unique=True)\n    numero_receta: Mapped[str] = mapped_column(String(30), unique=True)\n    estado: Mapped[str] = mapped_column(String(20), default="pendiente")  # pendiente, despachada, parcial, anulada\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n\n    def __repr__(self) -> str:\n        return f"<Receta {self.numero_receta}>"\n\n\nclass RecetaItem(Base):\n    """Medicamento prescrito dentro de una receta."""\n    __tablename__ = "receta_items"\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    receta_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("recetas.id", ondelete="CASCADE"))\n    medicamento_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_medicamentos.id", ondelete="CASCADE"))\n    cantidad: Mapped[int] = mapped_column(Integer)\n    dosis: Mapped[str | None] = mapped_column(String(100), nullable=True)      # ej "1 tableta"\n    frecuencia: Mapped[str | None] = mapped_column(String(100), nullable=True) # ej "cada 8 horas"\n    duracion_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)\n    indicaciones: Mapped[str | None] = mapped_column(Text, nullable=True)\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n\n    def __repr__(self) -> str:\n        return f"<RecetaItem {self.medicamento_id} x{self.cantidad}>"\n\n\n\nclass Hospitalizacion(Base):\n    """Registro de ingreso a hospitalizacion. Puede originarse en una Atencion\n    Medica de Consulta Externa o en una Atencion de Emergencia (destino\n    HOSPITALIZACION) -- misma dualidad que OrdenLaboratorio/OrdenImagen.\n    Al ingresar, la Cama pasa a OCUPADA; al dar de alta, vuelve a DISPONIBLE."""\n    __tablename__ = "hospitalizaciones"\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)\n    atencion_medica_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"), unique=True, nullable=True)\n    atencion_emergencia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_emergencia.id", ondelete="CASCADE"), unique=True, nullable=True)\n    patient_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="RESTRICT"), nullable=True)\n    cama_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_camas.id", ondelete="RESTRICT"))\n    especialidad_ingreso_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="SET NULL"), nullable=True)\n    diagnostico_ingreso_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_diagnosticos_cie10.id", ondelete="SET NULL"), nullable=True)\n    registrado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)\n\n    numero_hospitalizacion: Mapped[str] = mapped_column(String(30), unique=True)\n    fecha_ingreso: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n    fecha_alta: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)\n    resumen_alta: Mapped[str | None] = mapped_column(Text, nullable=True)\n    estado: Mapped[str] = mapped_column(String(20), default="internado")  # internado, alta\n\n    def __repr__(self) -> str:\n        return f"<Hospitalizacion {self.numero_hospitalizacion}>"\n\n\nclass OrdenLaboratorio(Base):\n    """Orden de examenes de laboratorio generada desde una Atencion Medica (destino=LABORATORIO).\n    Solo la solicitud; la toma de muestra y resultados los maneja el modulo Laboratorio."""\n    __tablename__ = "ordenes_laboratorio"\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)\n    atencion_medica_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"), unique=True, nullable=True)\n    patient_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="RESTRICT"), nullable=True)\n    emergencia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("admisiones_emergencia.id", ondelete="RESTRICT"), nullable=True)\n    tipo_servicio: Mapped[str] = mapped_column(String(30), default="CONSULTA_EXTERNA", server_default="CONSULTA_EXTERNA")\n    servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="RESTRICT"), nullable=True)\n    especialidad_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="RESTRICT"), nullable=True)\n    medico_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="RESTRICT"), nullable=True)\n    numero_cuenta: Mapped[str | None] = mapped_column(String(50), nullable=True)\n    fuente_financiamiento: Mapped[str | None] = mapped_column(String(100), nullable=True)\n    registrado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)\n    numero_orden: Mapped[str] = mapped_column(String(30), unique=True)\n    indicacion_clinica: Mapped[str | None] = mapped_column(Text, nullable=True)\n    estado: Mapped[str] = mapped_column(String(20), default="pendiente")  # pendiente, en_proceso, completada, anulada\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n\n    def __repr__(self) -> str:\n        return f"<OrdenLaboratorio {self.numero_orden}>"\n\n\nclass OrdenLaboratorioItem(Base):\n    """Examen solicitado dentro de una orden de laboratorio."""\n    __tablename__ = "orden_laboratorio_items"\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    orden_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ordenes_laboratorio.id", ondelete="CASCADE"))\n    examen_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_examenes_laboratorio.id", ondelete="CASCADE"))\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n\n    def __repr__(self) -> str:\n        return f"<OrdenLaboratorioItem {self.examen_id}>"\n\n\nclass Interconsulta(Base):\n    """Solicitud de interconsulta a otra especialidad, desde Consulta Externa,\n    desde una Hospitalizacion o desde Emergencia (misma dualidad de origen que\n    Hospitalizacion/Referencia/OrdenImagen). Las de Consulta Externa quedan\n    pendientes para que Admision las programe como una Cita nueva; las de\n    Hospitalizacion/Emergencia son intrahospitalarias -- el especialista va a\n    ver al paciente, sin generar Cita."""\n    __tablename__ = "interconsultas"\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)\n    atencion_medica_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"), unique=True, nullable=True)\n    hospitalizacion_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("hospitalizaciones.id", ondelete="CASCADE"), unique=True, nullable=True)\n    atencion_emergencia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_emergencia.id", ondelete="CASCADE"), unique=True, nullable=True)\n    patient_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="RESTRICT"), nullable=True)\n    solicitado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)\n    especialidad_destino_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="CASCADE"))\n    diagnostico_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_diagnosticos_cie10.id", ondelete="SET NULL"), nullable=True)\n    motivo: Mapped[str] = mapped_column(Text)\n    urgente: Mapped[bool] = mapped_column(Boolean, default=False)\n    estado: Mapped[str] = mapped_column(String(20), default="pendiente")  # pendiente, programada, atendida\n    cita_generada_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("citas.id", ondelete="SET NULL"), nullable=True)\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n\n    def __repr__(self) -> str:\n        return f"<Interconsulta {self.especialidad_destino_id}>"\n\n\nclass OrdenImagen(Base):\n    """Orden de examenes de imagenologia. Puede originarse en una Atencion Medica\n    (destino=IMAGEN, atencion_medica_id obligatorio en ese flujo) o registrarse\n    directamente desde el modulo Imagenologia para Emergencia/Hospitalizacion/\n    Apoyo al diagnostico -- misma dualidad que OrdenLaboratorio."""\n    __tablename__ = "ordenes_imagen"\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)\n    atencion_medica_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"), unique=True, nullable=True)\n    patient_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="RESTRICT"), nullable=True)\n    emergencia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("admisiones_emergencia.id", ondelete="RESTRICT"), nullable=True)\n    tipo_servicio: Mapped[str] = mapped_column(String(30), default="CONSULTA_EXTERNA", server_default="CONSULTA_EXTERNA")\n    servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="RESTRICT"), nullable=True)\n    especialidad_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="RESTRICT"), nullable=True)\n    medico_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="RESTRICT"), nullable=True)\n    numero_cuenta: Mapped[str | None] = mapped_column(String(50), nullable=True)\n    fuente_financiamiento: Mapped[str | None] = mapped_column(String(100), nullable=True)\n    registrado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)\n    numero_orden: Mapped[str] = mapped_column(String(30), unique=True)\n    indicacion_clinica: Mapped[str | None] = mapped_column(Text, nullable=True)\n    estado: Mapped[str] = mapped_column(String(20), default="pendiente")\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n\n    def __repr__(self) -> str:\n        return f"<OrdenImagen {self.numero_orden}>"\n\n\nclass OrdenImagenItem(Base):\n    __tablename__ = "orden_imagen_items"\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    orden_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ordenes_imagen.id", ondelete="CASCADE"))\n    examen_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_examenes_imagenologia.id", ondelete="CASCADE"))\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n\n    def __repr__(self) -> str:\n        return f"<OrdenImagenItem {self.examen_id}>"\n\n\nclass Referencia(Base):\n    """Referencia de paciente a otro establecimiento (Norma Tecnica N 018-MINSA/DGSP-V.01).\n    Puede ser a un IPRESS externo (texto libre) o a otro tenant de nuestro propio sistema.\n    Puede originarse en Consulta Externa o en Emergencia -- misma dualidad que\n    Hospitalizacion/OrdenLaboratorio/OrdenImagen.\n\n    tenant_destino_id no se sincroniza automaticamente con el otro hospital:\n    cada base de datos es fisicamente independiente y ese id apunta a la tabla\n    tenants de la BD central, no replicada en tiempo real aqui. El seguimiento\n    de aceptacion/rechazo/contrarreferencia se registra manualmente por el\n    personal de este hospital (via telefono, fax o el propio paciente), igual\n    que para un IPRESS externo -- no se inventa un mecanismo de entrega\n    automatica entre hospitales que hoy no existe."""\n    __tablename__ = "referencias"\n\n    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)\n    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)\n    atencion_medica_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"), unique=True, nullable=True)\n    atencion_emergencia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_emergencia.id", ondelete="CASCADE"), unique=True, nullable=True)\n    patient_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="RESTRICT"), nullable=True)\n    registrado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)\n\n    # Destino externo (fuera de nuestro sistema) -- texto libre, formato oficial RENIPRESS\n    codigo_renipress_destino: Mapped[str | None] = mapped_column(String(20), nullable=True)\n    nombre_ipress_destino: Mapped[str | None] = mapped_column(String(255), nullable=True)\n\n    # Destino interno (otro hospital que usa nuestro mismo ERP)\n    tenant_destino_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True)\n\n    especialidad_destino: Mapped[str | None] = mapped_column(String(150), nullable=True)\n    diagnostico_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_diagnosticos_cie10.id", ondelete="SET NULL"), nullable=True)\n    motivo: Mapped[str] = mapped_column(Text)\n    numero_referencia: Mapped[str] = mapped_column(String(30), unique=True)\n    estado: Mapped[str] = mapped_column(String(20), default="enviada")  # enviada, aceptada, rechazada, contrarreferida\n    observacion_resolucion: Mapped[str | None] = mapped_column(Text, nullable=True)\n\n    # Contrarreferencia: lo que el establecimiento destino informa de vuelta.\n    fecha_contrarreferencia: Mapped[date | None] = mapped_column(Date, nullable=True)\n    profesional_receptor: Mapped[str | None] = mapped_column(String(255), nullable=True)\n    diagnostico_contrarreferencia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_diagnosticos_cie10.id", ondelete="SET NULL"), nullable=True)\n    resumen_contrarreferencia: Mapped[str | None] = mapped_column(Text, nullable=True)\n\n    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)\n\n    def __repr__(self) -> str:\n        return f"<Referencia {self.numero_referencia}>"\n\n\n\n
+import uuid
+from datetime import datetime, date
+from sqlalchemy import String, Boolean, DateTime, Date, Text, Integer, Float, ForeignKey, UniqueConstraint, Index, text, JSON
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import UUID
+from app.core.database import Base
+
+
+class ProgramacionMedica(Base):
+    """Programacion de horarios de atencion — generica para cualquier servicio
+    (Consulta Externa, Imagenologia, Laboratorio, etc). especialidad_id es opcional
+    porque servicios como Imagenes/Lab no siempre tienen especialidad medica asociada."""
+    __tablename__ = "programaciones_medicas"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "origen_sigarh_turno_id", "fecha", name="uq_programacion_sigarh_turno_fecha"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+
+    medico_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="CASCADE"))
+    servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="SET NULL"), nullable=True)
+    especialidad_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="SET NULL"), nullable=True)
+    origen_sigarh_turno_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sigarh_roles_turno_turnos.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # Correlativo legible; lo asigna la secuencia en cualquier inserción (sync o manual).
+    codigo: Mapped[str] = mapped_column(
+        String(20), index=True,
+        server_default=text("nextval('programacion_medica_codigo_seq')::text"),
+    )
+    consultorio_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sigarh_consultorios.id", ondelete="SET NULL"), nullable=True
+    )
+
+    fecha: Mapped[date] = mapped_column(Date)
+    turno: Mapped[str] = mapped_column(String(20))
+    hora_inicio: Mapped[str] = mapped_column(String(5))
+    hora_fin: Mapped[str] = mapped_column(String(5))
+    tiempo_promedio_atencion: Mapped[int] = mapped_column(Integer, default=15)
+
+    tipo_servicio: Mapped[str] = mapped_column(String(50), default="CONSULTORIO_EXTERNO")
+    modalidad: Mapped[str] = mapped_column(String(20), default="PRESENCIAL", server_default="PRESENCIAL")
+    mostrar_en_consultorio: Mapped[bool] = mapped_column(Boolean, default=False)
+    descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    estado: Mapped[str] = mapped_column(String(20), default="activo")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<ProgramacionMedica {self.medico_id} {self.fecha} {self.turno}>"
+
+
+class Cita(Base):
+    """Cita agendada dentro de un cupo de una ProgramacionMedica."""
+    __tablename__ = "citas"
+    __table_args__ = (
+        # Evita doble reserva del mismo cupo bajo concurrencia (dos operadores
+        # reservando el mismo horario a la vez); las canceladas no cuentan.
+        Index(
+            "ux_citas_cupo_activo", "programacion_medica_id", "hora_inicio",
+            unique=True, postgresql_where=text("estado <> 'cancelada'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+
+    programacion_medica_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("programaciones_medicas.id", ondelete="CASCADE"))
+    patient_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"))
+
+    hora_inicio: Mapped[str] = mapped_column(String(5))
+    hora_fin: Mapped[str] = mapped_column(String(5))
+
+    tipo_consulta: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    observacion: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Campos de facturacion -- stub simple, la logica real de vinculacion vive en Caja/Cobros
+    numero_cuenta: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    cuenta_vinculada: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    fuente_financiamiento: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    producto_plan: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    estado: Mapped[str] = mapped_column(String(20), default="separada")  # separada, atendida, cancelada, no_asistio
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<Cita {self.patient_id} {self.hora_inicio}>"
+
+
+class Triaje(Base):
+    """Registro de signos vitales realizado por enfermeria antes de la atencion medica."""
+    __tablename__ = "triajes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    cita_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("citas.id", ondelete="CASCADE"), unique=True)
+    realizado_por_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="SET NULL"), nullable=True)
+
+    pulso: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    temperatura: Mapped[float | None] = mapped_column(Float, nullable=True)
+    presion_sistolica: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    presion_diastolica: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    frecuencia_cardiaca: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    frecuencia_respiratoria: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    peso: Mapped[float | None] = mapped_column(Float, nullable=True)       # kg
+    talla: Mapped[float | None] = mapped_column(Float, nullable=True)      # cm
+    perimetro_abdominal: Mapped[float | None] = mapped_column(Float, nullable=True)
+    perimetro_cefalico: Mapped[float | None] = mapped_column(Float, nullable=True)
+    saturacion_o2: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    @property
+    def imc(self) -> float | None:
+        if not self.peso or not self.talla:
+            return None
+
+        talla_m = self.talla / 100
+        return round(self.peso / (talla_m ** 2), 1)
+
+    def __repr__(self) -> str:
+        return f"<Triaje cita={self.cita_id}>"
+
+class AtencionMedica(Base):
+    """Atencion medica de consulta externa (formato MINSA). Antecedentes viven en Patient."""
+    __tablename__ = "atenciones_medicas"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    cita_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("citas.id", ondelete="CASCADE"), unique=True)
+
+    motivo_consulta: Mapped[str] = mapped_column(Text)
+    enfermedad_actual: Mapped[str | None] = mapped_column(Text, nullable=True)
+    antecedentes_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    prestaciones: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    cierre_evidencia: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    examen_clinico: Mapped[str | None] = mapped_column(Text, nullable=True)
+    plan_tratamiento: Mapped[str | None] = mapped_column(Text, nullable=True)
+    observaciones: Mapped[str | None] = mapped_column(Text, nullable=True)
+    indicaciones_alta: Mapped[str | None] = mapped_column(Text, nullable=True)
+    destino_atencion: Mapped[str] = mapped_column(String(30), default="ALTA")
+
+    estado: Mapped[str] = mapped_column(String(20), default="borrador")  # borrador, firmado
+    firmado_por_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="SET NULL"), nullable=True)
+    firmado_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<AtencionMedica cita={self.cita_id}>"
+
+
+class AtencionDiagnostico(Base):
+    """Diagnosticos CIE-10 asociados a una atencion medica."""
+    __tablename__ = "atencion_diagnosticos"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    atencion_medica_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"))
+    diagnostico_cie10_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_diagnosticos_cie10.id", ondelete="CASCADE"))
+    tipo: Mapped[str] = mapped_column(String(20), default="definitivo")  # presuntivo, definitivo, repetitivo
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<AtencionDiagnostico {self.diagnostico_cie10_id} ({self.tipo})>"
+
+
+class Receta(Base):
+    """Receta medica generada desde una Atencion Medica (destino=FARMACIA).
+    Solo la prescripcion; el despacho real lo maneja el modulo Farmacia."""
+    __tablename__ = "recetas"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    atencion_medica_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"), unique=True)
+    numero_receta: Mapped[str] = mapped_column(String(30), unique=True)
+    estado: Mapped[str] = mapped_column(String(20), default="pendiente")  # pendiente, despachada, parcial, anulada
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<Receta {self.numero_receta}>"
+
+
+class RecetaItem(Base):
+    """Medicamento prescrito dentro de una receta."""
+    __tablename__ = "receta_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    receta_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("recetas.id", ondelete="CASCADE"))
+    medicamento_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_medicamentos.id", ondelete="CASCADE"))
+    cantidad: Mapped[int] = mapped_column(Integer)
+    dosis: Mapped[str | None] = mapped_column(String(100), nullable=True)      # ej "1 tableta"
+    frecuencia: Mapped[str | None] = mapped_column(String(100), nullable=True) # ej "cada 8 horas"
+    duracion_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    indicaciones: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<RecetaItem {self.medicamento_id} x{self.cantidad}>"
+
+
+
+class Hospitalizacion(Base):
+    """Registro de ingreso a hospitalizacion. Puede originarse en una Atencion
+    Medica de Consulta Externa o en una Atencion de Emergencia (destino
+    HOSPITALIZACION) -- misma dualidad que OrdenLaboratorio/OrdenImagen.
+    Al ingresar, la Cama pasa a OCUPADA; al dar de alta, vuelve a DISPONIBLE."""
+    __tablename__ = "hospitalizaciones"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    atencion_medica_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"), unique=True, nullable=True)
+    atencion_emergencia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_emergencia.id", ondelete="CASCADE"), unique=True, nullable=True)
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="RESTRICT"), nullable=True)
+    cama_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_camas.id", ondelete="RESTRICT"))
+    especialidad_ingreso_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="SET NULL"), nullable=True)
+    diagnostico_ingreso_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_diagnosticos_cie10.id", ondelete="SET NULL"), nullable=True)
+    registrado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    numero_hospitalizacion: Mapped[str] = mapped_column(String(30), unique=True)
+    fecha_ingreso: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    fecha_alta: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resumen_alta: Mapped[str | None] = mapped_column(Text, nullable=True)
+    estado: Mapped[str] = mapped_column(String(20), default="internado")  # internado, alta
+
+    def __repr__(self) -> str:
+        return f"<Hospitalizacion {self.numero_hospitalizacion}>"
+
+
+class OrdenLaboratorio(Base):
+    """Orden de examenes de laboratorio generada desde una Atencion Medica (destino=LABORATORIO).
+    Solo la solicitud; la toma de muestra y resultados los maneja el modulo Laboratorio."""
+    __tablename__ = "ordenes_laboratorio"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    atencion_medica_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"), unique=True, nullable=True)
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="RESTRICT"), nullable=True)
+    emergencia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("admisiones_emergencia.id", ondelete="RESTRICT"), nullable=True)
+    tipo_servicio: Mapped[str] = mapped_column(String(30), default="CONSULTA_EXTERNA", server_default="CONSULTA_EXTERNA")
+    servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="RESTRICT"), nullable=True)
+    especialidad_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="RESTRICT"), nullable=True)
+    medico_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="RESTRICT"), nullable=True)
+    numero_cuenta: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    fuente_financiamiento: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    registrado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    numero_orden: Mapped[str] = mapped_column(String(30), unique=True)
+    indicacion_clinica: Mapped[str | None] = mapped_column(Text, nullable=True)
+    estado: Mapped[str] = mapped_column(String(20), default="pendiente")  # pendiente, en_proceso, completada, anulada
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<OrdenLaboratorio {self.numero_orden}>"
+
+
+class OrdenLaboratorioItem(Base):
+    """Examen solicitado dentro de una orden de laboratorio."""
+    __tablename__ = "orden_laboratorio_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    orden_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ordenes_laboratorio.id", ondelete="CASCADE"))
+    examen_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_examenes_laboratorio.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<OrdenLaboratorioItem {self.examen_id}>"
+
+
+class Interconsulta(Base):
+    """Solicitud de interconsulta a otra especialidad, desde Consulta Externa,
+    desde una Hospitalizacion o desde Emergencia (misma dualidad de origen que
+    Hospitalizacion/Referencia/OrdenImagen). Las de Consulta Externa quedan
+    pendientes para que Admision las programe como una Cita nueva; las de
+    Hospitalizacion/Emergencia son intrahospitalarias -- el especialista va a
+    ver al paciente, sin generar Cita."""
+    __tablename__ = "interconsultas"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    atencion_medica_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"), unique=True, nullable=True)
+    hospitalizacion_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("hospitalizaciones.id", ondelete="CASCADE"), unique=True, nullable=True)
+    atencion_emergencia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_emergencia.id", ondelete="CASCADE"), unique=True, nullable=True)
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="RESTRICT"), nullable=True)
+    solicitado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    especialidad_destino_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="CASCADE"))
+    diagnostico_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_diagnosticos_cie10.id", ondelete="SET NULL"), nullable=True)
+    motivo: Mapped[str] = mapped_column(Text)
+    urgente: Mapped[bool] = mapped_column(Boolean, default=False)
+    estado: Mapped[str] = mapped_column(String(20), default="pendiente")  # pendiente, programada, atendida
+    cita_generada_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("citas.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<Interconsulta {self.especialidad_destino_id}>"
+
+
+class OrdenImagen(Base):
+    """Orden de examenes de imagenologia. Puede originarse en una Atencion Medica
+    (destino=IMAGEN, atencion_medica_id obligatorio en ese flujo) o registrarse
+    directamente desde el modulo Imagenologia para Emergencia/Hospitalizacion/
+    Apoyo al diagnostico -- misma dualidad que OrdenLaboratorio."""
+    __tablename__ = "ordenes_imagen"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    atencion_medica_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"), unique=True, nullable=True)
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="RESTRICT"), nullable=True)
+    emergencia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("admisiones_emergencia.id", ondelete="RESTRICT"), nullable=True)
+    tipo_servicio: Mapped[str] = mapped_column(String(30), default="CONSULTA_EXTERNA", server_default="CONSULTA_EXTERNA")
+    servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_servicios.id", ondelete="RESTRICT"), nullable=True)
+    especialidad_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_especialidades.id", ondelete="RESTRICT"), nullable=True)
+    medico_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_empleados.id", ondelete="RESTRICT"), nullable=True)
+    numero_cuenta: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    fuente_financiamiento: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    registrado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    numero_orden: Mapped[str] = mapped_column(String(30), unique=True)
+    indicacion_clinica: Mapped[str | None] = mapped_column(Text, nullable=True)
+    estado: Mapped[str] = mapped_column(String(20), default="pendiente")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<OrdenImagen {self.numero_orden}>"
+
+
+class OrdenImagenItem(Base):
+    __tablename__ = "orden_imagen_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    orden_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ordenes_imagen.id", ondelete="CASCADE"))
+    examen_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_examenes_imagenologia.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<OrdenImagenItem {self.examen_id}>"
+
+
+class Referencia(Base):
+    """Referencia de paciente a otro establecimiento (Norma Tecnica N 018-MINSA/DGSP-V.01).
+    Puede ser a un IPRESS externo (texto libre) o a otro tenant de nuestro propio sistema.
+    Puede originarse en Consulta Externa o en Emergencia -- misma dualidad que
+    Hospitalizacion/OrdenLaboratorio/OrdenImagen.
+
+    tenant_destino_id no se sincroniza automaticamente con el otro hospital:
+    cada base de datos es fisicamente independiente y ese id apunta a la tabla
+    tenants de la BD central, no replicada en tiempo real aqui. El seguimiento
+    de aceptacion/rechazo/contrarreferencia se registra manualmente por el
+    personal de este hospital (via telefono, fax o el propio paciente), igual
+    que para un IPRESS externo -- no se inventa un mecanismo de entrega
+    automatica entre hospitales que hoy no existe."""
+    __tablename__ = "referencias"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    atencion_medica_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_medicas.id", ondelete="CASCADE"), unique=True, nullable=True)
+    atencion_emergencia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("atenciones_emergencia.id", ondelete="CASCADE"), unique=True, nullable=True)
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="RESTRICT"), nullable=True)
+    registrado_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Destino externo (fuera de nuestro sistema) -- texto libre, formato oficial RENIPRESS
+    codigo_renipress_destino: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    nombre_ipress_destino: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Destino interno (otro hospital que usa nuestro mismo ERP)
+    tenant_destino_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True)
+
+    especialidad_destino: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    diagnostico_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_diagnosticos_cie10.id", ondelete="SET NULL"), nullable=True)
+    motivo: Mapped[str] = mapped_column(Text)
+    numero_referencia: Mapped[str] = mapped_column(String(30), unique=True)
+    estado: Mapped[str] = mapped_column(String(20), default="enviada")  # enviada, aceptada, rechazada, contrarreferida
+    observacion_resolucion: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Contrarreferencia: lo que el establecimiento destino informa de vuelta.
+    fecha_contrarreferencia: Mapped[date | None] = mapped_column(Date, nullable=True)
+    profesional_receptor: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    diagnostico_contrarreferencia_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sigarh_diagnosticos_cie10.id", ondelete="SET NULL"), nullable=True)
+    resumen_contrarreferencia: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<Referencia {self.numero_referencia}>"

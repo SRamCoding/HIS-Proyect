@@ -63,6 +63,7 @@ from app.sigarh.mantenimiento.models import (
 )
 from app.sigarh.infraestructura.models import Consultorio
 from app.sigarh.creacion_roles.models import Rol, RolEmpleado, RolActividad, RolTurno
+from app.auth.models import User
 
 
 def _turno_desde_hora(hhmm: str | None) -> str:
@@ -1248,7 +1249,8 @@ async def confirmar_cita(
 
 
 async def create_triaje(
-    db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: TriajeCreate
+    db: AsyncSession, tenant_id: uuid.UUID, cita_id: uuid.UUID, data: TriajeCreate,
+    user: dict | None = None,
 ) -> dict:
     result = await db.execute(
         select(Cita).where(Cita.tenant_id == tenant_id, Cita.id == cita_id).with_for_update().execution_options(populate_existing=True)
@@ -1263,7 +1265,15 @@ async def create_triaje(
     if existing.scalar_one_or_none():
         raise ValueError("Esta cita ya tiene un triaje registrado")
 
-    triaje = Triaje(tenant_id=tenant_id, cita_id=cita_id, **data.model_dump())
+    realizado_por_id = None
+    if user and user.get("sub"):
+        cuenta = await db.scalar(select(User).where(User.id == uuid.UUID(user["sub"])))
+        if cuenta and cuenta.empleado_id:
+            realizado_por_id = await db.scalar(select(Empleado.id).where(
+                Empleado.id == cuenta.empleado_id, Empleado.tenant_id == tenant_id,
+                Empleado.is_active.is_(True)))
+    triaje = Triaje(tenant_id=tenant_id, cita_id=cita_id,
+                    realizado_por_id=realizado_por_id, **data.model_dump())
     db.add(triaje)
     await db.commit()
     await db.refresh(triaje)
@@ -1879,7 +1889,7 @@ async def get_hospitalizacion(
         )
         .where(
             Hospitalizacion.tenant_id == tenant_id, AtencionMedica.cita_id == cita_id
-        ).with_for_update().execution_options(populate_existing=True)
+        )
     )
     row = result.first()
     if not row:
