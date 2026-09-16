@@ -203,7 +203,7 @@ const cargar = async () => {
   loading.value = true
   error.value = ''
   try { lista.value = await api('/sigarh/config-financiera/seguros', { tenant: tenantId.value }) }
-  catch (e: any) { error.value = e?.data?.detail || 'Error al cargar datos' }
+  catch (e: any) { error.value = apiErr(e, 'Error al cargar datos') }
   finally { loading.value = false }
 }
 

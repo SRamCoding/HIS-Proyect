@@ -227,7 +227,7 @@ const confirmarEstado = async () => {
     const i = items.value.findIndex(x => x.id === upd.id)
     if (i >= 0) items.value[i] = { ...items.value[i], estado: upd.estado }
     estadoModal.cama = null
-  } catch (e: any) { estadoModal.error = e?.data?.detail || 'No se pudo cambiar el estado' }
+  } catch (e: any) { estadoModal.error = apiErr(e, 'No se pudo cambiar el estado') }
   finally { estadoModal.saving = false }
 }
 
@@ -236,14 +236,14 @@ const eliminar = async (item: Item) => {
   try {
     await api(`/sigarh/infraestructura-hosp/camas/${item.id}`, { method: 'DELETE' })
     items.value = items.value.filter(i => i.id !== item.id)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo eliminar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo eliminar') }
 }
 
 const cargar = async () => {
   loading.value = true
   error.value = ''
   try { items.value = await api<Item[]>('/sigarh/infraestructura-hosp/camas') }
-  catch (e: any) { error.value = e?.data?.detail || 'Error de conexion' }
+  catch (e: any) { error.value = apiErr(e, 'Error de conexion') }
   finally { loading.value = false }
 }
 

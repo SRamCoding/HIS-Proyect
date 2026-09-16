@@ -202,7 +202,7 @@ const handleSave = async () => {
       },
     })
     router.push(`/sigarh/config-financiera/seguros?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'Error al guardar' }
+  } catch (e: any) { error.value = apiErr(e, 'Error al guardar') }
   finally { saving.value = false }
 }
 

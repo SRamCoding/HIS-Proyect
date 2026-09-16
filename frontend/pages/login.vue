@@ -2,6 +2,9 @@
 definePageMeta({ layout: 'auth' })
 
 const authStore = useAuthStore()
+const route = useRoute()
+const avisoLogout = computed(() => route.query.aviso === 'logout_sin_confirmar')
+const avisoPasswordCambiada = computed(() => route.query.aviso === 'password_cambiada')
 
 const email = ref('')
 const password = ref('')
@@ -33,6 +36,16 @@ async function signIn() {
     </div>
     <h2>Iniciar sesión</h2>
     <p class="intro">Ingresa tus credenciales para acceder al sistema.</p>
+
+    <p v-if="avisoLogout" class="notice-message">
+      <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
+      Se cerró la sesión en este navegador, pero el servidor no pudo confirmar la revocación. Si usaste un equipo compartido, cambia tu contraseña por seguridad.
+    </p>
+
+    <p v-if="avisoPasswordCambiada" class="notice-message notice-message--success">
+      <UIcon name="i-heroicons-check-circle" class="w-4 h-4 shrink-0" />
+      Tu contraseña se actualizó correctamente. Vuelve a iniciar sesión con tu nueva contraseña.
+    </p>
 
     <label for="email">Correo electrónico</label>
     <div class="input-wrap">
@@ -240,6 +253,22 @@ async function signIn() {
   color: var(--alert);
   font-size: 12px;
   line-height: 1.4;
+}
+.notice-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 20px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.notice-message--success {
+  background: var(--green-soft, #ecfdf5);
+  color: var(--green, #16a34a);
 }
 .submit {
   width: 100%;

@@ -19,7 +19,7 @@ const cargar = async () => {
   loading.value = true; error.value = ''
   const q = fEstado.value ? `?status=${fEstado.value}` : ''
   try { items.value = await api<any[]>(`/sigarh/roles-pendientes/solicitudes-modificacion${q}`) }
-  catch (e: any) { error.value = e?.data?.detail || 'Error de conexión' }
+  catch (e: any) { error.value = apiErr(e, 'Error de conexión') }
   finally { loading.value = false }
 }
 watch(fEstado, cargar)

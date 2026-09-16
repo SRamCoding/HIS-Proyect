@@ -31,7 +31,7 @@ const crear = async () => {
       body: { categoria_personal: categoria.value, tipo_rol: tipo.value, ...form },
     })
     router.push(`/sigarh/creacion-roles/${categoria.value}/${tipo.value}/${rol.id}?tenant=${tenantId.value}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear el rol' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear el rol') }
   finally { saving.value = false }
 }
 
@@ -44,7 +44,7 @@ onMounted(async () => {
     departamentos.value = deps.filter(d => d.is_active)
     servicios.value = servs.filter(s => s.is_active)
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudieron cargar los catálogos de departamentos y servicios'
+    error.value = apiErr(e, 'No se pudieron cargar los catálogos de departamentos y servicios')
   } finally {
     loadingCatalogos.value = false
   }

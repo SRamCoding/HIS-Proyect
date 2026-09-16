@@ -22,7 +22,7 @@ const cargar = async () => {
   if (fAnio.value) q.set('anio', String(fAnio.value))
   if (fMes.value) q.set('mes', String(fMes.value))
   try { items.value = await api<any[]>(`/sigarh/roles-aprobados/roles?${q}`) }
-  catch (e: any) { error.value = e?.data?.detail || 'Error de conexión' }
+  catch (e: any) { error.value = apiErr(e, 'Error de conexión') }
   finally { loading.value = false }
 }
 watch([fCat, fTipo, fAnio, fMes], cargar)

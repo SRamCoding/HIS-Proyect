@@ -24,6 +24,10 @@ build/
 *.log
 logs/
 
+# Fallback de auditoria y estado de Celery beat (datos de runtime, no codigo)
+var/
+celerybeat-schedule*
+
 # VS Code
 .vscode/
 *.code-workspace

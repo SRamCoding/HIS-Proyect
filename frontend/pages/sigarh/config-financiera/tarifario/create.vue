@@ -12,7 +12,7 @@ async function guardar() {
   try {
     await api('/sigarh/config-financiera/tarifario', { method: 'POST', tenant, body: form })
     router.push(`/sigarh/config-financiera/tarifario?tenant=${tenant}`)
-  } catch (e: any) { error.value = e?.data?.detail || 'Error al guardar' } finally { saving.value = false }
+  } catch (e: any) { error.value = apiErr(e, 'Error al guardar') } finally { saving.value = false }
 }
 </script>
 <template>

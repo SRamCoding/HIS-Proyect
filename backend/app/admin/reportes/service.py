@@ -2,7 +2,7 @@
 import logging
 import uuid
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -16,6 +16,17 @@ from app.core.tenant_db import get_tenant_sessionmaker
 from app.core.concurrency import gather_limitado
 
 logger = logging.getLogger(__name__)
+
+# Mismo criterio que auditoria/service.py: "mes" debe representar el mes
+# calendario de Lima, no el de UTC (created_at se guarda en UTC). Sin esto,
+# un reporte de "enero" arrancaba/terminaba 5 horas antes de lo esperado
+# por un admin en Peru, desalineado con el filtro de Auditoria.
+_ZONA_LIMA = timezone(timedelta(hours=-5))
+
+
+def _limite_mes_a_utc_naive(anio: int, mes: int) -> datetime:
+    limite_lima = datetime(anio, mes, 1, tzinfo=_ZONA_LIMA)
+    return limite_lima.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 async def _stats_hospital(tenant: Tenant, start: datetime, end: datetime) -> tuple[int, int, bool]:
@@ -67,14 +78,14 @@ async def get_monthly_report(
     tenant_id: uuid.UUID | None = None,
 ) -> dict:
     try:
-        start = datetime.strptime(month, "%Y-%m")
+        mes_solicitado = datetime.strptime(month, "%Y-%m")
     except ValueError as exc:
         raise ValueError("El mes debe tener el formato YYYY-MM") from exc
 
-    end = datetime(
-        start.year + 1 if start.month == 12 else start.year,
-        1 if start.month == 12 else start.month + 1,
-        1,
+    start = _limite_mes_a_utc_naive(mes_solicitado.year, mes_solicitado.month)
+    end = _limite_mes_a_utc_naive(
+        mes_solicitado.year + 1 if mes_solicitado.month == 12 else mes_solicitado.year,
+        1 if mes_solicitado.month == 12 else mes_solicitado.month + 1,
     )
 
     # Hospitales activos (con sus modulos precargados)

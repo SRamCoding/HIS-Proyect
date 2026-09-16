@@ -41,7 +41,7 @@ async function load() {
     if (current !== requestId) return
     items.value = []
     total.value = 0
-    error.value = e?.data?.detail || 'No se pudo cargar el catálogo CIE-10'
+    error.value = apiErr(e, 'No se pudo cargar el catálogo CIE-10')
   } finally {
     if (current === requestId) loading.value = false
   }

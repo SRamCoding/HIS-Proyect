@@ -73,6 +73,15 @@
             Ingresa tus credenciales para acceder al sistema.
           </p>
 
+          <div
+            v-if="avisoLogout"
+            class="mb-6 text-sm rounded-lg px-3.5 py-2.5 flex items-center gap-2"
+            style="background: #fffbeb; color: #92400e"
+          >
+            <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
+            Se cerró la sesión en este navegador, pero el servidor no pudo confirmar la revocación. Si usaste un equipo compartido, cambia tu contraseña por seguridad.
+          </div>
+
           <!-- Formulario -->
           <div class="space-y-5">
             <div>
@@ -201,6 +210,7 @@ const route = useRoute()
 const router = useRouter()
 
 const tenantId = computed(() => (route.query.tenant as string) || '')
+const avisoLogout = computed(() => route.query.aviso === 'logout_sin_confirmar')
 
 const form = reactive({
   email: '',

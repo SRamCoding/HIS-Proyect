@@ -317,7 +317,8 @@ const handleSave = async () => {
     }
     if (form.password) body.password = form.password
 
-    await api(`/admin/usuarios/${id.value}`, { method: 'PATCH', body })
+    const tenantQs = form.tenant_id ? `?tenant_id=${form.tenant_id}` : ''
+    await api(`/admin/usuarios/${id.value}${tenantQs}`, { method: 'PATCH', body })
     router.push(listPath.value)
   } catch (e: any) {
     saveError.value = apiErr(e, 'No se pudo guardar los cambios')
@@ -330,7 +331,8 @@ const handleDelete = async () => {
   deleting.value = true
   deleteError.value = ''
   try {
-    await api(`/admin/usuarios/${id.value}`, { method: 'DELETE' })
+    const tenantQs = form.tenant_id ? `?tenant_id=${form.tenant_id}` : ''
+    await api(`/admin/usuarios/${id.value}${tenantQs}`, { method: 'DELETE' })
     router.push(listPath.value)
   } catch (e: any) {
     deleteError.value = apiErr(e, 'No se pudo eliminar el usuario')

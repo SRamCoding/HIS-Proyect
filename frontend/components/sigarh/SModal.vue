@@ -2,18 +2,18 @@
   <Teleport to="body">
     <Transition name="s-modal">
       <div v-if="modelValue" class="s-modal-overlay" @click.self="close">
-        <div class="s-modal" :style="{ maxWidth: width }" role="dialog" aria-modal="true">
+        <div ref="modalEl" class="s-modal" :style="{ maxWidth: width }" role="dialog" aria-modal="true" :aria-labelledby="titleId" tabindex="-1" @keydown.tab="onTabKey">
           <div class="s-modal-head">
             <div class="s-modal-title">
               <div v-if="icon" class="s-modal-icon" :style="{ background: iconBg }">
                 <UIcon :name="icon" class="w-4 h-4" :style="{ color: iconColor }" />
               </div>
               <div>
-                <h3>{{ title }}</h3>
+                <h3 :id="titleId">{{ title }}</h3>
                 <p v-if="subtitle">{{ subtitle }}</p>
               </div>
             </div>
-            <button class="s-modal-x" @click="close"><UIcon name="i-heroicons-x-mark" class="w-5 h-5" /></button>
+            <button class="s-modal-x" @click="close" aria-label="Cerrar"><UIcon name="i-heroicons-x-mark" class="w-5 h-5" /></button>
           </div>
 
           <div class="s-modal-body"><slot /></div>
@@ -43,11 +43,50 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits(['update:modelValue', 'close'])
 const close = () => { if (props.persistent) return; emit('update:modelValue', false); emit('close') }
 
+const titleId = `s-modal-title-${Math.random().toString(36).slice(2, 10)}`
+const modalEl = ref<HTMLElement | null>(null)
+let elementoPrevio: HTMLElement | null = null
+
+const focoteables = () =>
+  modalEl.value
+    ? Array.from(modalEl.value.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )).filter(el => el.offsetParent !== null)
+    : []
+
+// Trampa de foco: Tab/Shift+Tab deben ciclar dentro del modal, nunca escapar
+// hacia el contenido de atras -- sin esto, con el mouse quieto y solo
+// teclado, alguien podia tabular fuera del dialogo hacia botones tapados
+// visualmente por el overlay pero todavia montados y alcanzables.
+const onTabKey = (e: KeyboardEvent) => {
+  const elementos = focoteables()
+  if (!elementos.length) { e.preventDefault(); return }
+  const primero = elementos[0]
+  const ultimo = elementos[elementos.length - 1]
+  if (e.shiftKey && document.activeElement === primero) {
+    e.preventDefault(); ultimo.focus()
+  } else if (!e.shiftKey && document.activeElement === ultimo) {
+    e.preventDefault(); primero.focus()
+  }
+}
+
 const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
-watch(() => props.modelValue, (v) => {
-  if (import.meta.client) {
-    document.body.style.overflow = v ? 'hidden' : ''
-    v ? window.addEventListener('keydown', onKey) : window.removeEventListener('keydown', onKey)
+watch(() => props.modelValue, async (v) => {
+  if (!import.meta.client) return
+  document.body.style.overflow = v ? 'hidden' : ''
+  if (v) {
+    window.addEventListener('keydown', onKey)
+    elementoPrevio = document.activeElement as HTMLElement | null
+    await nextTick()
+    // Mueve el foco AL modal apenas abre -- si nadie hace nada, el foco del
+    // teclado se queda en lo que estaba antes (a menudo el boton que abrio
+    // el modal, ya tapado detras del overlay).
+    const elementos = focoteables()
+    ;(elementos[0] ?? modalEl.value)?.focus()
+  } else {
+    window.removeEventListener('keydown', onKey)
+    elementoPrevio?.focus()
+    elementoPrevio = null
   }
 })
 onUnmounted(() => { if (import.meta.client) { document.body.style.overflow = ''; window.removeEventListener('keydown', onKey) } })

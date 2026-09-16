@@ -30,7 +30,7 @@
           <UIcon name="i-heroicons-users" class="w-5 h-5" :style="{ color: isAdminView ? 'var(--navy)' : 'var(--teal)' }" />
         </div>
         <div>
-          <div class="sigarh-stat-value">{{ filteredUsers.length }}</div>
+          <div class="sigarh-stat-value">{{ resumen.total }}</div>
           <div class="sigarh-stat-label">Total Usuarios</div>
         </div>
       </div>
@@ -39,7 +39,7 @@
           <UIcon name="i-heroicons-check-circle" class="w-5 h-5" style="color: var(--green)" />
         </div>
         <div>
-          <div class="sigarh-stat-value">{{ activeUsers }}</div>
+          <div class="sigarh-stat-value">{{ resumen.activos }}</div>
           <div class="sigarh-stat-label">Activos</div>
         </div>
       </div>
@@ -48,7 +48,7 @@
           <UIcon name="i-heroicons-x-circle" class="w-5 h-5" style="color: var(--amber)" />
         </div>
         <div>
-          <div class="sigarh-stat-value">{{ inactiveUsers }}</div>
+          <div class="sigarh-stat-value">{{ resumen.inactivos }}</div>
           <div class="sigarh-stat-label">Inactivos</div>
         </div>
       </div>
@@ -57,7 +57,7 @@
           <UIcon name="i-heroicons-chart-pie" class="w-5 h-5" style="color: var(--purple)" />
         </div>
         <div>
-          <div class="sigarh-stat-value">{{ uniqueRoles }}</div>
+          <div class="sigarh-stat-value">{{ resumen.roles_unicos }}</div>
           <div class="sigarh-stat-label">Roles Diferentes</div>
         </div>
       </div>
@@ -82,14 +82,14 @@
               <span class="sigarh-filter-count">{{ filter.count }}</span>
             </button>
           </div>
-          <select v-if="!isAdminView" v-model="hospitalFilter" class="input-clinical" style="max-width: 220px;" @change="loadData">
+          <select v-if="!isAdminView" v-model="hospitalFilter" class="input-clinical" style="max-width: 220px;">
             <option value="">Todos los hospitales</option>
             <option v-for="h in hospitales" :key="h.id" :value="h.id">{{ h.name }}</option>
           </select>
         </div>
         <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <span class="sigarh-result-count">{{ filteredUsers.length }} resultados</span>
-          <button v-if="searchQuery || activeFilter !== 'all'" class="sigarh-clear-btn" @click="clearFilters">Limpiar</button>
+          <span class="sigarh-result-count">{{ total }} resultado{{ total === 1 ? '' : 's' }}</span>
+          <button v-if="searchQuery || activeFilter !== 'all' || hospitalFilter" class="sigarh-clear-btn" @click="clearFilters">Limpiar</button>
         </div>
       </div>
 
@@ -104,7 +104,7 @@
         <button class="btn-outline" @click="loadData">Reintentar</button>
       </div>
 
-      <div v-else-if="filteredUsers.length === 0" class="sigarh-table-state">
+      <div v-else-if="pageUsers.length === 0" class="sigarh-table-state">
         <UIcon name="i-heroicons-users" class="w-12 h-12" style="color: var(--ink-soft); opacity: 0.4" />
         <div>
           <p style="font-weight: 600; color: var(--ink); margin: 0">No hay usuarios registrados</p>
@@ -130,7 +130,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="user in filteredUsers" :key="user.id">
+            <tr v-for="user in pageUsers" :key="user.id">
               <td>
                 <div class="sigarh-item-cell">
                   <div class="sigarh-item-icon" :style="{ background: getUserColor(user.name) }">
@@ -185,8 +185,21 @@
         </table>
       </div>
 
-      <div v-if="filteredUsers.length > 0" class="sigarh-table-footer">
-        Mostrando {{ filteredUsers.length }} de {{ allUsers.length }} usuarios
+      <div v-if="total > 0" class="table-footer">
+        <span class="footer-info">
+          Mostrando <strong>{{ pageUsers.length }}</strong> de <strong>{{ total }}</strong> usuarios
+        </span>
+        <div class="footer-actions">
+          <div class="pagination">
+            <button class="page-btn" :disabled="currentPage === 1" @click="currentPage--">
+              <UIcon name="i-heroicons-chevron-left" class="w-4 h-4" />
+            </button>
+            <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+            <button class="page-btn" :disabled="currentPage === totalPages" @click="currentPage++">
+              <UIcon name="i-heroicons-chevron-right" class="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -232,6 +245,16 @@ interface Usuario {
 
 interface UsuariosConHospitalResponse {
   items: Usuario[]
+  total: number
+  hospitales_no_disponibles: string[]
+  es_parcial: boolean
+}
+
+interface Resumen {
+  total: number
+  activos: number
+  inactivos: number
+  roles_unicos: number
   hospitales_no_disponibles: string[]
   es_parcial: boolean
 }
@@ -246,7 +269,9 @@ const { api } = useApi()
 const route = useRoute()
 const router = useRouter()
 
-const allUsers = ref<Usuario[]>([])
+const pageUsers = ref<Usuario[]>([])
+const total = ref(0)
+const resumen = ref<Resumen>({ total: 0, activos: 0, inactivos: 0, roles_unicos: 0, hospitales_no_disponibles: [], es_parcial: false })
 const hospitales = ref<Hospital[]>([])
 const loading = ref(true)
 const error = ref('')
@@ -254,6 +279,8 @@ const partialWarning = ref('')
 const searchQuery = ref('')
 const activeFilter = ref('all')
 const hospitalFilter = ref('')
+const currentPage = ref(1)
+const perPage = 20
 const showDeleteModal = ref(false)
 const togglingId = ref<string | null>(null)
 const userToDelete = ref<Usuario | null>(null)
@@ -264,33 +291,13 @@ const createPath = computed(() => isAdminView.value ? '/admin/usuarios/create?ti
 const pageTitle = computed(() => isAdminView.value ? 'Administradores' : 'Usuarios por Hospital')
 const pageSubtitle = computed(() => isAdminView.value ? 'Administradores del panel ERP' : 'Usuarios asignados a hospitales')
 
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / perPage)))
+
 const filters = computed(() => [
-  { label: 'Todos', value: 'all', count: allUsers.value.length },
-  { label: 'Activos', value: 'active', count: activeUsers.value },
-  { label: 'Inactivos', value: 'inactive', count: inactiveUsers.value },
+  { label: 'Todos', value: 'all', count: resumen.value.total },
+  { label: 'Activos', value: 'active', count: resumen.value.activos },
+  { label: 'Inactivos', value: 'inactive', count: resumen.value.inactivos },
 ])
-
-const activeUsers = computed(() => allUsers.value.filter(u => u.is_active).length)
-const inactiveUsers = computed(() => allUsers.value.filter(u => !u.is_active).length)
-const uniqueRoles = computed(() => new Set(allUsers.value.map(u => u.role)).size)
-
-const filteredUsers = computed(() => {
-  let result = allUsers.value
-
-  result = isAdminView.value
-    ? result.filter(u => u.panel === 'admin')
-    : result.filter(u => u.panel === 'app' || u.panel === 'sigarh')
-
-  if (activeFilter.value === 'active') result = result.filter(u => u.is_active)
-  else if (activeFilter.value === 'inactive') result = result.filter(u => !u.is_active)
-
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.toLowerCase().trim()
-    result = result.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
-  }
-
-  return result
-})
 
 const formatRol = (role: string) => {
   const map: Record<string, string> = {
@@ -326,7 +333,12 @@ const getUserColor = (name: string) => {
 
 const formatDate = (date: string) => new Date(date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
-const clearFilters = () => { searchQuery.value = ''; activeFilter.value = 'all' }
+const clearFilters = () => {
+  searchQuery.value = ''
+  activeFilter.value = 'all'
+  hospitalFilter.value = ''
+  currentPage.value = 1
+}
 
 const editUser = (user: Usuario) => {
   const params = new URLSearchParams()
@@ -340,8 +352,10 @@ const toggleUserStatus = async (user: Usuario) => {
   togglingId.value = user.id
   error.value = ''
   try {
-    await api(`/admin/usuarios/${user.id}/toggle?is_active=${!user.is_active}`, { method: 'PATCH' })
+    const tenantQs = user.tenant_id ? `&tenant_id=${user.tenant_id}` : ''
+    await api(`/admin/usuarios/${user.id}/toggle?is_active=${!user.is_active}${tenantQs}`, { method: 'PATCH' })
     user.is_active = !user.is_active
+    loadResumen()
   } catch (e: any) {
     error.value = apiErr(e, 'No se pudo actualizar el estado')
   } finally {
@@ -354,30 +368,37 @@ const confirmDelete = (user: Usuario) => { userToDelete.value = user; showDelete
 const deleteUser = async () => {
   if (!userToDelete.value) return
   try {
-    await api(`/admin/usuarios/${userToDelete.value.id}`, { method: 'DELETE' })
-    allUsers.value = allUsers.value.filter(u => u.id !== userToDelete.value?.id)
+    const tenantQs = userToDelete.value.tenant_id ? `?tenant_id=${userToDelete.value.tenant_id}` : ''
+    await api(`/admin/usuarios/${userToDelete.value.id}${tenantQs}`, { method: 'DELETE' })
     showDeleteModal.value = false
     userToDelete.value = null
+    await Promise.all([loadData(), loadResumen()])
   } catch (e: any) {
     error.value = apiErr(e, 'No se pudo eliminar el usuario')
     showDeleteModal.value = false
   }
 }
 
+const vista = computed(() => isAdminView.value ? 'admin' : 'hospital')
+
 const loadData = async () => {
   loading.value = true
   error.value = ''
   partialWarning.value = ''
   try {
-    const usuariosUrl = hospitalFilter.value
-      ? `/admin/usuarios/con-hospital?tenant_id=${hospitalFilter.value}`
-      : '/admin/usuarios/con-hospital'
-    const [usuariosResp, hospitals] = await Promise.all([
-      api<UsuariosConHospitalResponse>(usuariosUrl),
-      api<Hospital[]>('/admin/hospitales'),
-    ])
-    allUsers.value = usuariosResp.items
-    hospitales.value = hospitals
+    const params = new URLSearchParams({
+      vista: vista.value,
+      limit: String(perPage),
+      offset: String((currentPage.value - 1) * perPage),
+    })
+    if (hospitalFilter.value) params.set('tenant_id', hospitalFilter.value)
+    if (searchQuery.value.trim()) params.set('q', searchQuery.value.trim())
+    if (activeFilter.value === 'active') params.set('is_active', 'true')
+    else if (activeFilter.value === 'inactive') params.set('is_active', 'false')
+
+    const usuariosResp = await api<UsuariosConHospitalResponse>(`/admin/usuarios/con-hospital?${params}`)
+    pageUsers.value = usuariosResp.items
+    total.value = usuariosResp.total
     if (usuariosResp.es_parcial) {
       partialWarning.value = `No se pudo consultar: ${usuariosResp.hospitales_no_disponibles.join(', ')}. La lista está incompleta.`
     }
@@ -388,7 +409,35 @@ const loadData = async () => {
   }
 }
 
-onMounted(loadData)
+const loadResumen = async () => {
+  try {
+    const params = new URLSearchParams({ vista: vista.value })
+    if (hospitalFilter.value) params.set('tenant_id', hospitalFilter.value)
+    resumen.value = await api<Resumen>(`/admin/usuarios/resumen?${params}`)
+  } catch {
+    // los widgets no son criticos: si fallan, se quedan en sus valores por defecto
+  }
+}
+
+const loadHospitales = async () => {
+  try { hospitales.value = await api<Hospital[]>('/admin/hospitales') }
+  catch { /* el filtro de hospital simplemente queda vacio si falla */ }
+}
+
+let searchDebounce: ReturnType<typeof setTimeout> | null = null
+watch(searchQuery, () => {
+  if (searchDebounce) clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(() => { currentPage.value = 1; loadData() }, 400)
+})
+watch([activeFilter, hospitalFilter], () => { currentPage.value = 1; loadData(); loadResumen() })
+watch(currentPage, loadData)
+
+onMounted(() => {
+  loadData()
+  loadResumen()
+  if (!isAdminView.value) loadHospitales()
+})
+onUnmounted(() => { if (searchDebounce) clearTimeout(searchDebounce) })
 </script>
 
 <style scoped>

@@ -138,7 +138,7 @@ const handleCreate = async (createAnother: boolean) => {
     await api('/sigarh/mantenimiento/actividades', { method: 'POST', body: buildBody() })
     if (createAnother) { Object.assign(form, { nombre: '', codigo: '', tipo_actividad_id: '', requiere_consultorio: false, is_active: true }) }
     else { router.push(`/sigarh/mantenimiento/actividades?tenant=${tenantId.value}`) }
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear') }
   finally { saving.value = false }
 }
 

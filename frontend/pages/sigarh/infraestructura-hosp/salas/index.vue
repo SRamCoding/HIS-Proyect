@@ -241,7 +241,7 @@ const confirmarGenerar = async () => {
     })
     genModal.sala = null
     await cargar()
-  } catch (e: any) { genModal.error = e?.data?.detail || 'No se pudieron generar las camas' }
+  } catch (e: any) { genModal.error = apiErr(e, 'No se pudieron generar las camas') }
   finally { genModal.saving = false }
 }
 
@@ -250,7 +250,7 @@ const eliminar = async (item: Item) => {
   try {
     await api(`/sigarh/infraestructura-hosp/salas/${item.id}`, { method: 'DELETE' })
     items.value = items.value.filter(i => i.id !== item.id)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo eliminar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo eliminar') }
 }
 
 const cargar = async () => {
@@ -265,7 +265,7 @@ const cargar = async () => {
     items.value = salas
     pisos.value = ps
     tiposCama.value = tc
-  } catch (e: any) { error.value = e?.data?.detail || 'Error de conexion' }
+  } catch (e: any) { error.value = apiErr(e, 'Error de conexion') }
   finally { loading.value = false }
 }
 

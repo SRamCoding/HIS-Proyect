@@ -153,7 +153,7 @@ const handleCreate = async (createAnother: boolean) => {
     })
     if (createAnother) { Object.assign(form, { nombre: '', especialidad_id: '', piso_id: '', capacidad: 1, equipamiento: '', is_active: true }) }
     else { router.push(`/sigarh/infraestructura/consultorios?tenant=${tenantId.value}`) }
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear') }
   finally { saving.value = false }
 }
 

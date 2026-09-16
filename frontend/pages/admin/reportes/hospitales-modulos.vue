@@ -95,6 +95,11 @@ const filtrados = computed(() => {
   )
 })
 
+// Mismo escape que ya usa reportes/exportar.vue: una celda que empieza con
+// = + - @ o tab puede interpretarse como formula al abrir el CSV en Excel/
+// Sheets -- se le antepone un apostrofe para forzarla a texto plano.
+const celdaSegura = (v: string) => /^[=+\-@\t]/.test(v) ? `'${v}` : v
+
 const exportCsv = () => {
   const headers = ['Hospital', 'Dominio', 'Módulos Activos', 'Total']
   const rowsCsv = filtrados.value.map(r => [
@@ -103,8 +108,11 @@ const exportCsv = () => {
     r.active_modules.join(' | '),
     String(r.total_modules),
   ])
-  const csv = [headers.join(','), ...rowsCsv.map(r => r.map(v => `"${v}"`).join(','))].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
+  const csv = [
+    headers.join(','),
+    ...rowsCsv.map(r => r.map(v => `"${celdaSegura(String(v ?? '')).replace(/"/g, '""')}"`).join(',')),
+  ].join('\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -119,7 +127,7 @@ const cargar = async () => {
   try {
     rows.value = await api<HospitalModuleReport[]>('/admin/reportes/hospitales-modulos')
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error de conexión'
+    error.value = apiErr(e, 'Error de conexión')
   } finally {
     loading.value = false
   }

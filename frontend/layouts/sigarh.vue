@@ -1,5 +1,17 @@
   <template>
-    <div class="h-screen overflow-hidden flex" style="background: var(--mist)">
+    <!-- Al cerrar sesion se DESMONTA todo el contenido protegido (esta es
+         la unica raiz que queda) en vez de solo taparlo con un overlay.
+         Ganarle por z-index a un <Teleport to="body"> (SModal lo usa) es
+         posible en teoria, pero fragil: depende de que ningun ancestro
+         entre medio cree su propio contexto de apilamiento, un detalle
+         facil de romper sin darse cuenta con un cambio de estilos futuro.
+         Y aunque se tape visualmente, un elemento que sigue montado sigue
+         siendo alcanzable por teclado -- desmontar evita ambos problemas
+         de raiz en vez de depender de ganar la pulseada de CSS. -->
+    <div v-if="loggingOut" class="h-screen flex items-center justify-center" style="background: var(--mist)">
+      <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin" style="color: var(--teal)" />
+    </div>
+    <div v-else class="h-screen overflow-hidden flex" style="background: var(--mist)">
 
       <!-- SIDEBAR -->
       <aside
@@ -309,13 +321,19 @@
     return mapa[label] || 'i-heroicons-chevron-right'
   }
 
+  const loggingOut = ref(false)
+
   const handleLogout = async () => {
+    loggingOut.value = true
     // Capturar el tenant ANTES de logout(): borra authStore.user, y sin el
     // tenant en la URL el siguiente login no manda X-Tenant-ID y el backend
     // cae al fallback por dominio (404 o, peor, el hospital equivocado).
     const tenantId = route.query.tenant as string || authStore.user?.tenant_id || ''
-    await authStore.logout()
-    await navigateTo(tenantId ? `/sigarh/login?tenant=${tenantId}` : '/sigarh/login')
+    const revocadoEnServidor = await authStore.logout()
+    const query: Record<string, string> = {}
+    if (tenantId) query.tenant = tenantId
+    if (!revocadoEnServidor) query.aviso = 'logout_sin_confirmar'
+    await navigateTo({ path: '/sigarh/login', query })
   }
   </script>
 

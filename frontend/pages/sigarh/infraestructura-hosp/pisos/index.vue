@@ -199,14 +199,14 @@ const eliminar = async (item: Item) => {
   try {
     await api(`/sigarh/infraestructura-hosp/pisos/${item.id}`, { method: 'DELETE' })
     items.value = items.value.filter(i => i.id !== item.id)
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo eliminar' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo eliminar') }
 }
 
 const cargar = async () => {
   loading.value = true
   error.value = ''
   try { items.value = await api<Item[]>('/sigarh/infraestructura-hosp/pisos') }
-  catch (e: any) { error.value = e?.data?.detail || 'Error de conexion' }
+  catch (e: any) { error.value = apiErr(e, 'Error de conexion') }
   finally { loading.value = false }
 }
 

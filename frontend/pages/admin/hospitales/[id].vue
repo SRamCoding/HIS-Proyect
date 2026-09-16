@@ -72,7 +72,7 @@
           </div>
           <div v-else-if="provisioningStatus === 'error'" class="error-banner">
             <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
-            El aprovisionamiento de este hospital falló{{ provisioningError ? `: ${provisioningError}` : '' }}.
+            El aprovisionamiento de este hospital falló{{ provisioningError ? `: ${provisioningError}` : '' }}. Usa el botón "Reintentar aprovisionamiento" al final del formulario.
           </div>
 
           <!-- Step 1: Identidad -->
@@ -359,8 +359,21 @@
           </div>
 
           <!-- Navigation Actions -->
-          <div class="edit-actions">
-            <button 
+          <div v-if="provisioningStatus === 'error'" class="edit-actions">
+            <div class="action-spacer"></div>
+            <div class="action-group">
+              <NuxtLink :to="`/admin/hospitales/${id}/reintentar`" class="btn-primary">
+                <UIcon name="i-heroicons-arrow-path" class="w-4 h-4" />
+                Reintentar aprovisionamiento
+              </NuxtLink>
+              <NuxtLink to="/admin/hospitales" class="btn-cancel">
+                Cancelar
+              </NuxtLink>
+            </div>
+          </div>
+
+          <div v-else class="edit-actions">
+            <button
               v-if="currentStep > 0"
               class="btn-secondary"
               @click="currentStep--"
@@ -368,10 +381,10 @@
               <UIcon name="i-heroicons-arrow-left" class="w-4 h-4" />
               Anterior
             </button>
-            
+
             <div class="action-spacer"></div>
 
-            <button 
+            <button
               v-if="currentStep < 3"
               class="btn-primary"
               @click="nextStep"

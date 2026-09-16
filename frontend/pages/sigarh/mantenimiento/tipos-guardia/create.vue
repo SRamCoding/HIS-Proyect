@@ -167,7 +167,7 @@ const handleCreate = async (createAnother: boolean) => {
     } else {
       router.push(`/sigarh/mantenimiento/tipos-guardia?tenant=${tenantId.value}`)
     }
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo crear' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo crear') }
   finally { saving.value = false }
 }
 </script>

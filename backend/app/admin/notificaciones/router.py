@@ -1,6 +1,6 @@
 # backend/app/admin/notificaciones/router.py
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -13,13 +13,15 @@ from app.admin.notificaciones.service import (
 router = APIRouter()
 
 
-@router.get("/notificaciones", response_model=list[NotificacionResponse], summary="Listar notificaciones")
+@router.get("/notificaciones", summary="Listar notificaciones")
 async def listar(
-    limit: int = 20,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
-    return await listar_notificaciones(db, limit)
+    items, total = await listar_notificaciones(db, limit, offset)
+    return {"items": [NotificacionResponse.model_validate(i) for i in items], "total": total}
 
 
 @router.get("/notificaciones/no-leidas", summary="Cantidad de notificaciones sin leer")

@@ -3,9 +3,9 @@ from logging.config import fileConfig
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import pool
 from alembic import context
-from app.admin.roles.models import SystemRole
 from app.admin.niveles_hospitalarios.models import HospitalLevel
 from app.admin.modulos.models import ModuleDependency
+from app.admin.roles.models import SystemRole
 from app.admin.auditoria.models import AuditLog
 from app.core.config import settings
 from app.core.database import Base

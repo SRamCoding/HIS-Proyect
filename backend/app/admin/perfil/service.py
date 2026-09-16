@@ -2,7 +2,7 @@
 import uuid
 import bcrypt
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import User
@@ -32,7 +32,12 @@ async def actualizar_perfil(db: AsyncSession, user_id: str, data) -> User:
         # Invalida cualquier token que ya se haya emitido con la contraseña
         # anterior -- sin esto, cambiar la contraseña no revocaba sesiones
         # activas (una copia del token seguia sirviendo hasta que expirara).
-        user.session_version += 1
+        # UPDATE atomico en SQL (no "+= 1" en Python) por la misma razon que
+        # en el logout: evita perder el incremento si otra operacion sobre
+        # la misma cuenta corre en paralelo.
+        await db.execute(
+            update(User).where(User.id == user.id).values(session_version=User.session_version + 1)
+        )
 
     if data.name:
         user.name = data.name

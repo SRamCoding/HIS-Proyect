@@ -31,6 +31,24 @@ class Tenant(Base):
     # servidor seguia trabajando a ciegas y el admin nunca sabia si termino.
     provisioning_status: Mapped[str] = mapped_column(String(20), default="listo", server_default="listo")
     provisioning_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Cuando empezo el intento de aprovisionamiento ACTUAL (se actualiza en
+    # cada reintento, no solo al crear el hospital) -- sin esto no habia
+    # forma de distinguir un "pendiente" que sigue corriendo normalmente de
+    # uno abandonado (el proceso murio justo despues de confirmar el
+    # cambio a "pendiente" pero antes de lograr encolar la tarea, o el
+    # propio worker se cayo a mitad de la tarea). Ver
+    # revisar_aprovisionamientos_atascados en tenants/hospitales/service.py.
+    provisioning_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Nombre/correo (NUNCA contraseña) de los usuarios iniciales App/SIGARH,
+    # guardados solo para precargar el formulario de reintento si el
+    # aprovisionamiento falla -- ninguno de los dos es un dato sensible por
+    # si solo, a diferencia de la contraseña, que jamas se persiste en
+    # ningun lado ni siquiera hasheada.
+    admin_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    admin_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sigarh_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sigarh_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Datos del hospital
     ruc: Mapped[str | None] = mapped_column(String(11))

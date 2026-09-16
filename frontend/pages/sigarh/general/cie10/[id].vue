@@ -10,7 +10,7 @@ const error = ref('')
 async function load() {
   loading.value = true; error.value = ''
   try { dx.value = await api<Dx>(`/sigarh/general/cie10/${route.params.id}`, { tenant }) }
-  catch (e: any) { error.value = e?.data?.detail || 'No se pudo cargar el diagnóstico' }
+  catch (e: any) { error.value = apiErr(e, 'No se pudo cargar el diagnóstico') }
   finally { loading.value = false }
 }
 onMounted(load)

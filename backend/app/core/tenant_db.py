@@ -27,13 +27,35 @@ def _build_tenant_url(database_name: str) -> str:
     return urlunparse(parsed._replace(path=new_path))
 
 
-async def create_tenant_database(database_name: str) -> None:
-    """Crea la base de datos física en Postgres (requiere conexión con CREATE DATABASE)."""
+async def create_tenant_database(database_name: str) -> bool:
+    """Crea la base de datos física en Postgres (requiere conexión con CREATE DATABASE).
+
+    Idempotente ante "ya existe": un reintento de aprovisionamiento (hospital
+    que quedó en error) puede correr sobre una base que un intento anterior
+    alcanzó a crear pero cuya limpieza posterior falló -- fallar de nuevo por
+    duplicado en ese caso solo bloquea el reintento sin necesidad.
+
+    Devuelve True solo si ESTA llamada creó la base de verdad, False si ya
+    existía. El llamador (aprovisionar_hospital_async) necesita esta
+    distinción para decidir si le corresponde borrarla ante un fallo
+    posterior: antes se marcaba "creada por mí" sin importar cuál de los
+    dos casos era, así que un reintento podía terminar borrando una base
+    que en realidad ya existía de un intento anterior (posiblemente ya
+    completamente funcional, si lo único que había fallado antes fue
+    marcar el estado final como "listo")."""
+    import asyncpg
+
     admin_url = _build_tenant_url("postgres")  # conecta a la BD admin para poder crear otras
     admin_engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT")
     try:
         async with admin_engine.connect() as conn:
-            await conn.execute(text(f'CREATE DATABASE "{database_name}"'))
+            try:
+                await conn.execute(text(f'CREATE DATABASE "{database_name}"'))
+                return True
+            except Exception as exc:
+                if not isinstance(exc.__cause__, asyncpg.exceptions.DuplicateDatabaseError):
+                    raise
+                return False
     finally:
         await admin_engine.dispose()
 

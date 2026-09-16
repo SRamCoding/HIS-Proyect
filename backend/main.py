@@ -12,12 +12,13 @@ from app.admin.dashboard.router import router as admin_dashboard_router
 from app.admin.hospitales.router import router as admin_hospitales_router
 from app.admin.usuarios.router import router as admin_usuarios_router
 from app.admin.niveles_hospitalarios.router import router as admin_niveles_router
-from app.admin.roles.router import router as admin_roles_router
 from app.admin.auditoria.router import router as admin_auditoria_router
 from app.admin.modulos.router import router as admin_modulos_router
 from app.admin.reportes.router import router as admin_reportes_router
 from app.admin.notificaciones.router import router as admin_notificaciones_router
 from app.admin.perfil.router import router as admin_perfil_router
+from app.admin.busqueda.router import router as admin_busqueda_router
+from app.admin.roles.router import router as admin_roles_router
 
 # ── SIGARH ──────────────────────────────────────────────────
 from app.sigarh.mantenimiento.router import router as sigarh_mant_router
@@ -112,10 +113,11 @@ app.include_router(admin_notificaciones_router, prefix="/admin", tags=["admin-no
 app.include_router(admin_perfil_router, prefix="/admin", tags=["admin-perfil"])
 app.include_router(admin_usuarios_router, prefix="/admin", tags=["admin-usuarios"])
 app.include_router(admin_niveles_router, prefix="/admin", tags=["admin-niveles-hospitalarios"])
-app.include_router(admin_roles_router, prefix="/admin", tags=["admin-roles"])
 app.include_router(admin_auditoria_router, prefix="/admin", tags=["admin-auditoria"])
 app.include_router(admin_modulos_router, prefix="/admin", tags=["admin-modulos"])
 app.include_router(admin_reportes_router, prefix="/admin", tags=["admin-reportes"])
+app.include_router(admin_busqueda_router, prefix="/admin", tags=["admin-busqueda"])
+app.include_router(admin_roles_router, prefix="/admin", tags=["admin-roles"])
 
 # SIGARH
 app.include_router(sigarh_mant_router, prefix="/sigarh/mantenimiento", tags=["sigarh-mantenimiento"])

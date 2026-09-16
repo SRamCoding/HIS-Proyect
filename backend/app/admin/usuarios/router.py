@@ -1,6 +1,6 @@
 import logging
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -120,27 +120,42 @@ async def listar_usuarios(
     return await get_all_users(db)
 
 
-async def _rol_nombre_sigarh(session, perfil_id) -> str:
+async def _roles_por_lote(session, perfil_ids: set) -> dict:
+    """Nombre de rol para varias cuentas SIGARH en UNA sola tanda de
+    consultas (2, sin importar cuantos perfiles sean), en vez de dos
+    consultas POR CADA cuenta (_rol_nombre_sigarh de antes). Con muchas
+    cuentas SIGARH en un hospital, eso significaba cientos de consultas
+    solo para armar el listado."""
+    if not perfil_ids:
+        return {}
     from app.sigarh.mantenimiento.models import PerfilUsuario, RolSistema
-    if not perfil_id:
-        return "SIGARH"
-    perfil = await session.scalar(select(PerfilUsuario).where(PerfilUsuario.id == perfil_id))
-    if not perfil or not perfil.rol_sistema_id:
-        return "SIGARH"
-    rol = await session.scalar(select(RolSistema).where(RolSistema.id == perfil.rol_sistema_id))
-    return rol.nombre if rol else "SIGARH"
+
+    perfiles = (await session.scalars(
+        select(PerfilUsuario).where(PerfilUsuario.id.in_(perfil_ids))
+    )).all()
+    rol_ids = {p.rol_sistema_id for p in perfiles if p.rol_sistema_id}
+    roles = (await session.scalars(
+        select(RolSistema).where(RolSistema.id.in_(rol_ids))
+    )).all() if rol_ids else []
+    nombre_por_rol = {r.id: r.nombre for r in roles}
+    return {p.id: nombre_por_rol.get(p.rol_sistema_id, "SIGARH") for p in perfiles}
 
 
-@router.get("/usuarios/con-hospital", summary="Usuarios con datos de hospital, de todos los paneles")
-async def usuarios_con_hospital(
-    tenant_id: uuid.UUID | None = None,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
-):
-    """Si se pasa `tenant_id`, solo consulta ESE hospital (y las cuentas
-    centrales que ya le pertenecen) en vez de recorrer todos -- la pantalla
-    de Usuarios lo usa cuando el admin ya eligió un hospital puntual, para
-    no pagar el costo de tocar cada base física solo para mostrar una."""
+async def _reunir_todas_las_cuentas(
+    db: AsyncSession, tenant_id: uuid.UUID | None, vista: str | None = None,
+) -> tuple[list[dict], list[str]]:
+    """Reune TODAS las cuentas (central + cada hospital con base física) en
+    una sola lista en memoria, con el rol SIGARH ya resuelto en lote. La
+    usan tanto el listado paginado como el resumen -- ambos necesitan tocar
+    las mismas fuentes; no hay forma de evitarlo sin un índice materializado
+    aparte (ver nota en usuarios_con_hospital).
+
+    Si `vista == "admin"`, ni siquiera se intenta tocar ninguna base física
+    de hospital: una cuenta panel="admin" SOLO puede vivir en la BD
+    central (create_tenant nunca crea cuentas admin dentro de un hospital),
+    así que recorrer cada hospital para esta vista era trabajo puro
+    desperdiciado -- antes se hacía igual y el filtro por panel se aplicaba
+    recién al final, sobre datos que nunca iban a servir."""
     from app.auth.models import User
     from app.sigarh.mantenimiento.models import UsuarioSigarh
     from app.tenants.hospitales.models import Tenant
@@ -150,10 +165,11 @@ async def usuarios_con_hospital(
         select(User, Tenant.name.label("tenant_name"))
         .outerjoin(Tenant, User.tenant_id == Tenant.id)
         .where(User.is_superadmin.is_(False))  # excluir la cuenta admin fundacional
-        .order_by(User.created_at.desc())
     )
     if tenant_id:
         central_query = central_query.where(User.tenant_id == tenant_id)
+    if vista == "admin":
+        central_query = central_query.where(User.panel == "admin")
     result = await db.execute(central_query)
     rows = result.all()
     items = [
@@ -169,10 +185,14 @@ async def usuarios_con_hospital(
             "tenant_name": tenant_name or "—",
             "tenant_id": str(u.tenant_id) if u.tenant_id else None,
             "created_at": u.created_at.strftime("%d/%m/%Y"),
+            "_created_at_raw": u.created_at,
             "account_type": "user",
         }
         for u, tenant_name in rows
     ]
+
+    if vista == "admin":
+        return items, []
 
     # Cuentas SIGARH que viven en la BD central (hospitales sin base física propia).
     sigarh_query = select(UsuarioSigarh)
@@ -181,20 +201,24 @@ async def usuarios_con_hospital(
     sigarh_central = (await db.scalars(sigarh_query)).all()
     tenants_query = select(Tenant).where(Tenant.id == tenant_id) if tenant_id else select(Tenant)
     tenants_por_id = {str(t.id): t for t in (await db.scalars(tenants_query)).all()}
-    for u in sigarh_central:
-        tenant = tenants_por_id.get(str(u.tenant_id))
-        if not tenant or tenant.database_name:
-            continue  # los de hospitales con BD física se leen de ahí, más abajo
+    sigarh_central_validos = [
+        (u, tenants_por_id.get(str(u.tenant_id)))
+        for u in sigarh_central
+    ]
+    sigarh_central_validos = [(u, t) for u, t in sigarh_central_validos if t and not t.database_name]
+    roles_central = await _roles_por_lote(db, {u.perfil_id for u, _ in sigarh_central_validos if u.perfil_id})
+    for u, tenant in sigarh_central_validos:
         items.append({
             "id": str(u.id),
             "name": u.username,
             "email": u.email,
-            "role": await _rol_nombre_sigarh(db, u.perfil_id),
+            "role": roles_central.get(u.perfil_id, "SIGARH"),
             "panel": "sigarh",
             "is_active": u.is_active,
             "tenant_name": tenant.name,
             "tenant_id": str(tenant.id),
             "created_at": u.created_at.strftime("%d/%m/%Y"),
+            "_created_at_raw": u.created_at,
             "account_type": "sigarh",
         })
 
@@ -217,15 +241,18 @@ async def usuarios_con_hospital(
                         "id": str(u.id), "name": u.name, "email": u.email,
                         "role": u.role, "panel": u.panel, "is_active": u.is_active,
                         "tenant_name": tenant.name, "tenant_id": str(tenant.id),
-                        "created_at": u.created_at.strftime("%d/%m/%Y"), "account_type": "user",
+                        "created_at": u.created_at.strftime("%d/%m/%Y"), "_created_at_raw": u.created_at,
+                        "account_type": "user",
                     })
                 tenant_sigarh_users = (await tdb.scalars(select(UsuarioSigarh))).all()
+                roles_hospital = await _roles_por_lote(tdb, {u.perfil_id for u in tenant_sigarh_users if u.perfil_id})
                 for u in tenant_sigarh_users:
                     encontrados.append({
                         "id": str(u.id), "name": u.username, "email": u.email,
-                        "role": await _rol_nombre_sigarh(tdb, u.perfil_id), "panel": "sigarh",
+                        "role": roles_hospital.get(u.perfil_id, "SIGARH"), "panel": "sigarh",
                         "is_active": u.is_active, "tenant_name": tenant.name, "tenant_id": str(tenant.id),
-                        "created_at": u.created_at.strftime("%d/%m/%Y"), "account_type": "sigarh",
+                        "created_at": u.created_at.strftime("%d/%m/%Y"), "_created_at_raw": u.created_at,
+                        "account_type": "sigarh",
                     })
                 return encontrados, True
         except Exception:
@@ -239,8 +266,79 @@ async def usuarios_con_hospital(
         if not disponible:
             hospitales_no_disponibles.append(tenant.name)
 
+    return items, hospitales_no_disponibles
+
+
+@router.get("/usuarios/con-hospital", summary="Usuarios con datos de hospital, de todos los paneles")
+async def usuarios_con_hospital(
+    tenant_id: uuid.UUID | None = None,
+    vista: str | None = Query(None, pattern="^(admin|hospital)$"),
+    q: str | None = None,
+    is_active: bool | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    """Si se pasa `tenant_id`, solo consulta ESE hospital (y las cuentas
+    centrales que ya le pertenecen) en vez de recorrer todos -- la pantalla
+    de Usuarios lo usa cuando el admin ya eligió un hospital puntual, para
+    no pagar el costo de tocar cada base física solo para mostrar una.
+
+    `limit`/`offset` acotan lo que se DEVUELVE (antes siempre mandaba la
+    lista completa de todos los hospitales de una sola vez). Importante ser
+    honesto sobre el limite real de esto: los datos siguen viviendo en bases
+    físicas separadas por hospital, así que armar el total y poder ordenar
+    globalmente antes de paginar todavía requiere consultar cada hospital
+    -- no hay forma de empujarle un LIMIT/OFFSET a Postgres a través de
+    varias bases distintas sin un índice materializado aparte, que es un
+    cambio más grande que esto. Lo que sí se gana: la respuesta que baja al
+    navegador es del tamaño de una página, no de todo el sistema, y los
+    nombres de rol SIGARH se resuelven en lote (ver _roles_por_lote), no
+    uno por uno."""
+    items, hospitales_no_disponibles = await _reunir_todas_las_cuentas(db, tenant_id, vista)
+
+    # vista == "admin" ya viene filtrada por _reunir_todas_las_cuentas (ni
+    # siquiera toco ninguna base de hospital); solo falta el caso "hospital"
+    # aca, para excluir del pool combinado las admin centrales que si se
+    # trajeron cuando vista es None o "hospital".
+    if vista == "hospital":
+        items = [it for it in items if it["panel"] in ("app", "sigarh")]
+    if is_active is not None:
+        items = [it for it in items if it["is_active"] == is_active]
+    if q:
+        termino = q.strip().lower()
+        items = [it for it in items if termino in it["name"].lower() or termino in it["email"].lower()]
+
+    items.sort(key=lambda it: it["_created_at_raw"], reverse=True)
+    total = len(items)
+    pagina = items[offset:offset + limit]
+    for it in pagina:
+        del it["_created_at_raw"]
+
     return {
-        "items": items,
+        "items": pagina,
+        "total": total,
+        "hospitales_no_disponibles": hospitales_no_disponibles,
+        "es_parcial": len(hospitales_no_disponibles) > 0,
+    }
+
+
+@router.get("/usuarios/resumen", summary="Agregados de usuarios (total, activos, inactivos, roles)")
+async def usuarios_resumen(
+    tenant_id: uuid.UUID | None = None,
+    vista: str | None = Query(None, pattern="^(admin|hospital)$"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    items, hospitales_no_disponibles = await _reunir_todas_las_cuentas(db, tenant_id, vista)
+    if vista == "hospital":
+        items = [it for it in items if it["panel"] in ("app", "sigarh")]
+    return {
+        "total": len(items),
+        "activos": sum(1 for it in items if it["is_active"]),
+        "inactivos": sum(1 for it in items if not it["is_active"]),
+        "roles_unicos": len({it["role"] for it in items}),
         "hospitales_no_disponibles": hospitales_no_disponibles,
         "es_parcial": len(hospitales_no_disponibles) > 0,
     }
@@ -281,10 +379,11 @@ async def crear_usuario(
 async def actualizar_usuario(
     user_id: uuid.UUID,
     data: UserUpdate,
+    tenant_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
-    user = await update_user(db, user_id, data, current_user)
+    user = await update_user(db, user_id, data, current_user, tenant_id)
     if not user:
         raise HTTPException(404, detail="Usuario no encontrado")
     return user
@@ -294,10 +393,11 @@ async def actualizar_usuario(
 async def toggle_usuario(
     user_id: uuid.UUID,
     is_active: bool,
+    tenant_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
-    user = await toggle_user(db, user_id, is_active, current_user)
+    user = await toggle_user(db, user_id, is_active, current_user, tenant_id)
     if not user:
         raise HTTPException(404, detail="Usuario no encontrado")
     # UsuarioSigarh no tiene name/role/panel como User; devolvemos la forma
@@ -315,10 +415,11 @@ async def toggle_usuario(
 @router.delete("/usuarios/{user_id}", summary="Eliminar usuario")
 async def eliminar_usuario(
     user_id: uuid.UUID,
+    tenant_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
-    ok = await delete_user(db, user_id, current_user)
+    ok = await delete_user(db, user_id, current_user, tenant_id)
     if not ok:
         raise HTTPException(404, detail="Usuario no encontrado")
     return {"ok": True}

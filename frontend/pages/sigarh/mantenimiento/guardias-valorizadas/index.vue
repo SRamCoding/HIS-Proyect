@@ -136,7 +136,7 @@ watch(totalPages, n => { page.value = Math.min(page.value, n) })
 const confirmarEliminar = async (item: Item) => {
   if (!confirm('Eliminar esta guardia valorizada?')) return
   try { await api(`/sigarh/mantenimiento/guardias-valorizadas/${item.id}`, { method: 'DELETE', tenant: tenantId.value }); items.value = items.value.filter(i => i.id !== item.id) }
-  catch (e: any) { error.value = e?.data?.detail || 'No se pudo eliminar' }
+  catch (e: any) { error.value = apiErr(e, 'No se pudo eliminar') }
 }
 onMounted(async () => {
   try {
@@ -148,7 +148,7 @@ onMounted(async () => {
     }
     items.value = todas.sort((a, b) => `${a.tipo_guardia_nombre} ${a.nivel_remunerativo_nombre}`.localeCompare(`${b.tipo_guardia_nombre} ${b.nivel_remunerativo_nombre}`, 'es', { numeric: true }))
   }
-  catch (e: any) { error.value = e?.data?.detail || 'Error' }
+  catch (e: any) { error.value = apiErr(e, 'Error') }
   finally { loading.value = false }
 })
 </script>

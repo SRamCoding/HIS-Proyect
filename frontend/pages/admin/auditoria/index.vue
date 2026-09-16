@@ -25,6 +25,17 @@
       </div>
     </div>
 
+    <div v-if="fallbackPendientes > 0" class="form-card" style="padding: 0.875rem 1.25rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem; background: var(--alert-soft); border-color: var(--alert);">
+      <UIcon name="i-heroicons-exclamation-triangle" class="w-5 h-5 shrink-0" style="color: var(--alert)" />
+      <p style="color: var(--alert); font-size: 0.875rem; margin: 0; flex: 1">
+        {{ fallbackPendientes }} evento{{ fallbackPendientes === 1 ? '' : 's' }} de auditoría no se pudo{{ fallbackPendientes === 1 ? '' : 'ieron' }} registrar y espera{{ fallbackPendientes === 1 ? '' : 'n' }} reintento.
+      </p>
+      <button class="btn-secondary" :disabled="reintentandoFallback" @click="reintentarFallback">
+        <UIcon name="i-heroicons-arrow-path" class="w-4 h-4" :class="{ 'animate-spin': reintentandoFallback }" />
+        Reintentar ahora
+      </button>
+    </div>
+
     <!-- Dashboard Widgets Grid -->
     <div class="widgets-grid">
       <!-- Total Events -->
@@ -532,6 +543,31 @@ const loadResumen = async () => {
   }
 }
 
+const fallbackPendientes = ref(0)
+const reintentandoFallback = ref(false)
+
+const loadFallbackEstado = async () => {
+  try {
+    const r = await api<{ pendientes: number }>('/admin/auditoria/fallback')
+    fallbackPendientes.value = r.pendientes
+  } catch {
+    // no bloquea el resto de la pantalla si falla esta consulta puntual
+  }
+}
+
+const reintentarFallback = async () => {
+  reintentandoFallback.value = true
+  try {
+    await api('/admin/auditoria/fallback/reintentar', { method: 'POST' })
+    await Promise.all([loadFallbackEstado(), loadData(), loadResumen()])
+  } catch {
+    // si el reintento mismo falla, el contador se vuelve a pedir igual
+    await loadFallbackEstado()
+  } finally {
+    reintentandoFallback.value = false
+  }
+}
+
 let searchDebounce: ReturnType<typeof setTimeout> | null = null
 watch(searchQuery, () => {
   if (searchDebounce) clearTimeout(searchDebounce)
@@ -543,6 +579,7 @@ watch(currentPage, () => loadData())
 onMounted(() => {
   loadData()
   loadResumen()
+  loadFallbackEstado()
 })
 </script>
 

@@ -79,17 +79,25 @@ def require_module_jwt(module_code: str):
         # código del módulo padre aunque module_code venga con submódulo.
         modulo_contratado = modulo_padre(module_code)
 
-        # Verificar que el módulo está activo para ese tenant
+        # Verificar que el modulo esta activo para ese tenant Y en el
+        # catalogo global (modules.is_active). Antes solo se miraba la
+        # asignacion del hospital: apagar un modulo en el catalogo (por un
+        # incidente, un bug de seguridad, etc.) no cortaba el acceso de
+        # ningun hospital que ya lo tuviera contratado -- el interruptor
+        # global no tenia ningun efecto real en tiempo de peticion, solo
+        # bloqueaba contratar el modulo de cero.
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 text("""
                     SELECT tm.module_code
                     FROM tenant_modules tm
                     JOIN tenants t ON t.id = tm.tenant_id
+                    JOIN modules m ON m.code = tm.module_code
                     WHERE t.id = :tenant_id
                     AND tm.module_code = :module_code
                     AND tm.is_active = true
                     AND t.is_active = true
+                    AND m.is_active = true
                 """),
                 {"tenant_id": tenant_id, "module_code": modulo_contratado}
             )

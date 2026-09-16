@@ -9,7 +9,6 @@ from app.core.database import Base
 class User(Base):
     """
     Usuario global del sistema.
-    Equivalente al modelo User de Laravel con su SystemRole.
     """
     __tablename__ = "users"
 
