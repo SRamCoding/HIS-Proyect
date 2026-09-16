@@ -335,15 +335,19 @@ const handleDelete = async () => {
 
 onMounted(async () => {
   try {
-    const [users, hospitals] = await Promise.all([
-      api<any[]>('/admin/usuarios/con-hospital'),
+    // Antes esto descargaba /usuarios/con-hospital COMPLETO (todos los
+    // hospitales) solo para encontrar un usuario por id. Si la lista ya
+    // conocia su tenant_id (viene en la URL, ver editUser en index.vue) se
+    // pide directo a ese hospital; si no, el backend igual lo resuelve
+    // (recorriendo, como antes) via el mismo endpoint dedicado.
+    const tenantIdQuery = (route.query.tenant_id as string) || ''
+    const usuarioUrl = tenantIdQuery
+      ? `/admin/usuarios/${id.value}?tenant_id=${tenantIdQuery}`
+      : `/admin/usuarios/${id.value}`
+    const [user, hospitals] = await Promise.all([
+      api<any>(usuarioUrl),
       api<Hospital[]>('/admin/hospitales'),
     ])
-    const user = users.find(u => u.id === id.value)
-    if (!user) {
-      saveError.value = 'Usuario no encontrado'
-      return
-    }
     form.name = user.name
     form.email = user.email
     form.role = user.role
@@ -361,26 +365,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.pwd-checklist {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.9rem;
-  list-style: none;
-  margin: 0.5rem 0 0;
-  padding: 0;
-}
-.pwd-checklist li {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.78rem;
-  color: var(--ink-soft);
-  transition: color 0.15s ease;
-}
-.pwd-checklist li.ok {
-  color: var(--green, #16a34a);
-  font-weight: 600;
-}
 
 .btn-danger {
   display: inline-flex;
@@ -399,37 +383,9 @@ onMounted(async () => {
 .btn-danger:hover:not(:disabled) { background: var(--alert-dark); }
 .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
 
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.btn-secondary:hover { background: var(--mist); }
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 1rem;
-}
 .modal-content { max-width: 480px; width: 100%; padding: 1.5rem; box-shadow: var(--shadow-lg); }
 .modal-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; }
-.modal-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.modal-title { font-size: 1.125rem; font-weight: 600; color: var(--ink); margin: 0; }
+
 .modal-body { margin-bottom: 1.25rem; color: var(--ink); }
-.modal-footer { display: flex; justify-content: flex-end; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+
 </style>

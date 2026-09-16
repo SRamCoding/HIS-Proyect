@@ -50,6 +50,13 @@ services:
     restart: unless-stopped
     env_file:
       - ../backend/.env
+    environment:
+      # Mismo motivo que en "worker": el .env trae "localhost" pensado para
+      # cuando corres uvicorn directo en el host; este contenedor necesita
+      # los nombres de servicio de la red de docker-compose.
+      DATABASE_URL: postgresql+asyncpg://erp_user:erp_password@postgres:5432/erp_central
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://erp_user:erp_password@rabbitmq:5672/
     ports:
       - "8000:8000"
     volumes:
@@ -70,6 +77,14 @@ services:
     restart: unless-stopped
     env_file:
       - ../backend/.env
+    environment:
+      # El .env trae "localhost" porque el backend normalmente corre con
+      # uvicorn directo en el host (conectando a estos servicios por sus
+      # puertos publicados). Este contenedor SI vive dentro de la red de
+      # docker-compose, asi que debe hablarles por su nombre de servicio.
+      DATABASE_URL: postgresql+asyncpg://erp_user:erp_password@postgres:5432/erp_central
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://erp_user:erp_password@rabbitmq:5672/
     volumes:
       - ../backend:/app
     depends_on:

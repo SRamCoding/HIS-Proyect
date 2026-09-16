@@ -598,7 +598,7 @@ const handleSave = async () => {
     })
     router.push('/admin/niveles-hospitalarios')
   } catch (e: any) {
-    saveError.value = e?.data?.detail || 'No se pudo guardar el nivel'
+    saveError.value = apiErr(e, 'No se pudo guardar el nivel')
   } finally {
     saving.value = false
   }
@@ -642,22 +642,8 @@ onMounted(async () => {
 }
 
 /* Grid Layout */
-.edit-grid {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 2rem;
-}
 
 /* Header */
-.header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
 
 .level-badge {
   display: inline-block;
@@ -669,75 +655,20 @@ onMounted(async () => {
 }
 
 /* Loading State */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  gap: 1rem;
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-}
 
 /* Cards */
-.edit-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  animation: slideIn 0.3s ease;
-}
 
 /* Form */
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
-}
 
 /* Color Picker */
-.color-picker-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
 
 /* Status Toggle */
-.status-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem;
-  background: var(--mist);
-  border-radius: 12px;
-}
 
 /* Module Controls */
-.module-controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-}
 
 /* Module Grid */
-.module-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.625rem;
-}
 
 /* Navigation Actions */
-.edit-actions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--line);
-}
 
 /* Info Widget */
 .info-item {
@@ -770,16 +701,6 @@ onMounted(async () => {
   font-size: 0.6875rem;
   font-weight: 700;
   font-family: monospace;
-}
-
-.status-badge-mini {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.125rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.6875rem;
-  font-weight: 500;
 }
 
 /* Summary Widget */
@@ -883,20 +804,6 @@ onMounted(async () => {
 }
 
 /* Quick Actions Widget */
-.quick-action {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--ink);
-  font-size: 0.8125rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
 
 /* Responsive */
 @media (max-width: 1024px) {

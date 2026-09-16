@@ -61,10 +61,13 @@ async def _bd_fisica_sigarh(request: Request) -> str | None:
     return tenant.database_name
 
 
-async def get_db_central() -> AsyncSession:
+async def get_db_central(request: Request) -> AsyncSession:
     """Siempre la BD central. Uso exclusivo de get_current_user (necesita
     resolver Tenant/User centrales antes de saber a qué hospital pertenece
     la petición); nunca la use un router de negocio."""
+    from app.core.audit import init_audit_batch, flush_pending_audits
+
+    init_audit_batch()
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -72,12 +75,17 @@ async def get_db_central() -> AsyncSession:
         except Exception:
             await session.rollback()
             raise
+        else:
+            ip = request.client.host if request.client else None
+            await flush_pending_audits(ip)
         finally:
             await session.close()
 
 
 async def get_db(request: Request) -> AsyncSession:
     """SIGARH y APP comparten la base hospitalaria; admin usa la central."""
+    from app.core.audit import init_audit_batch, flush_pending_audits
+
     session_factory = AsyncSessionLocal
     if request.url.path.startswith(("/sigarh/", "/app/")):
         database_name = await _bd_fisica_sigarh(request)
@@ -85,6 +93,7 @@ async def get_db(request: Request) -> AsyncSession:
             from app.core.tenant_db import get_tenant_sessionmaker
             session_factory = get_tenant_sessionmaker(database_name)
 
+    init_audit_batch()
     async with session_factory() as session:
         try:
             yield session
@@ -92,5 +101,8 @@ async def get_db(request: Request) -> AsyncSession:
         except Exception:
             await session.rollback()
             raise
+        else:
+            ip = request.client.host if request.client else None
+            await flush_pending_audits(ip)
         finally:
             await session.close()

@@ -1,39 +1,44 @@
 <!-- frontend/pages/admin/reportes/exportar.vue -->
 <template>
-  <div>
-    <div class="flex items-center gap-2 text-sm mb-2" style="color: var(--ink-soft)">
-      <span>Reportes</span><span>/</span><span>Exportar Datos</span>
+  <div class="auditoria-container">
+    <div class="page-header">
+      <div class="header-left">
+        <div class="header-icon" style="background: var(--amber-soft)">
+          <UIcon name="i-heroicons-arrow-down-tray" class="w-5 h-5" style="color: var(--amber)" />
+        </div>
+        <div>
+          <h1 class="page-title">Exportar Datos</h1>
+          <p class="page-subtitle">Descarga hospitales, usuarios o el registro de auditoría en formato CSV.</p>
+        </div>
+      </div>
     </div>
-    <h1 class="text-lg font-semibold mb-1" style="color: var(--ink)">Exportar Datos</h1>
-    <p class="text-sm mb-4" style="color: var(--ink-soft)">
-      Descarga cualquier tabla del sistema en formato CSV.
-    </p>
 
-    <div class="p-4 mb-4" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-      <label class="text-xs block mb-1" style="color: var(--ink-soft)">Selecciona qué exportar</label>
-      <select v-model="tabla" class="input-clinical w-full max-w-xs">
+    <div class="table-card" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 1.5rem; max-width: 420px;">
+      <label class="detail-label">Selecciona qué exportar</label>
+      <select v-model="tabla" class="input-clinical" style="width: 100%;">
         <option value="hospitales">Hospitales</option>
         <option value="usuarios">Usuarios</option>
         <option value="auditoria">Auditoría del ERP</option>
       </select>
 
-      <div v-if="tabla === 'auditoria'" class="mt-3">
-        <label class="text-xs block mb-1" style="color: var(--ink-soft)">Límite de registros</label>
-        <select v-model.number="auditLimit" class="input-clinical w-full max-w-xs">
+      <div v-if="tabla === 'auditoria'" style="margin-top: 0.75rem;">
+        <label class="detail-label">Límite de registros</label>
+        <select v-model.number="auditLimit" class="input-clinical" style="width: 100%;">
           <option :value="100">Últimos 100</option>
           <option :value="500">Últimos 500</option>
           <option :value="1000">Últimos 1000</option>
         </select>
       </div>
 
-      <div class="mt-4">
+      <div style="margin-top: 1rem;">
         <button class="btn-primary" :disabled="loading" @click="exportar">
           {{ loading ? 'Generando...' : 'Descargar CSV' }}
         </button>
       </div>
 
-      <p v-if="error" class="text-sm mt-3" style="color: var(--alert)">{{ error }}</p>
-      <p v-if="success" class="text-sm mt-3" style="color: var(--teal)">Archivo descargado correctamente.</p>
+      <p v-if="error" style="color: var(--alert); font-size: 0.875rem; margin-top: 0.75rem;">{{ error }}</p>
+      <p v-if="success" style="color: var(--teal); font-size: 0.875rem; margin-top: 0.75rem;">Archivo descargado correctamente.</p>
+      <p v-if="successWarning" style="color: var(--amber); font-size: 0.875rem; margin-top: 0.5rem;">{{ successWarning }}</p>
     </div>
   </div>
 </template>
@@ -81,11 +86,17 @@ const auditLimit = ref(500)
 const loading = ref(false)
 const error = ref('')
 const success = ref(false)
+const successWarning = ref('')
+
+// Si una celda empieza con =, +, -, @ o un tab, Excel/Sheets puede
+// interpretarla como formula al abrir el CSV ("inyeccion de formulas" via
+// exports). Se antepone un apostrofe para forzar que se lea como texto.
+const celdaSegura = (v: string) => /^[=+\-@\t]/.test(v) ? `'${v}` : v
 
 const downloadCsv = (headers: string[], rows: string[][], filename: string) => {
   const csv = [
     headers.join(','),
-    ...rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')),
+    ...rows.map(r => r.map(v => `"${celdaSegura(String(v ?? '')).replace(/"/g, '""')}"`).join(',')),
   ].join('\n')
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -100,10 +111,19 @@ const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
+// La auditoria si necesita hora exacta (para reconstruir el orden de los
+// eventos) -- reducirla a dia/mes/año, como formatDate, perdia esa parte.
+const formatDateTime = (date: string) => {
+  return new Date(date).toLocaleString('es-PE', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+}
+
 const exportar = async () => {
   loading.value = true
   error.value = ''
   success.value = false
+  successWarning.value = ''
   const today = new Date().toISOString().slice(0, 10)
 
   try {
@@ -123,10 +143,10 @@ const exportar = async () => {
         `hospitales_${today}.csv`
       )
     } else if (tabla.value === 'usuarios') {
-      const data = await api<UsuarioConHospital[]>('/admin/usuarios/con-hospital')
+      const resp = await api<{ items: UsuarioConHospital[]; hospitales_no_disponibles: string[]; es_parcial: boolean }>('/admin/usuarios/con-hospital')
       downloadCsv(
         ['Nombre', 'Email', 'Rol', 'Panel', 'Estado', 'Hospital', 'Registrado'],
-        data.map(u => [
+        resp.items.map(u => [
           u.name,
           u.email,
           u.role,
@@ -137,12 +157,15 @@ const exportar = async () => {
         ]),
         `usuarios_${today}.csv`
       )
+      if (resp.es_parcial) {
+        successWarning.value = `Atención: no se pudo consultar ${resp.hospitales_no_disponibles.join(', ')}. El CSV no incluye esos hospitales.`
+      }
     } else {
-      const data = await api<AuditLog[]>(`/admin/auditoria?limit=${auditLimit.value}`)
+      const resp = await api<{ items: AuditLog[]; total: number }>(`/admin/auditoria?limit=${auditLimit.value}`)
       downloadCsv(
-        ['Fecha', 'Usuario', 'Hospital', 'Acción', 'Modelo', 'Descripción', 'IP'],
-        data.map(l => [
-          formatDate(l.created_at),
+        ['Fecha y hora', 'Usuario', 'Hospital', 'Acción', 'Modelo', 'Descripción', 'IP'],
+        resp.items.map(l => [
+          formatDateTime(l.created_at),
           l.user_name || 'Sistema',
           l.tenant_name || '—',
           l.action,

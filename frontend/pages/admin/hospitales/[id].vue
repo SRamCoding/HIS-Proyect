@@ -54,13 +54,6 @@
                 </p>
               </div>
             </div>
-            <button
-              class="btn-danger"
-              @click="confirmDelete"
-            >
-              <UIcon name="i-heroicons-trash" class="w-4 h-4" />
-              Eliminar
-            </button>
           </div>
         </div>
 
@@ -73,6 +66,15 @@
         </div>
 
         <template v-else>
+          <div v-if="provisioningStatus === 'pendiente'" class="error-banner" style="background: var(--mist); color: var(--ink); border-color: var(--line)">
+            <UIcon name="i-heroicons-arrow-path" class="w-4 h-4 shrink-0 animate-spin" />
+            Este hospital todavía se está aprovisionando (creando su base de datos y catálogos iniciales). Algunos datos pueden no estar disponibles todavía.
+          </div>
+          <div v-else-if="provisioningStatus === 'error'" class="error-banner">
+            <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
+            El aprovisionamiento de este hospital falló{{ provisioningError ? `: ${provisioningError}` : '' }}.
+          </div>
+
           <!-- Step 1: Identidad -->
           <section class="edit-card" v-show="currentStep === 0">
             <div class="card-header">
@@ -526,31 +528,6 @@
       </div>
     </div>
 
-    <!-- Delete Confirmation Modal -->
-    <div v-if="showDeleteModal" class="modal-overlay" @click.self="showDeleteModal = false">
-      <div class="modal-content" style="background: var(--paper); border-radius: var(--radius-lg)">
-        <div class="modal-header">
-          <div class="modal-icon" style="background: var(--alert-soft)">
-            <UIcon name="i-heroicons-exclamation-triangle" class="w-6 h-6" style="color: var(--alert)" />
-          </div>
-          <h3 class="modal-title">Confirmar Eliminación</h3>
-        </div>
-        <p class="modal-body">
-          ¿Estás seguro de que deseas eliminar el hospital <strong>{{ form.name }}</strong>?
-          <br>
-          <span style="color: var(--ink-soft); font-size: 0.875rem">
-            Esta acción no se puede deshacer y eliminará todos los datos asociados.
-          </span>
-        </p>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="showDeleteModal = false">Cancelar</button>
-          <button class="btn-danger" @click="handleDelete">
-            <UIcon name="i-heroicons-trash" class="w-4 h-4" />
-            Eliminar Permanentemente
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -578,6 +555,8 @@ interface Hospital {
   values: string
   is_active: boolean
   active_modules: string[]
+  provisioning_status?: string
+  provisioning_error?: string | null
 }
 
 const { api } = useApi()
@@ -591,7 +570,8 @@ const currentStep = ref(0)
 const loading = ref(true)
 const saving = ref(false)
 const saveError = ref('')
-const showDeleteModal = ref(false)
+const provisioningStatus = ref('listo')
+const provisioningError = ref<string | null>(null)
 
 const searchModApp = ref('')
 const searchModSigarh = ref('')
@@ -689,21 +669,6 @@ const irA = (path: string) => {
   }
 }
 
-const confirmDelete = () => {
-  showDeleteModal.value = true
-}
-
-const handleDelete = async () => {
-  try {
-    await api(`/admin/hospitales/${id.value}`, { method: 'DELETE' })
-    router.push('/admin/hospitales')
-  } catch (e: any) {
-    saveError.value = e?.data?.detail || 'No se pudo eliminar el hospital'
-  } finally {
-    showDeleteModal.value = false
-  }
-}
-
 const handleSave = async () => {
   if (!validateStep1()) {
     currentStep.value = 0
@@ -712,6 +677,13 @@ const handleSave = async () => {
 
   saving.value = true
   saveError.value = ''
+
+  // El guardado son 2 peticiones separadas (identidad y modulos, cada una
+  // con su propio endpoint). Si la primera pasa y la segunda falla, la
+  // identidad YA quedo guardada -- antes se mostraba un solo mensaje
+  // generico ("no se pudo guardar el hospital") que sugeria que nada se
+  // habia aplicado, cuando en realidad una parte si. Se avisa cual parte
+  // fallo para que el admin sepa exactamente que reintentar.
   try {
     await api(`/admin/hospitales/${id.value}`, {
       method: 'PATCH',
@@ -728,7 +700,13 @@ const handleSave = async () => {
         is_active: form.is_active,
       },
     })
+  } catch (e: any) {
+    saveError.value = apiErr(e, 'No se pudo guardar la identidad del hospital')
+    saving.value = false
+    return
+  }
 
+  try {
     await api('/admin/hospitales/modulos', {
       method: 'PUT',
       body: {
@@ -736,13 +714,14 @@ const handleSave = async () => {
         module_codes: modulosActivos.value,
       },
     })
-
-    router.push('/admin/hospitales')
   } catch (e: any) {
-    saveError.value = e?.data?.detail || 'No se pudo guardar el hospital'
-  } finally {
+    saveError.value = `Los datos generales se guardaron, pero los módulos no: ${apiErr(e, 'error desconocido')}`
     saving.value = false
+    return
   }
+
+  saving.value = false
+  router.push('/admin/hospitales')
 }
 
 onMounted(async () => {
@@ -765,8 +744,10 @@ onMounted(async () => {
     subdomain.value = hospital.domain?.split('.')[0] || ''
     modulosActivos.value = hospital.active_modules || []
     todosModulos.value = modulos
+    provisioningStatus.value = hospital.provisioning_status || 'listo'
+    provisioningError.value = hospital.provisioning_error || null
   } catch (e: any) {
-    saveError.value = e?.data?.detail || 'No se pudo cargar el hospital'
+    saveError.value = apiErr(e, 'No se pudo cargar el hospital')
   } finally {
     loading.value = false
   }
@@ -781,22 +762,8 @@ onMounted(async () => {
 }
 
 /* Grid */
-.edit-grid {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 2rem;
-}
 
 /* Header */
-.header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
 
 .domain-display {
   font-size: 0.8125rem;
@@ -844,21 +811,8 @@ onMounted(async () => {
 }
 
 /* Cards */
-.edit-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  animation: slideIn 0.3s ease;
-}
 
 /* Form */
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
-}
 
 /* Subdomain Display */
 .subdomain-display-field {
@@ -948,11 +902,6 @@ onMounted(async () => {
 }
 
 /* Module Grid */
-.module-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.625rem;
-}
 
 .module-check {
   display: flex;
@@ -989,21 +938,8 @@ onMounted(async () => {
 }
 
 /* Actions */
-.edit-actions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--line);
-}
 
 /* Summary Widget */
-.widget-progress {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
 
 .distribution-fill.app {
   background: var(--green);
@@ -1014,33 +950,8 @@ onMounted(async () => {
 }
 
 /* Quick Access Widget */
-.quick-action {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--ink);
-  font-size: 0.8125rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
 
 /* Loading State */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  gap: 1rem;
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-}
 
 /* Modal */
 .modal-overlay {

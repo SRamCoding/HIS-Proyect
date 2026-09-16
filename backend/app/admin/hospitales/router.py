@@ -1,5 +1,4 @@
 import uuid
-import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -11,10 +10,10 @@ from app.core.redis import get_redis
 from app.core.dependencies import get_admin_user
 from app.tenants.hospitales.models import Tenant
 from app.tenants.hospitales.schemas import TenantCreate, TenantUpdate, TenantResponse
-from app.tenants.hospitales.service import create_tenant, get_tenant_by_domain, update_tenant_modules
-from app.admin.hospitales.schemas import HospitalListItem, ModuleToggle
+from app.tenants.hospitales.service import crear_tenant_rapido, get_tenant_by_domain, update_tenant_modules
+from app.admin.hospitales.schemas import HospitalListItem, ModuleToggle, ActiveToggle
 from app.admin.hospitales.service import get_all_hospitals, toggle_tenant_active
-from app.admin.auditoria.service import create_audit_log
+from app.admin.notificaciones.service import crear_notificacion
 
 router = APIRouter()
 
@@ -30,6 +29,7 @@ async def listar_hospitales(
             id=t.id, name=t.name, domain=t.domain,
             hospital_level=t.hospital_level, is_active=t.is_active,
             active_modules=t.active_module_codes, created_at=t.created_at,
+            provisioning_status=t.provisioning_status, provisioning_error=t.provisioning_error,
         )
         for t in tenants
     ]
@@ -44,26 +44,17 @@ async def crear_hospital(
     existing = await get_tenant_by_domain(db, data.domain)
     if existing:
         raise HTTPException(400, detail=f"Ya existe un hospital con el dominio '{data.domain}'")
-    tenant = await create_tenant(db, data)
-    created_tenant_id = tenant.id
-    try:
-        await create_audit_log(
-            db, user_id=current_user.get("sub"), user_name=current_user.get("name") or current_user.get("email"),
-            tenant_id=tenant.id, tenant_name=tenant.name, action="tenant_created",
-            model="Tenant", model_id=str(tenant.id),
-            description=f"Hospital creado: {tenant.name} ({tenant.domain})",
-            new_values=data.model_dump(exclude={"admin_password", "sigarh_password"}),
-        )
-    except Exception:
-        await db.rollback()
-        logging.getLogger(__name__).exception(
-            "El hospital %s se creó, pero no se pudo registrar su auditoría", created_tenant_id
-        )
-        tenant = await db.scalar(
-            select(Tenant).options(selectinload(Tenant.modules)).where(
-                Tenant.id == created_tenant_id
-            )
-        )
+    tenant = await crear_tenant_rapido(db, data)
+
+    from workers.tasks import aprovisionar_hospital
+    aprovisionar_hospital.delay(
+        tenant_id=str(tenant.id),
+        database_name=tenant.database_name,
+        hospital_level=data.hospital_level,
+        active_modules=data.active_modules,
+        admin_name=data.admin_name, admin_email=data.admin_email, admin_password=data.admin_password,
+        sigarh_name=data.sigarh_name, sigarh_email=data.sigarh_email, sigarh_password=data.sigarh_password,
+    )
     return tenant
 
 
@@ -96,6 +87,8 @@ async def obtener_hospital(
         "is_active": tenant.is_active,
         "active_modules": tenant.active_module_codes,
         "created_at": tenant.created_at.isoformat(),
+        "provisioning_status": tenant.provisioning_status,
+        "provisioning_error": tenant.provisioning_error,
     }
 
 
@@ -112,39 +105,30 @@ async def actualizar_hospital(
         raise HTTPException(404, detail="Hospital no encontrado")
     # TenantUpdate es la lista blanca de campos editables (hereda de TenantBase);
     # antes se aceptaba un dict libre y se aplicaba con setattr a cualquier
-    # atributo del modelo, incluidos campos internos como schema_name/is_active.
+    # atributo del modelo, incluidos campos internos como schema_name. is_active
+    # SI esta en la lista blanca (el formulario de edicion lo envia junto con el
+    # resto de la identidad), pero domain/active_modules tienen su propio flujo.
     cambios = data.model_dump(exclude_unset=True, exclude={"active_modules", "domain"})
-    anteriores = {campo: getattr(tenant, campo) for campo in cambios}
     for field, value in cambios.items():
         setattr(tenant, field, value)
     await db.commit()
-    if cambios:
-        await create_audit_log(
-            db, user_id=current_user.get("sub"), user_name=current_user.get("name") or current_user.get("email"),
-            tenant_id=tenant.id, tenant_name=tenant.name, action="tenant_updated",
-            model="Tenant", model_id=str(tenant.id),
-            description=f"Hospital actualizado: {tenant.name}",
-            old_values=anteriores, new_values=cambios,
-        )
     return {"ok": True}
 
 
 @router.patch("/hospitales/{tenant_id}/toggle", summary="Activar/desactivar hospital")
 async def toggle_hospital(
     tenant_id: uuid.UUID,
-    is_active: bool,
+    data: ActiveToggle,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
-    tenant = await toggle_tenant_active(db, tenant_id, is_active)
+    tenant = await toggle_tenant_active(db, tenant_id, data.is_active)
     if not tenant:
         raise HTTPException(404, detail="Hospital no encontrado")
-    await create_audit_log(
-        db, user_id=current_user.get("sub"), user_name=current_user.get("name") or current_user.get("email"),
-        tenant_id=tenant.id, tenant_name=tenant.name,
-        action="tenant_activated" if is_active else "tenant_deactivated",
-        model="Tenant", model_id=str(tenant.id),
-        description=f"Hospital {'activado' if is_active else 'desactivado'}: {tenant.name}",
+    await crear_notificacion(
+        f"Hospital {'activado' if data.is_active else 'desactivado'}: {tenant.name}",
+        nivel="alerta" if not data.is_active else "info",
+        link=f"/admin/hospitales/{tenant.id}",
     )
     return {"ok": True, "is_active": tenant.is_active}
 
@@ -156,14 +140,12 @@ async def actualizar_modulos(
     redis: Redis = Depends(get_redis),
     current_user: dict = Depends(get_admin_user),
 ):
-    tenant = await db.scalar(select(Tenant).where(Tenant.id == data.tenant_id))
-    anteriores = tenant.active_module_codes if tenant else []
+    tenant = await db.get(Tenant, data.tenant_id)
     await update_tenant_modules(db, redis, data.tenant_id, data.module_codes)
-    await create_audit_log(
-        db, user_id=current_user.get("sub"), user_name=current_user.get("name") or current_user.get("email"),
-        tenant_id=data.tenant_id, tenant_name=tenant.name if tenant else None,
-        action="tenant_modules_updated", model="Tenant", model_id=str(data.tenant_id),
-        description=f"Módulos actualizados para {tenant.name if tenant else data.tenant_id}",
-        old_values={"modulos": anteriores}, new_values={"modulos": data.module_codes},
+    await crear_notificacion(
+        f"Módulos actualizados: {tenant.name if tenant else data.tenant_id}",
+        f"{len(data.module_codes)} módulos activos",
+        nivel="info",
+        link=f"/admin/hospitales/{data.tenant_id}",
     )
     return {"ok": True, "message": "Módulos actualizados correctamente"}

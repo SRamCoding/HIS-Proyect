@@ -16,6 +16,8 @@ from app.admin.roles.router import router as admin_roles_router
 from app.admin.auditoria.router import router as admin_auditoria_router
 from app.admin.modulos.router import router as admin_modulos_router
 from app.admin.reportes.router import router as admin_reportes_router
+from app.admin.notificaciones.router import router as admin_notificaciones_router
+from app.admin.perfil.router import router as admin_perfil_router
 
 # ── SIGARH ──────────────────────────────────────────────────
 from app.sigarh.mantenimiento.router import router as sigarh_mant_router
@@ -93,6 +95,8 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 # Admin — cada submódulo registrado por separado, mismo patrón que SIGARH
 app.include_router(admin_dashboard_router, prefix="/admin", tags=["admin-dashboard"])
 app.include_router(admin_hospitales_router, prefix="/admin", tags=["admin-hospitales"])
+app.include_router(admin_notificaciones_router, prefix="/admin", tags=["admin-notificaciones"])
+app.include_router(admin_perfil_router, prefix="/admin", tags=["admin-perfil"])
 app.include_router(admin_usuarios_router, prefix="/admin", tags=["admin-usuarios"])
 app.include_router(admin_niveles_router, prefix="/admin", tags=["admin-niveles-hospitalarios"])
 app.include_router(admin_roles_router, prefix="/admin", tags=["admin-roles"])

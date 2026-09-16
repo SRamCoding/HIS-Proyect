@@ -135,26 +135,32 @@
                 </div>
               </td>
               <td>
-                <span class="badge" :class="hospital.is_active ? 'badge--ok' : 'badge--neutral'">
+                <span v-if="hospital.provisioning_status === 'pendiente'" class="badge badge--neutral" title="Creando la base de datos y los catálogos iniciales">
+                  <UIcon name="i-heroicons-arrow-path" class="w-3 h-3 animate-spin" style="display: inline; vertical-align: -1px" /> Aprovisionando...
+                </span>
+                <span v-else-if="hospital.provisioning_status === 'error'" class="badge badge--alert" :title="hospital.provisioning_error || 'Error al aprovisionar'">
+                  Error al aprovisionar
+                </span>
+                <span v-else class="badge" :class="hospital.is_active ? 'badge--ok' : 'badge--neutral'">
                   {{ hospital.is_active ? 'Activo' : 'Inactivo' }}
                 </span>
               </td>
               <td style="text-align: right">
                 <div class="sigarh-actions">
-                  <button class="sigarh-action-btn" title="Ver landing" @click="irA(hospital, '')">
+                  <button class="sigarh-action-btn" title="Ver landing" :disabled="hospital.provisioning_status === 'pendiente'" @click="irA(hospital, '')">
                     <UIcon name="i-heroicons-globe-alt" class="w-4 h-4" style="color: var(--navy)" />
                   </button>
-                  <button class="sigarh-action-btn" title="Panel Hospitalario" @click="irA(hospital, '/app')">
+                  <button class="sigarh-action-btn" title="Panel Hospitalario" :disabled="hospital.provisioning_status === 'pendiente'" @click="irA(hospital, '/app')">
                     <UIcon name="i-heroicons-squares-2x2" class="w-4 h-4" style="color: var(--teal)" />
                   </button>
-                  <button class="sigarh-action-btn" title="Panel SIGARH" @click="irA(hospital, '/sigarh')">
+                  <button class="sigarh-action-btn" title="Panel SIGARH" :disabled="hospital.provisioning_status === 'pendiente'" @click="irA(hospital, '/sigarh')">
                     <UIcon name="i-heroicons-folder-open" class="w-4 h-4" style="color: var(--purple)" />
                   </button>
                   <NuxtLink :to="`/admin/hospitales/${hospital.id}`" class="sigarh-action-btn" title="Editar hospital">
                     <UIcon name="i-heroicons-pencil-square" class="w-4 h-4" style="color: var(--amber)" />
                   </NuxtLink>
                   <button class="sigarh-action-btn danger" :title="hospital.is_active ? 'Desactivar' : 'Activar'"
-                    :disabled="togglingId === hospital.id" @click="handleToggle(hospital)">
+                    :disabled="togglingId === hospital.id || hospital.provisioning_status === 'pendiente'" @click="handleToggle(hospital)">
                     <UIcon v-if="togglingId === hospital.id" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
                     <UIcon v-else :name="hospital.is_active ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'" class="w-4 h-4" style="color: var(--alert)" />
                   </button>
@@ -183,6 +189,8 @@ interface Hospital {
   active_modules: string[]
   is_active: boolean
   created_at: string
+  provisioning_status?: string
+  provisioning_error?: string | null
 }
 
 const { api } = useApi()
@@ -254,7 +262,7 @@ const loadHospitales = async () => {
   loading.value = true
   error.value = ''
   try { hospitales.value = await api<Hospital[]>('/admin/hospitales') }
-  catch (e: any) { error.value = e?.data?.detail || 'Error de conexion' }
+  catch (e: any) { error.value = apiErr(e, 'Error de conexión') }
   finally { loading.value = false }
 }
 
@@ -263,7 +271,7 @@ const handleToggle = async (hospital: Hospital) => {
   try {
     await api(`/admin/hospitales/${hospital.id}/toggle`, { method: 'PATCH', body: { is_active: !hospital.is_active } })
     hospital.is_active = !hospital.is_active
-  } catch (e: any) { error.value = e?.data?.detail || 'No se pudo actualizar el estado' }
+  } catch (e: any) { error.value = apiErr(e, 'No se pudo actualizar el estado') }
   finally { togglingId.value = null }
 }
 

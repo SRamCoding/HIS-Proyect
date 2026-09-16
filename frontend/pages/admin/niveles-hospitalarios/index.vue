@@ -263,7 +263,7 @@ const toggleStatus = async (nivel: Nivel) => {
   try {
     await api(`/admin/niveles-hospitalarios/${nivel.id}`, { method: 'PATCH', body: { is_active: !nivel.is_active } })
     nivel.is_active = !nivel.is_active
-  } catch (e: any) { error.value = e?.data?.detail || 'Error al actualizar el estado' }
+  } catch (e: any) { error.value = apiErr(e, 'Error al actualizar el estado') }
 }
 
 const confirmDelete = (nivel: Nivel) => { nivelToDelete.value = nivel; showDeleteModal.value = true }
@@ -275,14 +275,14 @@ const deleteNivel = async () => {
     niveles.value = niveles.value.filter(n => n.id !== nivelToDelete.value?.id)
     showDeleteModal.value = false
     nivelToDelete.value = null
-  } catch (e: any) { error.value = e?.data?.detail || 'Error al eliminar el nivel' }
+  } catch (e: any) { error.value = apiErr(e, 'Error al eliminar el nivel') }
 }
 
 const fetchData = async () => {
   loading.value = true
   error.value = ''
   try { niveles.value = await api<Nivel[]>('/admin/niveles-hospitalarios') }
-  catch (e: any) { error.value = e?.data?.detail || 'Error de conexion' }
+  catch (e: any) { error.value = apiErr(e, 'Error de conexión') }
   finally { loading.value = false }
 }
 

@@ -375,6 +375,16 @@ class DependenciaResponse(BaseModel):
     created_at: datetime
 
 
+def validar_email(value: str) -> str:
+    """Compartido por perfil/usuarios/hospitales: antes cada esquema solo
+    normalizaba mayusculas/espacios (str.lower().strip()) sin comprobar que
+    el texto tuviera forma de correo -- cualquier cadena pasaba."""
+    value = value.strip().lower()
+    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", value):
+        raise ValueError("El correo electrónico no es válido")
+    return value
+
+
 def validar_password(value: str) -> str:
     if not 8 <= len(value) or len(value.encode("utf-8")) > 72:
         raise ValueError("La contraseña debe tener entre 8 y 72 caracteres")

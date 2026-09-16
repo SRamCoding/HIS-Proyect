@@ -1,153 +1,197 @@
-<!-- frontend/pages/admin/reportes/mensuales.vue -->
 <template>
-  <div>
-    <div class="flex items-center gap-2 text-sm mb-2" style="color: var(--ink-soft)">
-      <span>Reportes</span><span>/</span><span>Mensuales</span>
+  <div class="auditoria-container">
+    <div class="page-header">
+      <div class="header-left">
+        <div class="header-icon" style="background: var(--teal-soft)">
+          <UIcon name="i-heroicons-chart-bar" class="w-5 h-5" style="color: var(--teal)" />
+        </div>
+        <div>
+          <h1 class="page-title">Reporte Mensual del Sistema</h1>
+          <p class="page-subtitle">Resumen de actividad del sistema por período.</p>
+        </div>
+      </div>
     </div>
-    <h1 class="text-lg font-semibold mb-1" style="color: var(--ink)">Reporte Mensual del Sistema</h1>
-    <p class="text-sm mb-4" style="color: var(--ink-soft)">
-      Resumen de actividad del sistema por período.
-    </p>
 
     <!-- Filtros -->
-    <div class="mb-4 flex flex-wrap items-end gap-3">
+    <div class="table-card" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; align-items: end; gap: 1rem;">
       <div>
-        <label class="text-xs block mb-1" style="color: var(--ink-soft)">Hospital</label>
+        <label class="detail-label">Hospital</label>
         <select v-model="tenantFilter" class="input-clinical" @change="cargar">
           <option value="">Todos los hospitales</option>
           <option v-for="h in hospitalesOpciones" :key="h.id" :value="h.id">{{ h.hospital_name }}</option>
         </select>
       </div>
       <div>
-        <label class="text-xs block mb-1" style="color: var(--ink-soft)">Mes</label>
+        <label class="detail-label">Mes</label>
         <select v-model="mes" class="input-clinical" @change="cargar">
           <option v-for="(nombre, i) in meses" :key="i" :value="String(i + 1).padStart(2, '0')">{{ nombre }}</option>
         </select>
       </div>
       <div>
-        <label class="text-xs block mb-1" style="color: var(--ink-soft)">Año</label>
+        <label class="detail-label">Año</label>
         <select v-model="anio" class="input-clinical" @change="cargar">
           <option v-for="y in anios" :key="y" :value="y">{{ y }}</option>
         </select>
       </div>
     </div>
 
-    <div v-if="loading" class="p-6 text-sm" style="color: var(--ink-soft)">Cargando...</div>
-    <div v-else-if="error" class="p-6 text-sm" style="color: var(--alert)">{{ error }}</div>
+    <div v-if="loading" class="table-loading" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg);">
+      <div class="loading-spinner">
+        <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin" style="color: var(--teal)" />
+      </div>
+      <p style="color: var(--ink-soft)">Cargando reporte...</p>
+    </div>
+    <div v-else-if="error" class="table-error" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg);">
+      <UIcon name="i-heroicons-exclamation-triangle" class="w-8 h-8" style="color: var(--alert)" />
+      <p style="color: var(--alert)">{{ error }}</p>
+    </div>
 
     <template v-else-if="data">
       <!-- KPIs principales -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <div class="p-4" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-          <p class="text-xs" style="color: var(--ink-soft)">Hospitales Activos</p>
-          <p class="text-2xl font-bold" style="color: var(--ink)">{{ data.total_hospitales_activos }}</p>
+      <div class="widgets-grid">
+        <div class="stat-widget" style="background: var(--paper); border-left: 4px solid var(--navy)">
+          <div class="stat-icon" style="background: var(--navy-soft)">
+            <UIcon name="i-heroicons-building-office-2" class="w-5 h-5" style="color: var(--navy)" />
+          </div>
+          <div class="stat-content">
+            <span class="stat-value">{{ data.total_hospitales_activos }}</span>
+            <span class="stat-label">Hospitales Activos</span>
+          </div>
         </div>
-        <div class="p-4" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-          <p class="text-xs" style="color: var(--ink-soft)">Pacientes Nuevos</p>
-          <p class="text-2xl font-bold" style="color: var(--ink)">{{ data.pacientes_nuevos_total }}</p>
+        <div class="stat-widget" style="background: var(--paper); border-left: 4px solid var(--teal)">
+          <div class="stat-icon" style="background: var(--teal-soft)">
+            <UIcon name="i-heroicons-user-plus" class="w-5 h-5" style="color: var(--teal)" />
+          </div>
+          <div class="stat-content">
+            <span class="stat-value">{{ data.pacientes_nuevos_total }}</span>
+            <span class="stat-label">Pacientes Nuevos</span>
+          </div>
         </div>
-        <div class="p-4" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-          <p class="text-xs" style="color: var(--ink-soft)">Hospitales Registrados</p>
-          <p class="text-2xl font-bold" style="color: var(--ink)">{{ data.hospitales_registrados_periodo.length }}</p>
+        <div class="stat-widget" style="background: var(--paper); border-left: 4px solid var(--purple)">
+          <div class="stat-icon" style="background: var(--purple-soft)">
+            <UIcon name="i-heroicons-plus-circle" class="w-5 h-5" style="color: var(--purple)" />
+          </div>
+          <div class="stat-content">
+            <span class="stat-value">{{ data.hospitales_registrados_periodo.length }}</span>
+            <span class="stat-label">Hospitales Registrados</span>
+          </div>
         </div>
-        <div class="p-4" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)">
-          <p class="text-xs" style="color: var(--ink-soft)">Usuarios Centrales Nuevos</p>
-          <p class="text-2xl font-bold" style="color: var(--ink)">{{ data.usuarios_centrales_registrados }}</p>
+        <div class="stat-widget" style="background: var(--paper); border-left: 4px solid var(--amber)">
+          <div class="stat-icon" style="background: var(--amber-soft)">
+            <UIcon name="i-heroicons-users" class="w-5 h-5" style="color: var(--amber)" />
+          </div>
+          <div class="stat-content">
+            <span class="stat-value">{{ data.usuarios_centrales_registrados }}</span>
+            <span class="stat-label">Usuarios Centrales Nuevos</span>
+          </div>
         </div>
       </div>
 
+      <!-- Aviso de datos parciales: algún hospital no respondió -->
+      <div v-if="data.es_parcial" class="report-note" style="background: var(--alert-soft); border-color: var(--alert); color: var(--alert);">
+        <strong>Dato parcial:</strong> se pudo consultar {{ data.hospitales_consultados }} de {{ data.hospitales_totales }} hospitales.
+        Los totales de pacientes/usuarios no incluyen los hospitales marcados como "No se pudo consultar" en la tabla de abajo.
+      </div>
+
       <!-- Aviso de módulos pendientes -->
-      <div class="mb-6 p-4 text-sm" style="background: var(--mist); border: 1px solid var(--line); border-radius: var(--radius); color: var(--ink-soft)">
+      <div class="report-note">
         <strong>Nota:</strong> Citas, emergencias y altas todavía no están implementadas en el sistema (no existen esos módulos en el backend). Estas métricas se agregarán cuando se desarrolle el módulo clínico correspondiente.
       </div>
 
       <!-- Cobertura de módulos -->
-      <div class="mb-6">
-        <h2 class="text-sm font-semibold mb-2" style="color: var(--ink)">Cobertura de Módulos (Top 10)</h2>
-        <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)" class="overflow-x-auto">
-          <table class="w-full text-sm" style="min-width: 480px">
-            <thead>
-              <tr style="border-bottom: 1px solid var(--line)">
-                <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Módulo</th>
-                <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Hospitales</th>
-                <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Cobertura</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="mod in data.modules_coverage" :key="mod.code" style="border-bottom: 1px solid var(--line)">
-                <td class="px-5 py-3" style="color: var(--ink)">{{ mod.name }}</td>
-                <td class="px-5 py-3" style="color: var(--ink-soft)">{{ mod.hospitals_with_module }}/{{ mod.total_hospitals }}</td>
-                <td class="px-5 py-3">
-                  <span class="badge badge--ok">{{ mod.percentage }}%</span>
-                </td>
-              </tr>
-              <tr v-if="!data.modules_coverage.length">
-                <td colspan="3" class="px-5 py-6 text-center text-sm" style="color: var(--ink-soft)">Sin datos.</td>
-              </tr>
-            </tbody>
-          </table>
+      <div class="report-section">
+        <h2 class="report-section-title">Cobertura de Módulos (Top 10)</h2>
+        <div class="table-card" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-card)">
+          <div class="table-responsive">
+            <table class="auditoria-table">
+              <thead>
+                <tr>
+                  <th><span class="th-content">Módulo</span></th>
+                  <th><span class="th-content">Hospitales</span></th>
+                  <th><span class="th-content">Cobertura</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="mod in data.modules_coverage" :key="mod.code">
+                  <td class="model-text" style="color: var(--ink)">{{ mod.name }}</td>
+                  <td class="ip-text">{{ mod.hospitals_with_module }}/{{ mod.total_hospitals }}</td>
+                  <td>
+                    <span class="badge badge--ok">{{ mod.percentage }}%</span>
+                  </td>
+                </tr>
+                <tr v-if="!data.modules_coverage.length">
+                  <td colspan="3" class="report-empty-row">Sin datos.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
       <!-- Resumen por hospital -->
-      <div class="mb-6">
-        <h2 class="text-sm font-semibold mb-2" style="color: var(--ink)">Hospitales — Resumen del Período</h2>
-        <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)" class="overflow-x-auto">
-          <table class="w-full text-sm" style="min-width: 720px">
-            <thead>
-              <tr style="border-bottom: 1px solid var(--line)">
-                <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Hospital</th>
-                <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Estado</th>
-                <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Pacientes Nuevos</th>
-                <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Usuarios</th>
-                <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Módulos</th>
-                <th class="text-left font-medium px-5 py-3" style="color: var(--ink-soft)">Registrado</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="h in data.hospitales" :key="h.id" style="border-bottom: 1px solid var(--line)">
-                <td class="px-5 py-3 font-medium" style="color: var(--ink)">
-                  {{ h.hospital_name }}
-                  <span class="text-xs block" style="color: var(--ink-soft)">{{ h.domain }}</span>
-                </td>
-                <td class="px-5 py-3">
-                  <span class="badge" :class="h.is_active ? 'badge--ok' : 'badge--neutral'">
-                    {{ h.is_active ? 'Activo' : 'Inactivo' }}
-                  </span>
-                </td>
-                <td class="px-5 py-3" style="color: var(--ink)">{{ h.pacientes_nuevos }}</td>
-                <td class="px-5 py-3" style="color: var(--ink)">{{ h.usuarios_count }}</td>
-                <td class="px-5 py-3" style="color: var(--ink)">{{ h.modules_count }}</td>
-                <td class="px-5 py-3 text-xs" style="color: var(--ink-soft)">{{ formatDate(h.created_at) }}</td>
-              </tr>
-              <tr v-if="!data.hospitales.length">
-                <td colspan="6" class="px-5 py-6 text-center text-sm" style="color: var(--ink-soft)">Sin hospitales.</td>
-              </tr>
-            </tbody>
-          </table>
+      <div class="report-section">
+        <h2 class="report-section-title">Hospitales — Resumen del Período</h2>
+        <div class="table-card" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-card)">
+          <div class="table-responsive">
+            <table class="auditoria-table">
+              <thead>
+                <tr>
+                  <th><span class="th-content">Hospital</span></th>
+                  <th><span class="th-content">Estado</span></th>
+                  <th><span class="th-content">Pacientes Nuevos</span></th>
+                  <th><span class="th-content">Usuarios</span></th>
+                  <th><span class="th-content">Módulos</span></th>
+                  <th><span class="th-content">Registrado</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="h in data.hospitales" :key="h.id">
+                  <td class="user-name">
+                    {{ h.hospital_name }}
+                    <span class="ip-text" style="display: block;">{{ h.domain }}</span>
+                  </td>
+                  <td>
+                    <span class="badge" :class="h.is_active ? 'badge--ok' : 'badge--neutral'">
+                      {{ h.is_active ? 'Activo' : 'Inactivo' }}
+                    </span>
+                  </td>
+                  <td class="model-text" style="color: var(--ink)">
+                    <span v-if="!h.disponible" style="color: var(--alert)" title="No se pudo conectar a la base de este hospital">No se pudo consultar</span>
+                    <template v-else>{{ h.pacientes_nuevos }}</template>
+                  </td>
+                  <td class="model-text" style="color: var(--ink)">{{ h.disponible ? h.usuarios_count : '—' }}</td>
+                  <td class="model-text" style="color: var(--ink)">{{ h.modules_count }}</td>
+                  <td class="ip-text">{{ formatDate(h.created_at) }}</td>
+                </tr>
+                <tr v-if="!data.hospitales.length">
+                  <td colspan="6" class="report-empty-row">Sin hospitales.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
       <!-- Hospitales registrados en el período -->
-      <div>
-        <h2 class="text-sm font-semibold mb-2" style="color: var(--ink)">Hospitales Registrados en el Período</h2>
-        <div style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius)" class="overflow-x-auto">
-          <table class="w-full text-sm" style="min-width: 420px">
-            <tbody>
-              <tr v-for="h in data.hospitales_registrados_periodo" :key="h.domain" style="border-bottom: 1px solid var(--line)">
-                <td class="px-5 py-3 font-medium" style="color: var(--ink)">
-                  {{ h.name }}
-                  <span class="text-xs block" style="color: var(--ink-soft)">{{ h.domain }}</span>
-                </td>
-                <td class="px-5 py-3 text-xs text-right" style="color: var(--ink-soft)">{{ formatDate(h.created_at) }}</td>
-              </tr>
-              <tr v-if="!data.hospitales_registrados_periodo.length">
-                <td colspan="2" class="px-5 py-6 text-center text-sm" style="color: var(--ink-soft)">
-                  Sin hospitales registrados en este período.
-                </td>
-              </tr>
-            </tbody>
-          </table>
+      <div class="report-section">
+        <h2 class="report-section-title">Hospitales Registrados en el Período</h2>
+        <div class="table-card" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-card)">
+          <div class="table-responsive">
+            <table class="auditoria-table">
+              <tbody>
+                <tr v-for="h in data.hospitales_registrados_periodo" :key="h.domain">
+                  <td class="user-name">
+                    {{ h.name }}
+                    <span class="ip-text" style="display: block;">{{ h.domain }}</span>
+                  </td>
+                  <td class="ip-text" style="text-align: right">{{ formatDate(h.created_at) }}</td>
+                </tr>
+                <tr v-if="!data.hospitales_registrados_periodo.length">
+                  <td colspan="2" class="report-empty-row">Sin hospitales registrados en este período.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </template>
@@ -174,6 +218,7 @@ interface HospitalSummary {
   usuarios_count: number
   modules_count: number
   created_at: string
+  disponible: boolean
 }
 
 interface HospitalRegistrado {
@@ -190,6 +235,9 @@ interface MonthlyReport {
   hospitales: HospitalSummary[]
   hospitales_registrados_periodo: HospitalRegistrado[]
   usuarios_centrales_registrados: number
+  hospitales_consultados: number
+  hospitales_totales: number
+  es_parcial: boolean
 }
 
 const { api } = useApi()

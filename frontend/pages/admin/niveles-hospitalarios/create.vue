@@ -518,7 +518,8 @@ const handleCreate = async (createAnother: boolean) => {
         color: form.color,
         sort_order: form.sort_order,
         default_modules: { app: seleccionadosApp.value, sigarh: seleccionadosSigarh.value },
-        default_roles: [],
+        default_roles: {},
+        is_active: form.is_active,
       },
     })
 
@@ -530,7 +531,7 @@ const handleCreate = async (createAnother: boolean) => {
       router.push('/admin/niveles-hospitalarios')
     }
   } catch (e: any) {
-    error.value = e?.data?.detail || 'No se pudo crear el nivel'
+    error.value = apiErr(e, 'No se pudo crear el nivel')
   } finally {
     saving.value = false
   }
@@ -581,43 +582,14 @@ onMounted(async () => {
 }
 
 /* Form */
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
-}
 
 /* Color Picker */
-.color-picker-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
 
 /* Status Toggle */
-.status-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem;
-  background: var(--mist);
-  border-radius: 12px;
-}
 
 /* Module Controls */
-.module-controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-}
 
 /* Module Grid */
-.module-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.625rem;
-}
 
 /* Navigation Actions */
 .onboarding-actions {

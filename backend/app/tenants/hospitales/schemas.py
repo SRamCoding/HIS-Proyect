@@ -91,6 +91,7 @@ class TenantUpdate(TenantBase):
     name: str | None = None
     domain: str | None = None
     active_modules: list[str] | None = None
+    is_active: bool | None = None
 
 
 class TenantResponse(TenantBase):
@@ -100,5 +101,7 @@ class TenantResponse(TenantBase):
     database_name: str
     active_modules: list[str] = Field(default_factory=list)
     created_at: datetime
+    provisioning_status: str = "listo"
+    provisioning_error: str | None = None
 
     model_config = {"from_attributes": True}

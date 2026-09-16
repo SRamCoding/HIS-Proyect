@@ -224,24 +224,5 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.pwd-checklist {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.9rem;
-  list-style: none;
-  margin: 0.5rem 0 0;
-  padding: 0;
-}
-.pwd-checklist li {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.78rem;
-  color: var(--ink-soft);
-  transition: color 0.15s ease;
-}
-.pwd-checklist li.ok {
-  color: var(--green, #16a34a);
-  font-weight: 600;
-}
+
 </style>

@@ -103,7 +103,7 @@
           </div>
         </div>
         <div class="toolbar-right">
-          <span class="result-count">{{ filteredLogs.length }} resultados</span>
+          <span class="result-count">{{ total }} resultados</span>
         </div>
       </div>
 
@@ -123,7 +123,7 @@
       </div>
 
       <!-- Empty State -->
-      <div v-else-if="filteredLogs.length === 0" class="table-empty">
+      <div v-else-if="logs.length === 0" class="table-empty">
         <div class="empty-icon" style="background: var(--mist)">
           <UIcon name="i-heroicons-clipboard-document-list" class="w-12 h-12" style="color: var(--ink-soft)" />
         </div>
@@ -158,7 +158,7 @@
           </thead>
           <tbody>
             <tr
-              v-for="log in paginatedLogs"
+              v-for="log in logs"
               :key="log.id"
               class="table-row"
               @click="openModal(log)"
@@ -198,14 +198,13 @@
       </div>
 
       <!-- Table Footer with Pagination -->
-      <div v-if="filteredLogs.length > 0" class="table-footer">
+      <div v-if="total > 0" class="table-footer">
         <span class="footer-info">
-          Mostrando <strong>{{ paginatedLogs.length }}</strong> de <strong>{{ filteredLogs.length }}</strong> registros
-          <span v-if="filteredLogs.length < logs.length">(filtrados)</span>
+          Mostrando <strong>{{ logs.length }}</strong> de <strong>{{ total }}</strong> registros
         </span>
         <div class="footer-actions">
           <button
-            v-if="filteredLogs.length < logs.length || searchQuery || activeFilter !== 'all'"
+            v-if="searchQuery || activeFilter !== 'all'"
             class="btn-secondary btn-sm"
             @click="clearFilters"
           >
@@ -281,6 +280,18 @@
               <span class="detail-value font-mono-data" style="font-size: 0.75rem; color: var(--ink-soft)">{{ selectedLog?.id }}</span>
             </div>
           </div>
+          <div v-if="selectedLog?.old_values || selectedLog?.new_values" class="log-diff-section">
+            <div class="detail-grid">
+              <div>
+                <p class="detail-label">Valores anteriores</p>
+                <pre class="log-diff">{{ pretty(selectedLog?.old_values) }}</pre>
+              </div>
+              <div>
+                <p class="detail-label">Valores nuevos</p>
+                <pre class="log-diff">{{ pretty(selectedLog?.new_values) }}</pre>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="showModal = false">Cerrar</button>
@@ -300,13 +311,32 @@ interface AuditLog {
   action: string
   model: string | null
   description: string | null
+  old_values: Record<string, any> | null
+  new_values: Record<string, any> | null
   ip_address: string | null
   created_at: string
 }
 
 const { api } = useApi()
 
+interface Resumen {
+  total: number
+  eventos_hoy: number
+  usuarios_unicos: number
+  accion_mas_frecuente: string | null
+  por_accion: Record<string, number>
+}
+
+// Antes se traian hasta 1000 filas de una vez y busqueda/filtro/paginacion
+// pasaban enteros en el navegador sobre ese lote -- el historial real, mas
+// alla de esas primeras filas, era invisible. Ahora cada cambio de pagina,
+// busqueda o filtro le pide al servidor exactamente esa porcion (ver
+// GET /admin/auditoria) y los widgets salen de un agregado aparte
+// (GET /admin/auditoria/resumen) que si ve TODO el historial, no solo la
+// pagina cargada.
 const logs = ref<AuditLog[]>([])
+const total = ref(0)
+const resumen = ref<Resumen>({ total: 0, eventos_hoy: 0, usuarios_unicos: 0, accion_mas_frecuente: null, por_accion: {} })
 const loading = ref(true)
 const refreshing = ref(false)
 const error = ref('')
@@ -317,17 +347,10 @@ const perPage = 15
 const showModal = ref(false)
 const selectedLog = ref<AuditLog | null>(null)
 
-const actionTypes = ['login', 'logout', 'login_failed', 'created', 'updated', 'deleted']
-
 const filters = computed(() => {
-  const counts: Record<string, number> = {}
-  actionTypes.forEach(type => {
-    counts[type] = logs.value.filter(l => l.action === type).length
-  })
-  counts['all'] = logs.value.length
-
+  const counts = resumen.value.por_accion || {}
   return [
-    { label: 'Todos', value: 'all', count: counts['all'] },
+    { label: 'Todos', value: 'all', count: resumen.value.total },
     { label: 'Login', value: 'login', count: counts['login'] || 0 },
     { label: 'Logout', value: 'logout', count: counts['logout'] || 0 },
     { label: 'Creados', value: 'created', count: counts['created'] || 0 },
@@ -336,60 +359,11 @@ const filters = computed(() => {
   ]
 })
 
-const todayEvents = computed(() => {
-  const today = new Date().toDateString()
-  return logs.value.filter(l => new Date(l.created_at).toDateString() === today).length
-})
+const todayEvents = computed(() => resumen.value.eventos_hoy)
+const uniqueUsers = computed(() => resumen.value.usuarios_unicos)
+const topAction = computed(() => resumen.value.accion_mas_frecuente || '—')
 
-const uniqueUsers = computed(() => {
-  return new Set(logs.value.map(l => l.user_name).filter(Boolean)).size
-})
-
-const topAction = computed(() => {
-  if (!logs.value.length) return '—'
-  const counts: Record<string, number> = {}
-  logs.value.forEach(l => {
-    counts[l.action] = (counts[l.action] || 0) + 1
-  })
-  let maxAction = ''
-  let maxCount = 0
-  Object.entries(counts).forEach(([action, count]) => {
-    if (count > maxCount) {
-      maxCount = count
-      maxAction = action
-    }
-  })
-  return maxAction || '—'
-})
-
-const filteredLogs = computed(() => {
-  let result = logs.value
-
-  // Filter by action type
-  if (activeFilter.value !== 'all') {
-    result = result.filter(l => l.action === activeFilter.value)
-  }
-
-  // Filter by search
-  if (searchQuery.value.trim()) {
-    const query = searchQuery.value.toLowerCase().trim()
-    result = result.filter(l =>
-      l.user_name?.toLowerCase().includes(query) ||
-      l.action?.toLowerCase().includes(query) ||
-      l.description?.toLowerCase().includes(query) ||
-      l.model?.toLowerCase().includes(query)
-    )
-  }
-
-  return result
-})
-
-const totalPages = computed(() => Math.ceil(filteredLogs.value.length / perPage))
-
-const paginatedLogs = computed(() => {
-  const start = (currentPage.value - 1) * perPage
-  return filteredLogs.value.slice(start, start + perPage)
-})
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / perPage)))
 
 const formatDateDay = (date: string) => {
   return new Date(date).toLocaleDateString('es-PE', { 
@@ -484,22 +458,31 @@ const openModal = (log: AuditLog) => {
   showModal.value = true
 }
 
+const pretty = (val: Record<string, any> | null | undefined) => {
+  if (!val) return '(vacío)'
+  return JSON.stringify(val, null, 2)
+}
+
 const clearFilters = () => {
   searchQuery.value = ''
   activeFilter.value = 'all'
   currentPage.value = 1
+  loadData()
 }
 
 const refreshData = async () => {
   refreshing.value = true
-  await loadData()
+  await Promise.all([loadData(), loadResumen()])
   refreshing.value = false
 }
 
+// Exporta solo la pagina visible -- para el historial completo esta
+// Reportes > Exportar Datos, que ya trae proteccion contra inyeccion de
+// formulas de Excel/Sheets (ver pages/admin/reportes/exportar.vue).
+const celdaSegura = (v: string) => /^[=+\-@\t]/.test(v) ? `'${v}` : v
 const exportData = () => {
-  // Simple CSV export
   const headers = ['Fecha', 'Usuario', 'Acción', 'Descripción', 'Modelo', 'IP']
-  const rows = filteredLogs.value.map(l => [
+  const rows = logs.value.map(l => [
     formatDateFull(l.created_at),
     l.user_name || 'Sistema',
     l.action,
@@ -507,13 +490,15 @@ const exportData = () => {
     l.model || '',
     l.ip_address || ''
   ])
-  
-  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
+
+  const csv = [headers, ...rows]
+    .map(r => r.map(v => `"${celdaSegura(String(v ?? '')).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `auditoria_${new Date().toISOString().slice(0,10)}.csv`
+  a.download = `auditoria_pagina_${currentPage.value}_${new Date().toISOString().slice(0,10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -522,633 +507,78 @@ const loadData = async () => {
   loading.value = true
   error.value = ''
   try {
-    logs.value = await api<AuditLog[]>('/admin/auditoria?limit=1000')
+    const params = new URLSearchParams({
+      only_global: 'true',
+      limit: String(perPage),
+      offset: String((currentPage.value - 1) * perPage),
+    })
+    if (searchQuery.value.trim()) params.set('q', searchQuery.value.trim())
+    if (activeFilter.value !== 'all') params.set('action', activeFilter.value)
+    const resp = await api<{ items: AuditLog[]; total: number }>(`/admin/auditoria?${params}`)
+    logs.value = resp.items
+    total.value = resp.total
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error de conexión'
+    error.value = apiErr(e, 'Error de conexión')
   } finally {
     loading.value = false
   }
 }
 
-onMounted(loadData)
+const loadResumen = async () => {
+  try {
+    resumen.value = await api<Resumen>('/admin/auditoria/resumen?only_global=true')
+  } catch {
+    // los widgets no son criticos: si fallan, se quedan en sus valores por defecto
+  }
+}
+
+let searchDebounce: ReturnType<typeof setTimeout> | null = null
+watch(searchQuery, () => {
+  if (searchDebounce) clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(() => { currentPage.value = 1; loadData() }, 400)
+})
+watch(activeFilter, () => { currentPage.value = 1; loadData() })
+watch(currentPage, () => loadData())
+
+onMounted(() => {
+  loadData()
+  loadResumen()
+})
 </script>
 
 <style scoped>
-.auditoria-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 1.5rem 2rem;
-}
 
 /* Page Header */
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 2rem;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.header-left {
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-}
-
-.header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 0.125rem;
-}
-
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.2;
-}
-
-.page-subtitle {
-  font-size: 0.875rem;
-  color: var(--ink-soft);
-  margin: 0.125rem 0 0 0;
-  max-width: 600px;
-}
-
-.header-actions {
-  display: flex;
-  gap: 0.75rem;
-  flex-shrink: 0;
-}
-
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-secondary:hover {
-  background: var(--mist);
-}
 
 /* Widgets Grid */
-.widgets-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.stat-widget {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1.25rem 1.5rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s ease;
-}
-
-.stat-widget:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-.stat-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.stat-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.stat-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--ink);
-  line-height: 1.2;
-}
-
-.stat-label {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
 
 /* Table Card */
-.table-card {
-  overflow: hidden;
-}
-
-.table-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--line);
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-  flex: 1;
-}
-
-.search-wrapper {
-  position: relative;
-  min-width: 200px;
-  flex: 1;
-  max-width: 300px;
-}
-
-.search-icon {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 1rem;
-  height: 1rem;
-  color: var(--ink-soft);
-}
-
-.search-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem 0.5rem 2.5rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  transition: all 0.2s ease;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--teal);
-  box-shadow: 0 0 0 3px var(--teal-soft);
-}
-
-.filter-group {
-  display: flex;
-  gap: 0.375rem;
-  flex-wrap: wrap;
-}
-
-.filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--ink-soft);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.filter-chip:hover {
-  background: var(--mist);
-}
-
-.filter-chip--active {
-  background: var(--teal-soft);
-  border-color: var(--teal);
-  color: var(--teal);
-}
-
-.filter-count {
-  padding: 0.0625rem 0.375rem;
-  border-radius: 10px;
-  font-size: 0.625rem;
-  font-weight: 600;
-  color: var(--ink-soft);
-  background: var(--mist);
-  transition: all 0.2s ease;
-}
-
-.filter-chip--active .filter-count {
-  background: var(--teal);
-  color: white;
-}
-
-.toolbar-right {
-  display: flex;
-  align-items: center;
-}
-
-.result-count {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
 
 /* Table States */
-.table-loading,
-.table-error,
-.table-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  gap: 1rem;
-}
-
-.loading-spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.empty-icon {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.table-empty h3 {
-  font-size: 1.125rem;
-  margin: 0;
-}
-
-.table-empty p {
-  margin: 0;
-}
 
 /* Table Styles */
-.table-responsive {
-  overflow-x: auto;
-}
-
-.auditoria-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.auditoria-table thead {
-  background: var(--mist);
-}
-
-.auditoria-table th {
-  padding: 0.75rem 1rem;
-  text-align: left;
-  font-weight: 600;
-  color: var(--ink-soft);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--line);
-}
-
-.th-content {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.auditoria-table td {
-  padding: 0.875rem 1rem;
-  border-bottom: 1px solid var(--line);
-  vertical-align: middle;
-}
-
-.table-row {
-  transition: background 0.15s ease;
-  cursor: pointer;
-}
-
-.table-row:hover {
-  background: var(--mist);
-}
-
-.col-date {
-  width: 15%;
-}
-
-.col-user {
-  width: 16%;
-}
-
-.col-action {
-  width: 25%;
-}
-
-.col-type {
-  width: 12%;
-}
-
-.col-model {
-  width: 14%;
-}
-
-.col-ip {
-  width: 18%;
-}
 
 /* Date Cell */
-.date-cell {
-  display: flex;
-  flex-direction: column;
-}
-
-.date-day {
-  font-size: 0.8125rem;
-  color: var(--ink);
-}
-
-.date-time {
-  font-size: 0.6875rem;
-  color: var(--ink-soft);
-  font-family: monospace;
-}
 
 /* User Cell */
-.user-cell {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-}
-
-.user-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.625rem;
-  font-weight: 600;
-  color: var(--ink);
-  flex-shrink: 0;
-}
-
-.user-name {
-  font-weight: 500;
-  color: var(--ink);
-}
 
 /* Action Text */
-.action-text {
-  color: var(--ink);
-  font-size: 0.8125rem;
-}
 
 /* Type Badge */
-.type-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.1875rem 0.625rem;
-  border-radius: 20px;
-  font-size: 0.6875rem;
-  font-weight: 500;
-}
-
-.type-login {
-  background: var(--teal-soft);
-  color: var(--teal);
-}
-
-.type-logout {
-  background: var(--mist);
-  color: var(--ink-soft);
-}
-
-.type-failed {
-  background: var(--alert-soft);
-  color: var(--alert);
-}
-
-.type-created {
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.type-updated {
-  background: var(--amber-soft);
-  color: var(--amber);
-}
-
-.type-deleted {
-  background: var(--alert-soft);
-  color: var(--alert);
-}
-
-.type-default {
-  background: var(--mist);
-  color: var(--ink-soft);
-}
 
 /* Model Text */
-.model-text {
-  color: var(--ink-soft);
-  font-size: 0.8125rem;
-}
 
 /* IP Text */
-.ip-text {
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-}
 
 /* Table Footer */
-.table-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1.5rem;
-  border-top: 1px solid var(--line);
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.footer-info {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-.footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.btn-sm {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
-}
-
-.pagination {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.page-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.page-btn:hover:not(:disabled) {
-  background: var(--mist);
-}
-
-.page-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.page-info {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-  padding: 0 0.5rem;
-}
 
 /* Modal */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 1rem;
-}
 
 .modal-content {
   max-width: 520px;
   width: 100%;
   padding: 1.5rem;
   box-shadow: var(--shadow-lg);
-}
-
-.modal-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-  position: relative;
-}
-
-.modal-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.modal-title {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0;
-}
-
-.modal-subtitle {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-  margin: 0.125rem 0 0 0;
-}
-
-.modal-close {
-  position: absolute;
-  top: -0.25rem;
-  right: -0.25rem;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.modal-close:hover {
-  background: var(--mist);
-}
-
-.modal-body {
-  margin-bottom: 1.5rem;
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
-
-.detail-item.full-width {
-  grid-column: 1 / -1;
-}
-
-.detail-label {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-  margin-bottom: 0.25rem;
-}
-
-.detail-value {
-  font-size: 0.875rem;
-  color: var(--ink);
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--line);
 }
 
 /* Responsive */

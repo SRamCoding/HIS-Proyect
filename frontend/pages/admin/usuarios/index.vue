@@ -20,6 +20,10 @@
       </NuxtLink>
     </div>
 
+    <div v-if="partialWarning" class="report-note" style="background: var(--alert-soft); border-color: var(--alert); color: var(--alert); margin-bottom: 1rem;">
+      <strong>Lista incompleta:</strong> {{ partialWarning }}
+    </div>
+
     <div class="sigarh-stats-grid">
       <div class="sigarh-stat-card" :style="{ borderLeftColor: isAdminView ? 'var(--navy)' : 'var(--teal)' }">
         <div class="sigarh-stat-icon" :style="{ background: isAdminView ? 'var(--navy-soft)' : 'var(--teal-soft)' }">
@@ -78,6 +82,10 @@
               <span class="sigarh-filter-count">{{ filter.count }}</span>
             </button>
           </div>
+          <select v-if="!isAdminView" v-model="hospitalFilter" class="input-clinical" style="max-width: 220px;" @change="loadData">
+            <option value="">Todos los hospitales</option>
+            <option v-for="h in hospitales" :key="h.id" :value="h.id">{{ h.name }}</option>
+          </select>
         </div>
         <div style="display: flex; align-items: center; gap: 0.75rem;">
           <span class="sigarh-result-count">{{ filteredUsers.length }} resultados</span>
@@ -222,6 +230,12 @@ interface Usuario {
   created_at: string
 }
 
+interface UsuariosConHospitalResponse {
+  items: Usuario[]
+  hospitales_no_disponibles: string[]
+  es_parcial: boolean
+}
+
 interface Hospital {
   id: string
   name: string
@@ -236,8 +250,10 @@ const allUsers = ref<Usuario[]>([])
 const hospitales = ref<Hospital[]>([])
 const loading = ref(true)
 const error = ref('')
+const partialWarning = ref('')
 const searchQuery = ref('')
 const activeFilter = ref('all')
+const hospitalFilter = ref('')
 const showDeleteModal = ref(false)
 const togglingId = ref<string | null>(null)
 const userToDelete = ref<Usuario | null>(null)
@@ -313,7 +329,11 @@ const formatDate = (date: string) => new Date(date).toLocaleDateString('es-PE', 
 const clearFilters = () => { searchQuery.value = ''; activeFilter.value = 'all' }
 
 const editUser = (user: Usuario) => {
-  router.push(`/admin/usuarios/${user.id}${isAdminView.value ? '?tipo=admin' : ''}`)
+  const params = new URLSearchParams()
+  if (isAdminView.value) params.set('tipo', 'admin')
+  if (user.tenant_id) params.set('tenant_id', user.tenant_id)
+  const qs = params.toString()
+  router.push(`/admin/usuarios/${user.id}${qs ? `?${qs}` : ''}`)
 }
 
 const toggleUserStatus = async (user: Usuario) => {
@@ -347,15 +367,22 @@ const deleteUser = async () => {
 const loadData = async () => {
   loading.value = true
   error.value = ''
+  partialWarning.value = ''
   try {
-    const [users, hospitals] = await Promise.all([
-      api<Usuario[]>('/admin/usuarios/con-hospital'),
+    const usuariosUrl = hospitalFilter.value
+      ? `/admin/usuarios/con-hospital?tenant_id=${hospitalFilter.value}`
+      : '/admin/usuarios/con-hospital'
+    const [usuariosResp, hospitals] = await Promise.all([
+      api<UsuariosConHospitalResponse>(usuariosUrl),
       api<Hospital[]>('/admin/hospitales'),
     ])
-    allUsers.value = users
+    allUsers.value = usuariosResp.items
     hospitales.value = hospitals
+    if (usuariosResp.es_parcial) {
+      partialWarning.value = `No se pudo consultar: ${usuariosResp.hospitales_no_disponibles.join(', ')}. La lista está incompleta.`
+    }
   } catch (e: any) {
-    error.value = e?.data?.detail || 'Error de conexión'
+    error.value = apiErr(e, 'Error de conexión')
   } finally {
     loading.value = false
   }

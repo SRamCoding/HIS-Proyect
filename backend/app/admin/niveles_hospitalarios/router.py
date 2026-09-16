@@ -8,6 +8,7 @@ from app.admin.niveles_hospitalarios.schemas import HospitalLevelCreate, Hospita
 from app.admin.niveles_hospitalarios.service import (
     get_all_hospital_levels, create_hospital_level,
     get_hospital_level_by_code, get_hospital_level_by_id, update_hospital_level,
+    delete_hospital_level,
 )
 
 router = APIRouter()
@@ -82,5 +83,17 @@ async def actualizar_nivel(
 ):
     nivel = await update_hospital_level(db, nivel_id, data, current_user)
     if not nivel:
+        raise HTTPException(404, detail="Nivel no encontrado")
+    return {"ok": True}
+
+
+@router.delete("/niveles-hospitalarios/{nivel_id}", summary="Eliminar nivel")
+async def eliminar_nivel(
+    nivel_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    ok = await delete_hospital_level(db, nivel_id)
+    if not ok:
         raise HTTPException(404, detail="Nivel no encontrado")
     return {"ok": True}

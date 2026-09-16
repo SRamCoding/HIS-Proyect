@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, ForeignKey
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -25,6 +25,13 @@ class User(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Identifica a la cuenta admin fundacional (creada por el seeder), la
+    # unica que nunca deberia poder eliminarse/ocultarse por accidente.
+    # Antes esa regla se aplicaba comparando el correo contra un texto fijo
+    # ("admin@erp.local") en el listado agregado -- si alguien renombraba
+    # ese correo, la regla dejaba de aplicar en silencio.
+    is_superadmin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

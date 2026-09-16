@@ -166,11 +166,12 @@
               <div class="subdomain-wrapper">
                 <div class="input-wrapper" style="flex: 1;">
                   <UIcon name="i-heroicons-globe-alt" class="input-icon" />
-                  <input 
-                    v-model="form.subdomain" 
-                    class="input-clinical subdomain-input" 
+                  <input
+                    v-model="form.subdomain"
+                    class="input-clinical subdomain-input"
                     placeholder="hospital-tuman"
                     :class="{ 'input-error': errors.subdomain }"
+                    @input="onSubdomainInput"
                   />
                 </div>
                 <span class="subdomain-suffix">.{{ tenantBaseDomain }}</span>
@@ -265,13 +266,20 @@
                 <label class="form-label">Contraseña <span class="required">*</span></label>
                 <div class="input-wrapper">
                   <UIcon name="i-heroicons-key" class="input-icon" />
-                  <input 
-                    v-model="form.admin_password" 
-                    type="password" 
-                    class="input-clinical" 
+                  <input
+                    v-model="form.admin_password"
+                    type="password"
+                    class="input-clinical"
                     :class="{ 'input-error': errors.admin_password }"
                   />
                 </div>
+                <ul class="pwd-checklist">
+                  <li :class="{ ok: adminPwdChecks.length }"><UIcon :name="adminPwdChecks.length ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> 8+ caracteres</li>
+                  <li :class="{ ok: adminPwdChecks.lower }"><UIcon :name="adminPwdChecks.lower ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Minúscula</li>
+                  <li :class="{ ok: adminPwdChecks.upper }"><UIcon :name="adminPwdChecks.upper ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Mayúscula</li>
+                  <li :class="{ ok: adminPwdChecks.digit }"><UIcon :name="adminPwdChecks.digit ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Número</li>
+                  <li :class="{ ok: adminPwdChecks.special }"><UIcon :name="adminPwdChecks.special ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Carácter especial</li>
+                </ul>
                 <span v-if="errors.admin_password" class="error-message">{{ errors.admin_password }}</span>
               </div>
 
@@ -337,13 +345,20 @@
                 <label class="form-label">Contraseña <span class="required">*</span></label>
                 <div class="input-wrapper">
                   <UIcon name="i-heroicons-key" class="input-icon" />
-                  <input 
-                    v-model="form.sigarh_password" 
-                    type="password" 
-                    class="input-clinical" 
+                  <input
+                    v-model="form.sigarh_password"
+                    type="password"
+                    class="input-clinical"
                     :class="{ 'input-error': errors.sigarh_password }"
                   />
                 </div>
+                <ul class="pwd-checklist">
+                  <li :class="{ ok: sigarhPwdChecks.length }"><UIcon :name="sigarhPwdChecks.length ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> 8+ caracteres</li>
+                  <li :class="{ ok: sigarhPwdChecks.lower }"><UIcon :name="sigarhPwdChecks.lower ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Minúscula</li>
+                  <li :class="{ ok: sigarhPwdChecks.upper }"><UIcon :name="sigarhPwdChecks.upper ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Mayúscula</li>
+                  <li :class="{ ok: sigarhPwdChecks.digit }"><UIcon :name="sigarhPwdChecks.digit ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Número</li>
+                  <li :class="{ ok: sigarhPwdChecks.special }"><UIcon :name="sigarhPwdChecks.special ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'" class="w-3.5 h-3.5" /> Carácter especial</li>
+                </ul>
                 <span v-if="errors.sigarh_password" class="error-message">{{ errors.sigarh_password }}</span>
               </div>
 
@@ -692,6 +707,88 @@ const form = reactive({
   sigarh_password_confirm: '',
 })
 
+const SUBDOMAIN_MAX = 20
+const SUBDOMAIN_STOPWORDS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'san', 'santa'])
+const subdomainTocadoManualmente = ref(false)
+
+const quitarTildes = (s: string) => {
+  const mapa: Record<string, string> = { á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ü: 'u', ñ: 'n' }
+  return s.toLowerCase().replace(/[áéíóúüñ]/g, ch => mapa[ch] || ch)
+}
+
+const slugify = (s: string) =>
+  quitarTildes(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+const iniciales = (s: string) =>
+  quitarTildes(s)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(w => w && !SUBDOMAIN_STOPWORDS.has(w))
+    .map(w => w[0])
+    .join('')
+
+const generarSubdominio = (nombre: string) => {
+  const slug = slugify(nombre)
+  if (!slug || slug.length <= SUBDOMAIN_MAX) return slug
+  return iniciales(nombre) || slug.slice(0, SUBDOMAIN_MAX)
+}
+
+watch(() => form.name, (nuevo) => {
+  if (subdomainTocadoManualmente.value) return
+  form.subdomain = generarSubdominio(nuevo)
+})
+
+const onSubdomainInput = () => {
+  subdomainTocadoManualmente.value = true
+}
+
+const checksDePassword = (pwd: string) => ({
+  length: pwd.length >= 8,
+  lower: /[a-z]/.test(pwd),
+  upper: /[A-Z]/.test(pwd),
+  digit: /\d/.test(pwd),
+  special: /[^\w\s]/.test(pwd),
+})
+const adminPwdChecks = computed(() => checksDePassword(form.admin_password))
+const sigarhPwdChecks = computed(() => checksDePassword(form.sigarh_password))
+
+// Se avisa "no coinciden" apenas se escribe, sin esperar a que hagan clic
+// en Siguiente -- antes solo se revisaba al validar el paso completo.
+watch(() => [form.admin_password, form.admin_password_confirm], () => {
+  errors.admin_password_confirm = form.admin_password_confirm && form.admin_password !== form.admin_password_confirm
+    ? 'Las contraseñas no coinciden'
+    : ''
+})
+watch(() => [form.sigarh_password, form.sigarh_password_confirm], () => {
+  errors.sigarh_password_confirm = form.sigarh_password_confirm && form.sigarh_password !== form.sigarh_password_confirm
+    ? 'Las contraseñas no coinciden'
+    : ''
+})
+
+// El backend rechaza correos con formato invalido y que Admin/SIGARH
+// compartan el mismo correo (ver tenants/hospitales/schemas.py); antes eso
+// solo se descubria al final del wizard, en el ultimo paso, muy lejos de
+// donde estan estos dos campos.
+const emailValidoLive = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+watch(() => [form.admin_email, form.sigarh_email], () => {
+  const mismo = !!form.admin_email && !!form.sigarh_email &&
+    form.admin_email.toLowerCase() === form.sigarh_email.toLowerCase()
+
+  if (!form.admin_email) errors.admin_email = errors.admin_email
+  else if (!emailValidoLive(form.admin_email)) errors.admin_email = 'El correo no es válido'
+  else errors.admin_email = mismo ? 'Debe ser distinto al correo SIGARH' : ''
+
+  if (!form.sigarh_email) errors.sigarh_email = errors.sigarh_email
+  else if (!emailValidoLive(form.sigarh_email)) errors.sigarh_email = 'El correo no es válido'
+  else errors.sigarh_email = mismo ? 'Debe ser distinto al correo del Administrador' : ''
+})
+
 const nivelSeleccionado = computed(() => niveles.value.find(n => n.code === form.nivel_code) || null)
 const totalModulos = computed(() => (modulosNivel.value?.app.length || 0) + (modulosNivel.value?.sigarh.length || 0))
 const currentTip = computed(() => tips[currentStep.value])
@@ -760,15 +857,35 @@ const validateStep = (step: number): boolean => {
   }
   
   if (step === 2) {
+    const emailValido = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+    const mismoCorreo = !!form.admin_email && !!form.sigarh_email &&
+      form.admin_email.toLowerCase() === form.sigarh_email.toLowerCase()
+
     errors.admin_name = !form.admin_name ? 'El nombre es requerido' : ''
-    errors.admin_email = !form.admin_email ? 'El correo es requerido' : ''
-    errors.admin_password = !form.admin_password ? 'La contraseña es requerida' : ''
-    errors.admin_password_confirm = form.admin_password !== form.admin_password_confirm ? 'Las contraseñas no coinciden' : ''
-    
+    errors.admin_email = !form.admin_email
+      ? 'El correo es requerido'
+      : !emailValido(form.admin_email)
+        ? 'El correo no es válido'
+        : (mismoCorreo ? 'Debe ser distinto al correo SIGARH' : '')
+    errors.admin_password = !form.admin_password
+      ? 'La contraseña es requerida'
+      : (!Object.values(adminPwdChecks.value).every(Boolean) ? 'La contraseña no cumple los requisitos mínimos' : '')
+    errors.admin_password_confirm = !form.admin_password_confirm
+      ? 'Confirma la contraseña'
+      : (form.admin_password !== form.admin_password_confirm ? 'Las contraseñas no coinciden' : '')
+
     errors.sigarh_name = !form.sigarh_name ? 'El nombre es requerido' : ''
-    errors.sigarh_email = !form.sigarh_email ? 'El correo es requerido' : ''
-    errors.sigarh_password = !form.sigarh_password ? 'La contraseña es requerida' : ''
-    errors.sigarh_password_confirm = form.sigarh_password !== form.sigarh_password_confirm ? 'Las contraseñas no coinciden' : ''
+    errors.sigarh_email = !form.sigarh_email
+      ? 'El correo es requerido'
+      : !emailValido(form.sigarh_email)
+        ? 'El correo no es válido'
+        : (mismoCorreo ? 'Debe ser distinto al correo del Administrador' : '')
+    errors.sigarh_password = !form.sigarh_password
+      ? 'La contraseña es requerida'
+      : (!Object.values(sigarhPwdChecks.value).every(Boolean) ? 'La contraseña no cumple los requisitos mínimos' : '')
+    errors.sigarh_password_confirm = !form.sigarh_password_confirm
+      ? 'Confirma la contraseña'
+      : (form.sigarh_password !== form.sigarh_password_confirm ? 'Las contraseñas no coinciden' : '')
     
     if (errors.admin_name || errors.admin_email || errors.admin_password || errors.admin_password_confirm ||
         errors.sigarh_name || errors.sigarh_email || errors.sigarh_password || errors.sigarh_password_confirm) {
@@ -838,7 +955,7 @@ const handleCreate = async () => {
 
     router.push('/admin/hospitales')
   } catch (e: any) {
-    createError.value = e?.data?.detail || 'No se pudo crear el hospital'
+    createError.value = apiErr(e, 'No se pudo crear el hospital')
     currentStep.value = 3
   } finally {
     creating.value = false
@@ -888,15 +1005,6 @@ onMounted(async () => {
 }
 
 /* Header */
-.header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
 
 /* Cards */
 .hospital-card {
@@ -1044,11 +1152,6 @@ onMounted(async () => {
 }
 
 /* Form */
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
-}
 
 /* Subdomain */
 .subdomain-wrapper {
@@ -1294,12 +1397,6 @@ onMounted(async () => {
 }
 
 /* Summary Widget */
-.widget-progress {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
 
 .mini-badge {
   padding: 0.0625rem 0.5rem;
@@ -1383,12 +1480,6 @@ onMounted(async () => {
 }
 
 /* Quick Stats Widget */
-.stat-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.375rem 0;
-}
 
 .stat-item:first-child {
   border-bottom: 1px solid var(--line);

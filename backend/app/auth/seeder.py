@@ -35,6 +35,7 @@ async def seed():
             panel="admin",
             tenant_id=None,
             is_active=True,
+            is_superadmin=True,
         )
         db.add(admin)
         await db.commit()
