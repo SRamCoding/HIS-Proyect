@@ -125,6 +125,54 @@ const servicioSeleccionado = ref<Servicio | null>(null)
 const servicioDialog = ref<HTMLDialogElement | null>(null)
 const anio = new Date().getFullYear()
 const navegacion = [{ id: 'inicio', label: 'Inicio' }, { id: 'nosotros', label: 'Nosotros' }, { id: 'servicios', label: 'Servicios' }, { id: 'contacto', label: 'Contacto' }]
+
+// useAsyncData corre UNA sola vez y comparte el resultado entre el render
+// del servidor y la hidratacion del cliente. Antes esto era un `await
+// api(...)` suelto dentro de una funcion invocada directo en el setup --
+// Nuxt ejecuta ese codigo dos veces de forma INDEPENDIENTE (una vez en el
+// servidor para armar el HTML inicial, otra vez en el navegador al
+// hidratar). Si el intento del servidor fallaba por cualquier motivo
+// transitorio (una carrera al abrir la pestaña justo despues del clic en
+// "Ver landing", por ejemplo), la pagina mostraba "No pudimos cargar el
+// hospital" durante un instante, hasta que el intento independiente del
+// cliente -- que si funcionaba -- lo pisaba. useAsyncData evita esa doble
+// carrera: el resultado (exito o error) que se calculo en el servidor se
+// serializa en el HTML y el cliente lo reutiliza tal cual al hidratar, en
+// vez de volver a pedirlo por su cuenta.
+//
+// Declarada ACA, antes de cualquier computed/useHead que lea `hospital`:
+// en un build de produccion minificado, referenciar `hospital` desde un
+// computed declarado ANTES de este bloque (aunque la lectura real solo
+// ocurra despues, dentro del getter) disparaba un error real de runtime
+// "Cannot access 'X' before initialization" -- la pagina cargaba bien en
+// `nuxt dev` pero tiraba 500 real en produccion.
+const {
+  data: hospital,
+  error: errorCarga,
+  pending: cargando,
+  refresh,
+} = await useAsyncData<HospitalPublico | null>(
+  'hospital-publico',
+  async () => {
+    if (!tenantId.value) {
+      await navigateTo(authStore.isAuthenticated ? authStore.panelRoute : '/login')
+      return null
+    }
+    return await api<HospitalPublico>(`/auth/tenant-publico/${encodeURIComponent(tenantId.value)}`)
+  },
+  { watch: [tenantId] },
+)
+const error = computed(() => errorCarga.value ? apiErr(errorCarga.value, 'No se pudo cargar la información de este hospital.') : '')
+
+// Mismo reseteo de UI que hacia la carga original al reintentar (colapsar
+// el menu movil y la lista de servicios expandida), conservado aca para
+// no cambiar el comportamiento del boton "Volver a intentar".
+async function cargarHospital() {
+  menuAbierto.value = false
+  mostrarTodos.value = false
+  await refresh()
+}
+
 const accesoHospital = computed(() => ({ path: '/app/login', query: { tenant: hospital.value?.id } }))
 const accesoSigarh = computed(() => ({ path: '/sigarh/login', query: { tenant: hospital.value?.id } }))
 const telefonoHref = computed(() => `tel:${hospital.value?.phone?.replace(/[^+\d]/g, '') || ''}`)
@@ -176,45 +224,6 @@ function cerrarAlFondo(event: MouseEvent) {
   if (!dialog || event.target !== dialog) return
   const rect = dialog.getBoundingClientRect()
   if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close()
-}
-// useAsyncData corre UNA sola vez y comparte el resultado entre el render
-// del servidor y la hidratacion del cliente. Antes esto era un `await
-// api(...)` suelto dentro de una funcion invocada directo en el setup --
-// Nuxt ejecuta ese codigo dos veces de forma INDEPENDIENTE (una vez en el
-// servidor para armar el HTML inicial, otra vez en el navegador al
-// hidratar). Si el intento del servidor fallaba por cualquier motivo
-// transitorio (una carrera al abrir la pestaña justo despues del clic en
-// "Ver landing", por ejemplo), la pagina mostraba "No pudimos cargar el
-// hospital" durante un instante, hasta que el intento independiente del
-// cliente -- que si funcionaba -- lo pisaba. useAsyncData evita esa doble
-// carrera: el resultado (exito o error) que se calculo en el servidor se
-// serializa en el HTML y el cliente lo reutiliza tal cual al hidratar, en
-// vez de volver a pedirlo por su cuenta.
-const {
-  data: hospital,
-  error: errorCarga,
-  pending: cargando,
-  refresh,
-} = await useAsyncData<HospitalPublico | null>(
-  'hospital-publico',
-  async () => {
-    if (!tenantId.value) {
-      await navigateTo(authStore.isAuthenticated ? authStore.panelRoute : '/login')
-      return null
-    }
-    return await api<HospitalPublico>(`/auth/tenant-publico/${encodeURIComponent(tenantId.value)}`)
-  },
-  { watch: [tenantId] },
-)
-const error = computed(() => errorCarga.value ? apiErr(errorCarga.value, 'No se pudo cargar la información de este hospital.') : '')
-
-// Mismo reseteo de UI que hacia la carga original al reintentar (colapsar
-// el menu movil y la lista de servicios expandida), conservado aca para
-// no cambiar el comportamiento del boton "Volver a intentar".
-async function cargarHospital() {
-  menuAbierto.value = false
-  mostrarTodos.value = false
-  await refresh()
 }
 function actualizarSeccion() {
   const ultima = [...navegacion].reverse().find(item => {
