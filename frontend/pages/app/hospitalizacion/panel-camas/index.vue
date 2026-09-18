@@ -138,23 +138,28 @@
         v-for="c in camas"
         :key="c.id"
         class="cama-card"
-        :class="{
-          'cama-disponible': c.estado === 'DISPONIBLE',
-          'cama-ocupada': c.estado === 'OCUPADA',
-          'cama-mantenimiento': c.estado === 'MANTENIMIENTO',
-          'cama-reservada': c.estado === 'RESERVADA',
-        }"
+        :style="{ borderLeftColor: getEstadoColor(c.estado) }"
         @click="verDetalle(c)"
       >
+        <div class="cama-art" :style="{ background: getEstadoSoft(c.estado) }">
+          <svg viewBox="0 0 64 32" class="cama-bed-icon" fill="none">
+            <line x1="9" y1="27" x2="9" y2="30.5" :stroke="getEstadoColor(c.estado)" stroke-width="2" stroke-linecap="round" opacity="0.45" />
+            <line x1="55" y1="27" x2="55" y2="30.5" :stroke="getEstadoColor(c.estado)" stroke-width="2" stroke-linecap="round" opacity="0.45" />
+            <line x1="8" y1="6.5" x2="8" y2="27" :stroke="getEstadoColor(c.estado)" stroke-width="2.5" stroke-linecap="round" />
+            <line x1="56" y1="10.5" x2="56" y2="27" :stroke="getEstadoColor(c.estado)" stroke-width="2" stroke-linecap="round" opacity="0.55" />
+            <rect x="8" y="18" width="48" height="9" rx="2" :stroke="getEstadoColor(c.estado)" stroke-width="2" />
+            <rect x="11.5" y="12" width="13" height="6" rx="1.8" :stroke="getEstadoColor(c.estado)" stroke-width="1.5" opacity="0.65" />
+            <template v-if="c.estado === 'OCUPADA'">
+              <circle cx="19.5" cy="15.5" r="2.5" :fill="getEstadoColor(c.estado)" />
+              <path d="M25 22.5 q9 -3.5 19 0" :stroke="getEstadoColor(c.estado)" stroke-width="2" stroke-linecap="round" />
+            </template>
+          </svg>
+        </div>
         <div class="cama-header">
           <span class="cama-codigo">{{ c.codigo }}</span>
-          <span class="cama-estado-badge" :class="{
-            'badge-disponible': c.estado === 'DISPONIBLE',
-            'badge-ocupada': c.estado === 'OCUPADA',
-            'badge-mantenimiento': c.estado === 'MANTENIMIENTO',
-            'badge-reservada': c.estado === 'RESERVADA',
-          }">
-            {{ c.estado }}
+          <span class="cama-estado-badge" :style="{ background: getEstadoSoft(c.estado), color: getEstadoColor(c.estado) }">
+            <span class="cama-estado-dot" :style="{ background: getEstadoColor(c.estado) }" />
+            {{ formatEstado(c.estado) }}
           </span>
         </div>
         <div class="cama-body">
@@ -167,12 +172,13 @@
             <span class="cama-tipo">{{ c.tipo_cama }}</span>
           </div>
           <div v-if="c.estado === 'OCUPADA' && c.paciente_nombre" class="cama-paciente">
-            <UIcon name="i-heroicons-user" class="cama-icon" />
+            <UIcon name="i-heroicons-user" class="cama-icon" style="color: var(--alert)" />
             <span class="cama-paciente-nombre">{{ c.paciente_nombre }}</span>
           </div>
         </div>
         <div class="cama-footer">
-          <span class="cama-hint">Click para ver detalle</span>
+          <span class="cama-hint">Ver detalle</span>
+          <UIcon name="i-heroicons-arrow-right" class="w-3 h-3 cama-hint-arrow" />
         </div>
       </div>
     </div>
@@ -305,6 +311,26 @@ const getEstadoColor = (estado: string) => {
     'RESERVADA': '#d97706'
   }
   return map[estado] || '#1e293b'
+}
+
+const getEstadoSoft = (estado: string) => {
+  const map: Record<string, string> = {
+    'DISPONIBLE': '#dcfce7',
+    'OCUPADA': '#fee2e2',
+    'MANTENIMIENTO': '#dbeafe',
+    'RESERVADA': '#fef3c7'
+  }
+  return map[estado] || '#f1f5f9'
+}
+
+const formatEstado = (estado: string) => {
+  const map: Record<string, string> = {
+    'DISPONIBLE': 'Disponible',
+    'OCUPADA': 'Ocupada',
+    'MANTENIMIENTO': 'Mantenimiento',
+    'RESERVADA': 'Reservada'
+  }
+  return map[estado] || estado
 }
 
 // Funciones
@@ -667,91 +693,83 @@ onMounted(async () => {
 /* Grid de Camas */
 .camas-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1.125rem;
 }
 
 .cama-card {
   background: var(--paper, #ffffff);
-  border-radius: var(--radius, 10px);
-  border: 2px solid var(--line, #e2e8f0);
-  padding: 1rem;
+  border-radius: var(--radius-lg, 14px);
+  border: 1px solid var(--line, #e2e8f0);
+  border-left: 4px solid var(--line, #e2e8f0);
+  overflow: hidden;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.05));
 }
 
 .cama-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-md, 0 4px 6px rgba(0,0,0,0.07));
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md, 0 4px 10px -4px rgba(15,23,42,0.14));
+  border-color: var(--ink-soft, #cbd5e1);
 }
 
-.cama-card.cama-disponible {
-  border-color: var(--green, #16a34a);
-  background: var(--green-soft, #dcfce7);
+/* Panel ilustrado con la cama */
+.cama-art {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 1rem 0.85rem;
 }
 
-.cama-card.cama-ocupada {
-  border-color: var(--alert, #dc2626);
-  background: var(--alert-soft, #fee2e2);
-}
-
-.cama-card.cama-mantenimiento {
-  border-color: var(--blue, #2563eb);
-  background: var(--blue-soft, #dbeafe);
-}
-
-.cama-card.cama-reservada {
-  border-color: var(--amber, #d97706);
-  background: var(--amber-soft, #fef3c7);
+.cama-bed-icon {
+  width: 100%;
+  max-width: 108px;
+  height: auto;
 }
 
 .cama-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 0.75rem 0.9rem 0.25rem;
 }
 
 .cama-codigo {
   font-size: 1rem;
   font-weight: 700;
   color: var(--ink, #1e293b);
+  font-family: var(--font-mono, 'IBM Plex Mono', monospace);
 }
 
 .cama-estado-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
   font-size: 0.625rem;
-  font-weight: 600;
-  padding: 0.125rem 0.5rem;
-  border-radius: 10px;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
   text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
-.badge-disponible {
-  background: var(--green, #16a34a);
-  color: white;
-}
-
-.badge-ocupada {
-  background: var(--alert, #dc2626);
-  color: white;
-}
-
-.badge-mantenimiento {
-  background: var(--blue, #2563eb);
-  color: white;
-}
-
-.badge-reservada {
-  background: var(--amber, #d97706);
-  color: white;
+.cama-estado-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
 }
 
 .cama-body {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.3rem;
+  padding: 0.25rem 0.9rem 0.75rem;
+  flex: 1;
 }
 
 .cama-info {
@@ -781,28 +799,40 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  padding-top: 0.25rem;
-  border-top: 1px solid var(--line, #e2e8f0);
-  margin-top: 0.25rem;
+  padding-top: 0.4rem;
+  margin-top: 0.15rem;
+  border-top: 1px dashed var(--line, #e2e8f0);
 }
 
 .cama-paciente-nombre {
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--ink, #1e293b);
 }
 
 .cama-footer {
   display: flex;
-  justify-content: flex-end;
-  padding-top: 0.25rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.9rem;
   border-top: 1px solid var(--line, #e2e8f0);
+  background: var(--mist, #f8fafc);
 }
 
 .cama-hint {
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
   color: var(--ink-soft, #64748b);
-  opacity: 0.7;
+}
+
+.cama-hint-arrow {
+  color: var(--ink-soft, #64748b);
+  transition: transform 0.2s ease;
+}
+
+.cama-card:hover .cama-hint-arrow {
+  transform: translateX(3px);
+  color: var(--teal);
 }
 
 /* Empty State */

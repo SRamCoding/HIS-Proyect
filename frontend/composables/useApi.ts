@@ -2,6 +2,11 @@ export const useApi = () => {
   const authStore = useAuthStore()
   const config = useRuntimeConfig()
 
+  // En SSR, config.public.apiUrl suele ser una ruta relativa (p.ej. "/api")
+  // que Apache proxea al backend; Nitro no tiene ese origen de navegador para
+  // resolverla, así que en servidor se usa la URL absoluta directa al backend.
+  const baseUrl = import.meta.server ? config.internalApiUrl : config.public.apiUrl
+
   const api = async <T = any>(endpoint: string, options: any = {}): Promise<T> => {
     const explicitTenant = typeof options.tenant === 'string' && options.tenant.trim()
       ? options.tenant.trim()
@@ -23,7 +28,7 @@ export const useApi = () => {
     const esLlamadaDeAuth = endpoint.startsWith('/auth/login') || endpoint.startsWith('/auth/refresh')
 
     try {
-      return await $fetch<T>(`${config.public.apiUrl}${endpoint}`, {
+      return await $fetch<T>(`${baseUrl}${endpoint}`, {
         ...fetchOptions,
         headers,
       })
@@ -31,7 +36,7 @@ export const useApi = () => {
       if (error?.response?.status === 401 && !esLlamadaDeAuth) {
         const refreshed = await authStore.refresh()
         if (refreshed) {
-          return await $fetch<T>(`${config.public.apiUrl}${endpoint}`, {
+          return await $fetch<T>(`${baseUrl}${endpoint}`, {
             ...fetchOptions,
             headers: {
               ...headers,

@@ -145,20 +145,20 @@
     <div class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
   <header
     class="h-16 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 shrink-0"
-    style="background: var(--navy); border-bottom: 1px solid rgba(255,255,255,0.08)"
+    style="background: var(--paper); border-bottom: 1px solid var(--line)"
   >
     <!-- Hamburguesa móvil -->
     <button
-      class="p-2 rounded-lg hover:bg-white/10 transition-colors md:hidden"
+      class="p-2 rounded-lg hover:bg-[var(--mist)] transition-colors md:hidden"
       aria-label="Abrir menú"
       @click="mobileOpen = true"
     >
-      <UIcon name="i-heroicons-bars-3" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" aria-hidden="true" />
+      <UIcon name="i-heroicons-bars-3" class="w-5 h-5" style="color: var(--ink-soft)" aria-hidden="true" />
     </button>
 
     <!-- Colapsar sidebar (solo escritorio) -->
     <button
-      class="p-2 rounded-lg hover:bg-white/10 transition-colors hidden md:block"
+      class="p-2 rounded-lg hover:bg-[var(--mist)] transition-colors hidden md:block"
       :aria-label="collapsed ? 'Expandir menú lateral' : 'Contraer menú lateral'"
       :aria-pressed="collapsed"
       @click="collapsed = !collapsed"
@@ -166,30 +166,30 @@
       <UIcon
         :name="collapsed ? 'i-heroicons-bars-3' : 'i-heroicons-chevron-double-left'"
         class="w-5 h-5"
-        style="color: rgba(255,255,255,0.6)"
+        style="color: var(--ink-soft)"
         aria-hidden="true"
       />
     </button>
 
-    <h2 class="text-sm font-medium shrink-0 truncate hidden sm:block" style="color: rgba(255,255,255,0.5)">
+    <h2 class="text-sm font-medium shrink-0 truncate hidden sm:block" style="color: var(--ink-soft)">
       {{ route.meta.title || 'Panel Administrativo' }}
     </h2>
 
     <div class="search-wrapper relative flex-1 max-w-sm ml-0 sm:ml-4 hidden sm:block">
-      <div class="flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12)">
-        <UIcon name="i-heroicons-magnifying-glass" class="w-4 h-4 shrink-0" style="color: rgba(255,255,255,0.4)" aria-hidden="true" />
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: var(--mist); border: 1px solid var(--line)">
+        <UIcon name="i-heroicons-magnifying-glass" class="w-4 h-4 shrink-0" style="color: var(--ink-soft)" aria-hidden="true" />
         <input
           v-model="searchQuery"
           type="search"
           aria-label="Buscar hospitales o cuentas admin"
           placeholder="Buscar hospitales, cuentas admin..."
           class="bg-transparent border-none outline-none text-sm w-full"
-          style="color: white;"
+          style="color: var(--ink);"
           @focus="searchOpen = true"
           @keydown.esc="searchOpen = false"
           @keydown.enter="irAlPrimerResultado"
         />
-        <UIcon v-if="searchLoading" name="i-heroicons-arrow-path" class="w-3.5 h-3.5 shrink-0 animate-spin" style="color: rgba(255,255,255,0.4)" />
+        <UIcon v-if="searchLoading" name="i-heroicons-arrow-path" class="w-3.5 h-3.5 shrink-0 animate-spin" style="color: var(--ink-soft)" />
       </div>
       <div v-if="searchOpen && searchQuery.trim().length >= 2" class="search-panel">
         <div v-if="!searchLoading && searchError" class="notif-empty" style="color: var(--alert)">
@@ -228,13 +228,13 @@
     <div class="ml-auto flex items-center gap-1">
       <div class="notif-wrapper relative">
         <button
-          class="relative p-2 rounded-lg hover:bg-white/10 transition-colors"
+          class="relative p-2 rounded-lg hover:bg-[var(--mist)] transition-colors"
           :aria-label="notifUnread > 0 ? `Notificaciones, ${notifUnread} sin leer` : 'Notificaciones'"
           aria-haspopup="true"
           :aria-expanded="notifOpen"
           @click="toggleNotifs"
         >
-          <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" aria-hidden="true" />
+          <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: var(--ink-soft)" aria-hidden="true" />
           <span v-if="notifUnread > 0" class="notif-badge" aria-hidden="true">{{ notifUnread > 9 ? '9+' : notifUnread }}</span>
         </button>
         <div v-if="notifOpen" class="notif-panel">
@@ -272,13 +272,13 @@
       </div>
       <div class="settings-wrapper relative">
         <button
-          class="p-2 rounded-lg hover:bg-white/10 transition-colors"
+          class="p-2 rounded-lg hover:bg-[var(--mist)] transition-colors"
           aria-label="Configuración"
           aria-haspopup="true"
           :aria-expanded="settingsOpen"
           @click="settingsOpen = !settingsOpen"
         >
-          <UIcon name="i-heroicons-cog-6-tooth" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" aria-hidden="true" />
+          <UIcon name="i-heroicons-cog-6-tooth" class="w-5 h-5" style="color: var(--ink-soft)" aria-hidden="true" />
         </button>
         <div v-if="settingsOpen" class="settings-menu">
           <NuxtLink to="/admin/perfil" class="settings-item" @click="settingsOpen = false">

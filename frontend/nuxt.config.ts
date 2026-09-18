@@ -21,6 +21,13 @@ app: {
   },
 },
 runtimeConfig: {
+  // Solo accesible en el servidor (Nitro/SSR). El build en producción usa
+  // NUXT_PUBLIC_API_URL=/api (ruta relativa que Apache proxea al backend),
+  // pero una ruta relativa no se puede resolver durante el renderizado en
+  // servidor (no hay origen de navegador) y termina fetcheando contra el
+  // propio proceso de Nitro, que no tiene rutas /api. Por eso el SSR usa
+  // esta URL absoluta directa al backend en vez de config.public.apiUrl.
+  internalApiUrl: process.env.NUXT_INTERNAL_API_URL || 'http://127.0.0.1:8010',
   public: {
     apiUrl: process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8000',
     tenantDomain: process.env.NUXT_PUBLIC_TENANT_DOMAIN || 'techquk.com',

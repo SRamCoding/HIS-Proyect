@@ -129,14 +129,14 @@
                     class="action-btn action-view"
                     title="Ver / Editar paciente"
                   >
-                    <UIcon name="i-heroicons-eye" class="w-4 h-4" />
+                    <UIcon name="i-heroicons-eye" class="w-5 h-5" />
                   </NuxtLink>
                   <NuxtLink
                     :to="link(`/app/admision/pacientes/${p.id}`)"
                     class="action-btn action-edit"
                     title="Editar paciente"
                   >
-                    <UIcon name="i-heroicons-pencil-square" class="w-4 h-4" />
+                    <UIcon name="i-heroicons-pencil-square" class="w-5 h-5" />
                   </NuxtLink>
                 </div>
               </td>
@@ -701,18 +701,18 @@ onMounted(cargar)
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
 
 .action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--paper);
   color: var(--ink-soft);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -721,18 +721,32 @@ onMounted(cargar)
 
 .action-btn:hover {
   background: var(--mist);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
-.action-view:hover {
+.action-view {
   color: var(--teal);
   border-color: var(--teal-soft);
   background: var(--teal-soft);
 }
 
-.action-edit:hover {
+.action-view:hover {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: white;
+}
+
+.action-edit {
   color: var(--amber);
   border-color: var(--amber-soft);
   background: var(--amber-soft);
+}
+
+.action-edit:hover {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: white;
 }
 
 /* Empty State */

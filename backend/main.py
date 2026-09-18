@@ -38,6 +38,8 @@ from app.sigarh.roles_pendientes.router import router as sigarh_roles_pendientes
 from app.sigarh.roles_aprobados.router import router as sigarh_roles_aprobados_router
 
 # ── Panel Hospitalario (app) ────────────────────────────────
+from app.hospital.dashboard.router import router as hosp_dashboard_router
+from app.hospital.perfil.router import router as hosp_perfil_router
 from app.hospital.admision.router import router as hosp_admision_router
 from app.hospital.hospitalizacion.router import router as hosp_hospitalizacion_router
 from app.hospital.consulta_externa.router import router as hosp_consulta_externa_router
@@ -137,6 +139,8 @@ app.include_router(sigarh_roles_pendientes_router, prefix="/sigarh/roles-pendien
 app.include_router(sigarh_roles_aprobados_router, prefix="/sigarh/roles-aprobados", tags=["SIGARH - Roles Aprobados"])
 
 # Panel Hospitalario (app)
+app.include_router(hosp_dashboard_router, prefix="/app/dashboard", tags=["app-dashboard"])
+app.include_router(hosp_perfil_router, prefix="/app", tags=["app-perfil"])
 app.include_router(hosp_admision_router, prefix="/app/admision", tags=["app-admision"])
 app.include_router(hosp_hospitalizacion_router, prefix="/app/hospitalizacion", tags=["app-hospitalizacion"])
 app.include_router(hosp_consulta_externa_router, prefix="/app/consulta-externa", tags=["app-consulta-externa"])

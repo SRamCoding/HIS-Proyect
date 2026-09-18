@@ -123,7 +123,7 @@ async def contexto_hospital(db, usuario, hospital, habilitados):
     return {"sub": str(usuario.id), "name": usuario.name, "email": usuario.email,
         "role": usuario.role, "panel": usuario.panel, "tenant_id": str(hospital.id),
         "active_modules": permisos, "perfil_id": str(shared_id) if shared_id else None, "perfil_hospital_id": str(perfil.id) if perfil else None,
-        "empleado_id": str(empleado.id) if empleado else None}
+        "empleado_id": str(empleado.id) if empleado else None, "session_version": usuario.session_version}
 
 async def validar_perfil(db, tid, perfil_id, role, empleado_id, panel):
     if panel != "app":

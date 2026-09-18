@@ -133,26 +133,60 @@
             <UIcon name="i-heroicons-question-mark-circle" class="w-5 h-5" style="color: #7a8894" />
           </button>
 
-          <button class="relative p-2 rounded-lg hover:bg-black/5 transition-colors" title="Notificaciones">
-            <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: #7a8894" />
-            <span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style="background: var(--teal)" />
-          </button>
+          <div class="notif-wrapper relative">
+            <button class="relative p-2 rounded-lg hover:bg-black/5 transition-colors" title="Pendientes" @click="notifOpen = !notifOpen">
+              <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: #7a8894" />
+              <span v-if="totalPendientes > 0" class="notif-badge">{{ totalPendientes > 9 ? '9+' : totalPendientes }}</span>
+            </button>
+            <div v-if="notifOpen" class="notif-panel">
+              <div class="notif-panel-header">
+                <span>Pendientes de hoy</span>
+              </div>
+              <div v-if="cargandoPendientes" class="notif-empty">Cargando...</div>
+              <div v-else-if="!pendientes.length" class="notif-empty">Sin pendientes por ahora.</div>
+              <ul v-else class="notif-list">
+                <li
+                  v-for="p in pendientes"
+                  :key="p.label"
+                  class="notif-item"
+                  @click="notifOpen = false; navigateTo(link(p.path))"
+                >
+                  <span class="notif-dot" :style="{ background: p.color }" />
+                  <div class="notif-item-body">
+                    <p class="notif-title">{{ p.valor }} {{ p.label }}</p>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
 
-          <button class="p-2 rounded-lg hover:bg-black/5 transition-colors" title="Configuración">
+          <NuxtLink :to="link('/app/perfil')" class="p-2 rounded-lg hover:bg-black/5 transition-colors flex" title="Configuración">
             <UIcon name="i-heroicons-cog-6-tooth" class="w-5 h-5" style="color: #7a8894" />
-          </button>
+          </NuxtLink>
 
           <div class="w-px h-6 mx-1" style="background: #e6ebef" />
 
-          <button class="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full hover:bg-black/5 transition-colors">
-            <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0" style="background: var(--teal)">
-              {{ inicialesUsuario }}
+          <div class="settings-wrapper relative">
+            <button class="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full hover:bg-black/5 transition-colors" @click="profileOpen = !profileOpen">
+              <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0" style="background: var(--teal)">
+                {{ inicialesUsuario }}
+              </div>
+              <span class="hidden lg:block text-sm font-medium" style="color: var(--navy)">
+                {{ authStore.user?.name || 'Usuario' }}
+              </span>
+              <UIcon name="i-heroicons-chevron-down" class="hidden lg:block w-3.5 h-3.5" style="color: #9aa7b1" />
+            </button>
+            <div v-if="profileOpen" class="settings-menu">
+              <NuxtLink :to="link('/app/perfil')" class="settings-item" @click="profileOpen = false">
+                <UIcon name="i-heroicons-user-circle" class="w-4 h-4" />
+                Mi Perfil
+              </NuxtLink>
+              <button class="settings-item settings-item--danger" @click="handleLogout">
+                <UIcon name="i-heroicons-arrow-right-on-rectangle" class="w-4 h-4" />
+                Cerrar Sesión
+              </button>
             </div>
-            <span class="hidden lg:block text-sm font-medium" style="color: var(--navy)">
-              {{ authStore.user?.name || 'Usuario' }}
-            </span>
-            <UIcon name="i-heroicons-chevron-down" class="hidden lg:block w-3.5 h-3.5" style="color: #9aa7b1" />
-          </button>
+          </div>
         </div>
       </header>
 
@@ -167,9 +201,57 @@
 <script setup lang="ts">
 const authStore = useAuthStore()
 const { link, activo, gruposVisibles, rutaMenuActual } = useHospitalNav()
+const { api } = useApi()
 const route = useRoute()
 const collapsed = ref(false)
 const navRef = ref<HTMLElement | null>(null)
+const notifOpen = ref(false)
+const profileOpen = ref(false)
+const cargandoPendientes = ref(false)
+interface Pendiente { label: string; valor: number; path: string; color: string }
+const pendientes = ref<Pendiente[]>([])
+const totalPendientes = computed(() => pendientes.value.reduce((acc, p) => acc + p.valor, 0))
+
+async function cargarPendientes() {
+  cargandoPendientes.value = true
+  try {
+    if (authStore.user?.role === 'medico') {
+      const d = await api<any>('/app/dashboard/medico')
+      pendientes.value = [
+        d.kpis.citas_hoy_pendientes > 0 && { label: 'citas por atender hoy', valor: d.kpis.citas_hoy_pendientes, path: '/app/admision/programacion-medica', color: '#6495ed' },
+      ].filter(Boolean) as Pendiente[]
+    } else {
+      const d = await api<any>('/app/dashboard/resumen')
+      pendientes.value = [
+        d.kpis.citas_hoy_pendientes > 0 && { label: 'citas por atender hoy', valor: d.kpis.citas_hoy_pendientes, path: '/app/consulta-externa/citas-por-confirmar', color: '#6495ed' },
+        d.kpis.emergencias_en_atencion > 0 && { label: 'emergencias en atención', valor: d.kpis.emergencias_en_atencion, path: '/app/emergencia/atenciones', color: '#c13f2c' },
+        d.kpis.lab_pendientes > 0 && { label: 'órdenes de laboratorio pendientes', valor: d.kpis.lab_pendientes, path: '/app/laboratorio/ordenes', color: '#b8862b' },
+        d.kpis.recetas_pendientes > 0 && { label: 'recetas pendientes', valor: d.kpis.recetas_pendientes, path: '/app/farmacia/recetas', color: '#1e7d4f' },
+      ].filter(Boolean) as Pendiente[]
+    }
+  } catch {
+    pendientes.value = []
+  } finally {
+    cargandoPendientes.value = false
+  }
+}
+
+function cerrarMenusSiFuera(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (notifOpen.value && !target.closest('.notif-wrapper')) notifOpen.value = false
+  if (profileOpen.value && !target.closest('.settings-wrapper')) profileOpen.value = false
+}
+
+let pendientesTimer: any
+onMounted(() => {
+  cargarPendientes()
+  pendientesTimer = setInterval(cargarPendientes, 45000)
+  document.addEventListener('click', cerrarMenusSiFuera)
+})
+onUnmounted(() => {
+  if (pendientesTimer) clearInterval(pendientesTimer)
+  document.removeEventListener('click', cerrarMenusSiFuera)
+})
 
 // Acordeon: un solo grupo abierto a la vez -- con ~22 grupos y varios items
 // cada uno, tenerlos todos abiertos de entrada obligaba a bajar mucho para
@@ -235,24 +317,22 @@ const handleLogout = async () => {
 </script>
 
 <style scoped>
-/* Identidad de color exclusiva del panel hospitalario: un solo verde para
-   todo (antes el sidebar/header usaban --navy, un azul oscuro, mientras el
-   resto del panel usaba --teal, un verde azulado -- dos colores distintos
-   compitiendo). Se sobreescriben las variables SOLO dentro de este layout
-   (".app-shell"): como son custom properties de CSS, heredan hacia
-   cualquier página/componente hijo renderizado adentro sin tocar la
-   paleta global que usan Admin y SIGARH.
+/* Identidad de color exclusiva del panel hospitalario: un solo azul
+   (cornflower #6495ED) para todo. Se sobreescriben las variables SOLO
+   dentro de este layout (".app-shell"): como son custom properties de
+   CSS, heredan hacia cualquier página/componente hijo renderizado adentro
+   sin tocar la paleta global que usan Admin y SIGARH.
    --navy/--navy-hover/--navy-soft: fondo del sidebar y sus estados.
    --teal/--teal-dark/--teal-soft: acento (botones, íconos, activos) en
-   todas las páginas de /app/*. Misma familia de verde, solo varía el tono
+   todas las páginas de /app/*. Misma familia de azul, solo varía el tono
    para mantener contraste. */
 .app-shell {
-  --navy: #1f7a52;
-  --navy-hover: #185f40;
-  --navy-soft: #e3f5ec;
-  --teal: #2f9e6b;
-  --teal-dark: #1f7a52;
-  --teal-soft: #e3f5ec;
+  --navy: #3e5c93;
+  --navy-hover: #324a76;
+  --navy-soft: #ecf2fd;
+  --teal: #6495ed;
+  --teal-dark: #3e5c93;
+  --teal-soft: #ecf2fd;
 }
 
 /* Links generales (Escritorio, submódulos, cerrar sesión) */
@@ -378,5 +458,123 @@ const handleLogout = async () => {
 }
 .sidebar-scroll::-webkit-scrollbar {
   display: none; /* Chrome, Safari, Edge Chromium */
+}
+
+/* ============ CAMPANA DE PENDIENTES / MENÚ DE PERFIL ============ */
+.notif-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--alert);
+  color: white;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.notif-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: 320px;
+  max-width: calc(100vw - 2rem);
+  max-height: 360px;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  z-index: 50;
+}
+.notif-panel-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.notif-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+.notif-list {
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.15s ease;
+}
+.notif-item:last-child {
+  border-bottom: none;
+}
+.notif-item:hover {
+  background: var(--mist);
+}
+.notif-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 0.375rem;
+  flex-shrink: 0;
+}
+.notif-item-body {
+  min-width: 0;
+}
+.notif-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+.settings-menu {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: 0.375rem;
+  background: var(--paper);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  z-index: 50;
+}
+.settings-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+.settings-item:hover {
+  background: var(--mist);
+}
+.settings-item--danger {
+  color: var(--alert);
 }
 </style>

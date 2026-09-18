@@ -189,7 +189,7 @@
               </td>
               <td class="col-especialidad">
                 <span class="especialidad-badge" :style="{ background: getEspecialidadColor(p.especialidad_nombre) + '22', color: getEspecialidadColor(p.especialidad_nombre) }">
-                  {{ p.especialidad_nombre }}
+                  {{ p.especialidad_nombre || 'Sin especialidad' }}
                 </span>
               </td>
               <td><span class="fecha-text">{{ p.servicio_nombre || '—' }}</span></td>
@@ -283,7 +283,7 @@ const limpiarFiltros = () => {
 const activas = computed(() => programaciones.value.filter(p => p.estado === 'activo').length)
 const inactivas = computed(() => programaciones.value.filter(p => p.estado !== 'activo').length)
 const especialidadesCount = computed(() => {
-  const unique = new Set(programaciones.value.map(p => p.especialidad_id))
+  const unique = new Set(programaciones.value.map(p => p.especialidad_id).filter(Boolean))
   return unique.size
 })
 
@@ -297,7 +297,8 @@ const getInitials = (name: string) => {
     .slice(0, 2)
 }
 
-const getMedicoColor = (name: string) => {
+const getMedicoColor = (name: string | null | undefined) => {
+  if (!name) return 'var(--mist)'
   const colors = [
     'var(--teal-soft)',
     'var(--purple-soft)',
@@ -315,7 +316,8 @@ const getMedicoColor = (name: string) => {
   return colors[Math.abs(hash) % colors.length]
 }
 
-const getEspecialidadColor = (name: string) => {
+const getEspecialidadColor = (name: string | null | undefined) => {
+  if (!name) return 'var(--ink-soft)'
   const colors = [
     'var(--teal)',
     'var(--purple)',
