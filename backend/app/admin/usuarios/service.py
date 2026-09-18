@@ -268,6 +268,8 @@ def _serializar_user(user: User, tenant_id: str | None) -> dict:
         "id": str(user.id), "name": user.name, "email": user.email,
         "role": user.role, "panel": user.panel, "is_active": user.is_active,
         "tenant_id": tenant_id, "account_type": "user",
+        "empleado_id": str(user.empleado_id) if user.empleado_id else None,
+        "perfil_hospital_id": str(user.perfil_hospital_id) if user.perfil_hospital_id else None,
     }
 
 

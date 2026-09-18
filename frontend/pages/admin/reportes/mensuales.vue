@@ -55,7 +55,7 @@
           </div>
           <div class="stat-content">
             <span class="stat-value">{{ data.total_hospitales_activos }}</span>
-            <span class="stat-label">Hospitales Activos</span>
+            <span class="stat-label">Hospitales Activos <span class="scope-tag scope-tag--actual">hoy</span></span>
           </div>
         </div>
         <div class="stat-widget" style="background: var(--paper); border-left: 4px solid var(--teal)">
@@ -64,7 +64,7 @@
           </div>
           <div class="stat-content">
             <span class="stat-value">{{ data.pacientes_nuevos_total }}</span>
-            <span class="stat-label">Pacientes Nuevos</span>
+            <span class="stat-label">Pacientes Nuevos <span class="scope-tag scope-tag--periodo">del mes</span></span>
           </div>
         </div>
         <div class="stat-widget" style="background: var(--paper); border-left: 4px solid var(--purple)">
@@ -73,7 +73,7 @@
           </div>
           <div class="stat-content">
             <span class="stat-value">{{ data.hospitales_registrados_periodo.length }}</span>
-            <span class="stat-label">Hospitales Registrados</span>
+            <span class="stat-label">Hospitales Registrados <span class="scope-tag scope-tag--periodo">del mes</span></span>
           </div>
         </div>
         <div class="stat-widget" style="background: var(--paper); border-left: 4px solid var(--amber)">
@@ -81,10 +81,21 @@
             <UIcon name="i-heroicons-users" class="w-5 h-5" style="color: var(--amber)" />
           </div>
           <div class="stat-content">
-            <span class="stat-value">{{ data.usuarios_centrales_registrados }}</span>
-            <span class="stat-label">Usuarios Centrales Nuevos</span>
+            <span class="stat-value" :style="data.usuarios_centrales_registrados === null ? { color: 'var(--ink-soft)', fontSize: '1.1rem' } : {}">
+              {{ data.usuarios_centrales_registrados === null ? 'No aplica' : data.usuarios_centrales_registrados }}
+            </span>
+            <span class="stat-label">
+              Usuarios Centrales Nuevos <span class="scope-tag scope-tag--periodo">del mes</span>
+              <span v-if="data.usuarios_centrales_registrados === null" class="ip-text" style="display: block; font-weight: 400; text-transform: none;">no pertenecen a un hospital puntual</span>
+            </span>
           </div>
         </div>
+      </div>
+
+      <!-- Aclaracion de alcance: que es "estado actual" y que es "del mes" -->
+      <div v-if="data.es_estado_actual" class="report-note">
+        <strong>Nota:</strong> "Hospitales Activos" y las columnas Usuarios/Módulos/Estado de la tabla reflejan el estado <strong>actual</strong> del sistema, no como estaba durante {{ meses[Number(mes) - 1] }} de {{ anio }}. Solo "Pacientes Nuevos", "Hospitales Registrados" y "Registrado" son datos reales de ese período.
+        <span v-if="data.pacientes_solo_hospitales_activos"> "Pacientes Nuevos" tampoco incluye hospitales que hoy están inactivos, aunque hayan tenido pacientes reales en {{ meses[Number(mes) - 1] }}: si se desactiva un hospital, el total de meses pasados puede cambiar.</span>
       </div>
 
       <!-- Aviso de datos parciales: algún hospital no respondió -->
@@ -95,7 +106,7 @@
 
       <!-- Aviso de módulos pendientes -->
       <div class="report-note">
-        <strong>Nota:</strong> Citas, emergencias y altas todavía no están implementadas en el sistema (no existen esos módulos en el backend). Estas métricas se agregarán cuando se desarrolle el módulo clínico correspondiente.
+        <strong>Nota:</strong> Citas, emergencias y altas ya están implementadas en el sistema, pero este reporte todavía no las agrega como métricas. Se incorporarán en una próxima iteración de este reporte.
       </div>
 
       <!-- Cobertura de módulos -->
@@ -137,10 +148,10 @@
               <thead>
                 <tr>
                   <th><span class="th-content">Hospital</span></th>
-                  <th><span class="th-content">Estado</span></th>
-                  <th><span class="th-content">Pacientes Nuevos</span></th>
-                  <th><span class="th-content">Usuarios</span></th>
-                  <th><span class="th-content">Módulos</span></th>
+                  <th><span class="th-content">Estado <span class="scope-tag scope-tag--actual">hoy</span></span></th>
+                  <th><span class="th-content">Pacientes Nuevos <span class="scope-tag scope-tag--periodo">mes</span></span></th>
+                  <th><span class="th-content">Usuarios <span class="scope-tag scope-tag--actual">hoy</span></span></th>
+                  <th><span class="th-content">Módulos <span class="scope-tag scope-tag--actual">hoy</span></span></th>
                   <th><span class="th-content">Registrado</span></th>
                 </tr>
               </thead>
@@ -234,10 +245,12 @@ interface MonthlyReport {
   modules_coverage: ModuleCoverage[]
   hospitales: HospitalSummary[]
   hospitales_registrados_periodo: HospitalRegistrado[]
-  usuarios_centrales_registrados: number
+  usuarios_centrales_registrados: number | null
   hospitales_consultados: number
   hospitales_totales: number
   es_parcial: boolean
+  es_estado_actual: boolean
+  pacientes_solo_hospitales_activos: boolean
 }
 
 const { api } = useApi()

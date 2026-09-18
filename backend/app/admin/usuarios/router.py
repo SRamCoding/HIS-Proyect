@@ -141,14 +141,53 @@ async def _roles_por_lote(session, perfil_ids: set) -> dict:
     return {p.id: nombre_por_rol.get(p.rol_sistema_id, "SIGARH") for p in perfiles}
 
 
+def _filtro_texto(*columnas, q: str | None):
+    from sqlalchemy import or_
+    if not q:
+        return None
+    termino = f"%{q.strip()}%"
+    return or_(*[c.ilike(termino) for c in columnas])
+
+
+async def _tenants_relevantes(db: AsyncSession, tenant_id: uuid.UUID | None) -> dict:
+    from app.tenants.hospitales.models import Tenant
+    tenants_query = select(Tenant).where(Tenant.id == tenant_id) if tenant_id else select(Tenant)
+    return {str(t.id): t for t in (await db.scalars(tenants_query)).all()}
+
+
 async def _reunir_todas_las_cuentas(
     db: AsyncSession, tenant_id: uuid.UUID | None, vista: str | None = None,
+    q: str | None = None, is_active: bool | None = None, cap: int | None = None,
 ) -> tuple[list[dict], list[str]]:
-    """Reune TODAS las cuentas (central + cada hospital con base física) en
-    una sola lista en memoria, con el rol SIGARH ya resuelto en lote. La
-    usan tanto el listado paginado como el resumen -- ambos necesitan tocar
-    las mismas fuentes; no hay forma de evitarlo sin un índice materializado
-    aparte (ver nota en usuarios_con_hospital).
+    """Reune cuentas (central + cada hospital con base física) en una sola
+    lista en memoria, con el rol SIGARH ya resuelto en lote. La usa el
+    listado paginado (`/usuarios/con-hospital`) -- el resumen
+    (`/usuarios/resumen`) ya NO pasa por aca: usa `_resumen_todas_las_
+    cuentas`, que calcula sus agregados (total/activos/roles) con
+    COUNT/SUM/DISTINCT en cada fuente, sin traer una sola cuenta.
+
+    `q`/`is_active`/`vista` se empujan como WHERE a cada consulta (central y
+    a cada base de hospital) en vez de filtrar en Python despues de traer
+    todo -- antes CUALQUIER busqueda, filtro o vista traia el catalogo
+    completo de cuentas igual, y no ahorraban nada del lado del servidor.
+    Es importante que ESTOS MISMOS filtros (sobre todo `vista == "hospital"`,
+    que debe excluir panel="portal" ademas de "admin") se apliquen ANTES de
+    `cap`, no despues: si el filtro por panel se aplicara en Python sobre el
+    resultado ya acotado, una base cuyas primeras `cap` filas (por fecha)
+    fueran todas panel="portal" iba a devolver una pagina vacia o incompleta
+    aunque existieran cuentas app/sigarh validas mas atras en esa misma base.
+
+    `cap`, cuando se pasa (el listado paginado lo hace), acota con
+    LIMIT/ORDER BY created_at cuantas filas se piden a CADA fuente. Alcanza
+    con que cada fuente entregue sus propias top-`cap` mas recientes (ya
+    filtradas por panel/busqueda/estado): en el peor caso, una pagina global
+    completa viene de una sola fuente, y esa fuente ya la cubre con su
+    propio top-`cap`. Con esto una base de un hospital con miles de cuentas
+    ya no se descarga entera solo para mostrar una pagina de 50. No hay
+    forma de paginar con un solo LIMIT/OFFSET de Postgres a traves de varias
+    bases distintas sin un índice materializado aparte, que es un cambio más
+    grande que esto; lo que se gana aqui es dejar de mover TODA la fila de
+    cada cuenta cuando no hace falta.
 
     Si `vista == "admin"`, ni siquiera se intenta tocar ninguna base física
     de hospital: una cuenta panel="admin" SOLO puede vivir en la BD
@@ -158,8 +197,8 @@ async def _reunir_todas_las_cuentas(
     recién al final, sobre datos que nunca iban a servir."""
     from app.auth.models import User
     from app.sigarh.mantenimiento.models import UsuarioSigarh
-    from app.tenants.hospitales.models import Tenant
     from app.core.tenant_db import get_tenant_sessionmaker
+    from app.tenants.hospitales.models import Tenant
 
     central_query = (
         select(User, Tenant.name.label("tenant_name"))
@@ -170,6 +209,18 @@ async def _reunir_todas_las_cuentas(
         central_query = central_query.where(User.tenant_id == tenant_id)
     if vista == "admin":
         central_query = central_query.where(User.panel == "admin")
+    elif vista == "hospital":
+        # "hospital" = cuentas hospitalarias (app + sigarh), NUNCA admin NI
+        # portal (User.panel admite "admin"/"app"/"portal", ver schemas.py::
+        # PANELES). `!= "admin"` dejaba pasar "portal" igual.
+        central_query = central_query.where(User.panel == "app")
+    if is_active is not None:
+        central_query = central_query.where(User.is_active == is_active)
+    filtro = _filtro_texto(User.name, User.email, q=q)
+    if filtro is not None:
+        central_query = central_query.where(filtro)
+    if cap:
+        central_query = central_query.order_by(User.created_at.desc()).limit(cap)
     result = await db.execute(central_query)
     rows = result.all()
     items = [
@@ -198,9 +249,15 @@ async def _reunir_todas_las_cuentas(
     sigarh_query = select(UsuarioSigarh)
     if tenant_id:
         sigarh_query = sigarh_query.where(UsuarioSigarh.tenant_id == tenant_id)
+    if is_active is not None:
+        sigarh_query = sigarh_query.where(UsuarioSigarh.is_active == is_active)
+    filtro = _filtro_texto(UsuarioSigarh.username, UsuarioSigarh.email, q=q)
+    if filtro is not None:
+        sigarh_query = sigarh_query.where(filtro)
+    if cap:
+        sigarh_query = sigarh_query.order_by(UsuarioSigarh.created_at.desc()).limit(cap)
     sigarh_central = (await db.scalars(sigarh_query)).all()
-    tenants_query = select(Tenant).where(Tenant.id == tenant_id) if tenant_id else select(Tenant)
-    tenants_por_id = {str(t.id): t for t in (await db.scalars(tenants_query)).all()}
+    tenants_por_id = await _tenants_relevantes(db, tenant_id)
     sigarh_central_validos = [
         (u, tenants_por_id.get(str(u.tenant_id)))
         for u in sigarh_central
@@ -235,7 +292,17 @@ async def _reunir_todas_las_cuentas(
             TenantSession = get_tenant_sessionmaker(tenant.database_name)
             async with TenantSession() as tdb:
                 encontrados = []
-                tenant_users = (await tdb.scalars(select(User))).all()
+                tenant_users_q = select(User)
+                if vista == "hospital":
+                    tenant_users_q = tenant_users_q.where(User.panel == "app")
+                if is_active is not None:
+                    tenant_users_q = tenant_users_q.where(User.is_active == is_active)
+                filtro_u = _filtro_texto(User.name, User.email, q=q)
+                if filtro_u is not None:
+                    tenant_users_q = tenant_users_q.where(filtro_u)
+                if cap:
+                    tenant_users_q = tenant_users_q.order_by(User.created_at.desc()).limit(cap)
+                tenant_users = (await tdb.scalars(tenant_users_q)).all()
                 for u in tenant_users:
                     encontrados.append({
                         "id": str(u.id), "name": u.name, "email": u.email,
@@ -244,7 +311,15 @@ async def _reunir_todas_las_cuentas(
                         "created_at": u.created_at.strftime("%d/%m/%Y"), "_created_at_raw": u.created_at,
                         "account_type": "user",
                     })
-                tenant_sigarh_users = (await tdb.scalars(select(UsuarioSigarh))).all()
+                tenant_sigarh_q = select(UsuarioSigarh)
+                if is_active is not None:
+                    tenant_sigarh_q = tenant_sigarh_q.where(UsuarioSigarh.is_active == is_active)
+                filtro_s = _filtro_texto(UsuarioSigarh.username, UsuarioSigarh.email, q=q)
+                if filtro_s is not None:
+                    tenant_sigarh_q = tenant_sigarh_q.where(filtro_s)
+                if cap:
+                    tenant_sigarh_q = tenant_sigarh_q.order_by(UsuarioSigarh.created_at.desc()).limit(cap)
+                tenant_sigarh_users = (await tdb.scalars(tenant_sigarh_q)).all()
                 roles_hospital = await _roles_por_lote(tdb, {u.perfil_id for u in tenant_sigarh_users if u.perfil_id})
                 for u in tenant_sigarh_users:
                     encontrados.append({
@@ -269,6 +344,201 @@ async def _reunir_todas_las_cuentas(
     return items, hospitales_no_disponibles
 
 
+async def _contar_todas_las_cuentas(
+    db: AsyncSession, tenant_id: uuid.UUID | None, vista: str | None,
+    q: str | None, is_active: bool | None,
+) -> int:
+    """Total real de cuentas que matchean los mismos filtros que
+    `_reunir_todas_las_cuentas`, pero via COUNT (una fila de resultado por
+    fuente) -- nunca trae las cuentas en si. Lo usa el listado paginado
+    para no depender de `len(items)` sobre una lista ya acotada por `cap`."""
+    from sqlalchemy import func
+    from app.auth.models import User
+    from app.sigarh.mantenimiento.models import UsuarioSigarh
+    from app.tenants.hospitales.models import Tenant
+    from app.core.tenant_db import get_tenant_sessionmaker
+
+    central_q = select(func.count(User.id)).where(User.is_superadmin.is_(False))
+    if tenant_id:
+        central_q = central_q.where(User.tenant_id == tenant_id)
+    if vista == "admin":
+        central_q = central_q.where(User.panel == "admin")
+    elif vista == "hospital":
+        # Mismo criterio que en _reunir_todas_las_cuentas: "hospital" es
+        # app + sigarh, nunca portal.
+        central_q = central_q.where(User.panel == "app")
+    if is_active is not None:
+        central_q = central_q.where(User.is_active == is_active)
+    filtro = _filtro_texto(User.name, User.email, q=q)
+    if filtro is not None:
+        central_q = central_q.where(filtro)
+    total = await db.scalar(central_q) or 0
+
+    if vista == "admin":
+        return total
+
+    sigarh_central_q = (
+        select(func.count(UsuarioSigarh.id))
+        .join(Tenant, UsuarioSigarh.tenant_id == Tenant.id)
+        .where(Tenant.database_name.is_(None))
+    )
+    if tenant_id:
+        sigarh_central_q = sigarh_central_q.where(UsuarioSigarh.tenant_id == tenant_id)
+    if is_active is not None:
+        sigarh_central_q = sigarh_central_q.where(UsuarioSigarh.is_active == is_active)
+    filtro = _filtro_texto(UsuarioSigarh.username, UsuarioSigarh.email, q=q)
+    if filtro is not None:
+        sigarh_central_q = sigarh_central_q.where(filtro)
+    total += await db.scalar(sigarh_central_q) or 0
+
+    tenants_por_id = await _tenants_relevantes(db, tenant_id)
+    tenants_con_bd = [t for t in tenants_por_id.values() if t.database_name and t.is_active]
+
+    async def _contar_en(tenant) -> int:
+        try:
+            TenantSession = get_tenant_sessionmaker(tenant.database_name)
+            async with TenantSession() as tdb:
+                users_q = select(func.count(User.id))
+                if vista == "hospital":
+                    users_q = users_q.where(User.panel == "app")
+                if is_active is not None:
+                    users_q = users_q.where(User.is_active == is_active)
+                filtro_u = _filtro_texto(User.name, User.email, q=q)
+                if filtro_u is not None:
+                    users_q = users_q.where(filtro_u)
+                sigarh_q = select(func.count(UsuarioSigarh.id))
+                if is_active is not None:
+                    sigarh_q = sigarh_q.where(UsuarioSigarh.is_active == is_active)
+                filtro_s = _filtro_texto(UsuarioSigarh.username, UsuarioSigarh.email, q=q)
+                if filtro_s is not None:
+                    sigarh_q = sigarh_q.where(filtro_s)
+                return (await tdb.scalar(users_q) or 0) + (await tdb.scalar(sigarh_q) or 0)
+        except Exception:
+            logger.exception("No se pudo contar usuarios del hospital %s", tenant.name)
+            return 0
+
+    conteos = await gather_limitado([_contar_en(t) for t in tenants_con_bd])
+    return total + sum(conteos)
+
+
+def _query_roles_sigarh():
+    """Nombres de rol DISTINTOS entre cuentas SIGARH (resueltos via perfil ->
+    rol de sistema, con "SIGARH" de respaldo si no tiene perfil o el perfil
+    no tiene rol asignado). Nunca trae las cuentas en si, solo el pequeño
+    conjunto de nombres de rol distintos que existen."""
+    from sqlalchemy import func
+    from app.sigarh.mantenimiento.models import UsuarioSigarh, PerfilUsuario, RolSistema
+    return (
+        select(func.coalesce(RolSistema.nombre, "SIGARH"))
+        .select_from(UsuarioSigarh)
+        .outerjoin(PerfilUsuario, UsuarioSigarh.perfil_id == PerfilUsuario.id)
+        .outerjoin(RolSistema, PerfilUsuario.rol_sistema_id == RolSistema.id)
+        .distinct()
+    )
+
+
+async def _resumen_todas_las_cuentas(
+    db: AsyncSession, tenant_id: uuid.UUID | None, vista: str | None,
+) -> dict:
+    """Agregados (total, activos, inactivos, roles unicos) para el mismo
+    universo de cuentas que _reunir_todas_las_cuentas/_contar_todas_las_
+    cuentas, pero SIN traer una sola cuenta a memoria: cada fuente aporta un
+    COUNT/SUM y un SELECT DISTINCT de a lo sumo un puñado de nombres de rol.
+    Antes /usuarios/resumen llamaba a _reunir_todas_las_cuentas sin `cap` --
+    es decir, con el catalogo COMPLETO de cuentas de TODOS los hospitales --
+    solo para sumarlas y sacar un set() de roles en Python. La mejora de
+    paginacion de /usuarios/con-hospital nunca alcanzaba a este endpoint,
+    que la pantalla de Usuarios pide en cada carga junto al listado."""
+    from sqlalchemy import func, case
+    from app.auth.models import User
+    from app.sigarh.mantenimiento.models import UsuarioSigarh
+    from app.tenants.hospitales.models import Tenant
+    from app.core.tenant_db import get_tenant_sessionmaker
+
+    activos_expr = func.sum(case((User.is_active.is_(True), 1), else_=0))
+
+    central_q = select(func.count(User.id), activos_expr).where(User.is_superadmin.is_(False))
+    roles_central_q = select(User.role).where(User.is_superadmin.is_(False)).distinct()
+    if tenant_id:
+        central_q = central_q.where(User.tenant_id == tenant_id)
+        roles_central_q = roles_central_q.where(User.tenant_id == tenant_id)
+    if vista == "admin":
+        central_q = central_q.where(User.panel == "admin")
+        roles_central_q = roles_central_q.where(User.panel == "admin")
+    elif vista == "hospital":
+        central_q = central_q.where(User.panel == "app")
+        roles_central_q = roles_central_q.where(User.panel == "app")
+    total_c, activos_c = (await db.execute(central_q)).one()
+    total = total_c or 0
+    activos = activos_c or 0
+    roles: set[str] = set((await db.scalars(roles_central_q)).all())
+
+    if vista == "admin":
+        return {
+            "total": total, "activos": activos, "inactivos": total - activos,
+            "roles_unicos": len(roles), "hospitales_no_disponibles": [], "es_parcial": False,
+        }
+
+    sigarh_activos_expr = func.sum(case((UsuarioSigarh.is_active.is_(True), 1), else_=0))
+    sigarh_central_q = (
+        select(func.count(UsuarioSigarh.id), sigarh_activos_expr)
+        .join(Tenant, UsuarioSigarh.tenant_id == Tenant.id)
+        .where(Tenant.database_name.is_(None))
+    )
+    roles_sigarh_central_q = _query_roles_sigarh().join(Tenant, UsuarioSigarh.tenant_id == Tenant.id).where(
+        Tenant.database_name.is_(None)
+    )
+    if tenant_id:
+        sigarh_central_q = sigarh_central_q.where(UsuarioSigarh.tenant_id == tenant_id)
+        roles_sigarh_central_q = roles_sigarh_central_q.where(UsuarioSigarh.tenant_id == tenant_id)
+    total_sc, activos_sc = (await db.execute(sigarh_central_q)).one()
+    total += total_sc or 0
+    activos += activos_sc or 0
+    roles |= set((await db.scalars(roles_sigarh_central_q)).all())
+
+    tenants_por_id = await _tenants_relevantes(db, tenant_id)
+    tenants_con_bd = [t for t in tenants_por_id.values() if t.database_name and t.is_active]
+
+    async def _resumen_en(tenant) -> tuple[int, int, set[str], bool]:
+        try:
+            TenantSession = get_tenant_sessionmaker(tenant.database_name)
+            async with TenantSession() as tdb:
+                users_q = select(func.count(User.id), activos_expr)
+                roles_u_q = select(User.role).distinct()
+                if vista == "hospital":
+                    users_q = users_q.where(User.panel == "app")
+                    roles_u_q = roles_u_q.where(User.panel == "app")
+                total_u, activos_u = (await tdb.execute(users_q)).one()
+                roles_t: set[str] = set((await tdb.scalars(roles_u_q)).all())
+
+                sigarh_q = select(func.count(UsuarioSigarh.id), sigarh_activos_expr)
+                total_s, activos_s = (await tdb.execute(sigarh_q)).one()
+                roles_t |= set((await tdb.scalars(_query_roles_sigarh())).all())
+
+                return (total_u or 0) + (total_s or 0), (activos_u or 0) + (activos_s or 0), roles_t, True
+        except Exception:
+            logger.exception("No se pudo calcular el resumen de usuarios del hospital %s", tenant.name)
+            return 0, 0, set(), False
+
+    resultados = await gather_limitado([_resumen_en(t) for t in tenants_con_bd])
+    hospitales_no_disponibles = []
+    for tenant, (total_t, activos_t, roles_t, disponible) in zip(tenants_con_bd, resultados):
+        total += total_t
+        activos += activos_t
+        roles |= roles_t
+        if not disponible:
+            hospitales_no_disponibles.append(tenant.name)
+
+    return {
+        "total": total,
+        "activos": activos,
+        "inactivos": total - activos,
+        "roles_unicos": len(roles),
+        "hospitales_no_disponibles": hospitales_no_disponibles,
+        "es_parcial": len(hospitales_no_disponibles) > 0,
+    }
+
+
 @router.get("/usuarios/con-hospital", summary="Usuarios con datos de hospital, de todos los paneles")
 async def usuarios_con_hospital(
     tenant_id: uuid.UUID | None = None,
@@ -285,36 +555,42 @@ async def usuarios_con_hospital(
     de Usuarios lo usa cuando el admin ya eligió un hospital puntual, para
     no pagar el costo de tocar cada base física solo para mostrar una.
 
-    `limit`/`offset` acotan lo que se DEVUELVE (antes siempre mandaba la
-    lista completa de todos los hospitales de una sola vez). Importante ser
-    honesto sobre el limite real de esto: los datos siguen viviendo en bases
-    físicas separadas por hospital, así que armar el total y poder ordenar
-    globalmente antes de paginar todavía requiere consultar cada hospital
-    -- no hay forma de empujarle un LIMIT/OFFSET a Postgres a través de
-    varias bases distintas sin un índice materializado aparte, que es un
-    cambio más grande que esto. Lo que sí se gana: la respuesta que baja al
-    navegador es del tamaño de una página, no de todo el sistema, y los
-    nombres de rol SIGARH se resuelven en lote (ver _roles_por_lote), no
-    uno por uno."""
-    items, hospitales_no_disponibles = await _reunir_todas_las_cuentas(db, tenant_id, vista)
+    `q`/`is_active` se filtran en SQL en cada fuente (ver
+    `_reunir_todas_las_cuentas`), y `limit`/`offset` acotan lo que cada
+    fuente entrega (`cap = offset + limit` alcanza para un top-N global
+    correcto, ver esa misma nota). Antes esto traia el catalogo COMPLETO de
+    cuentas de TODOS los hospitales a memoria en cada llamada -- buscar o
+    paginar no reducia nada del trabajo real, solo lo que bajaba al
+    navegador. `total` ya no sale de `len(items)` (que ahora viene acotado)
+    sino de `_contar_todas_las_cuentas`, que solo pide COUNT(*) por fuente,
+    nunca las filas.
 
-    # vista == "admin" ya viene filtrada por _reunir_todas_las_cuentas (ni
-    # siquiera toco ninguna base de hospital); solo falta el caso "hospital"
-    # aca, para excluir del pool combinado las admin centrales que si se
-    # trajeron cuando vista es None o "hospital".
-    if vista == "hospital":
-        items = [it for it in items if it["panel"] in ("app", "sigarh")]
-    if is_active is not None:
-        items = [it for it in items if it["is_active"] == is_active]
-    if q:
-        termino = q.strip().lower()
-        items = [it for it in items if termino in it["name"].lower() or termino in it["email"].lower()]
+    Sigue siendo honesto decir que un LIMIT/OFFSET unico de Postgres a
+    traves de varias bases fisicas distintas no existe sin un índice
+    materializado aparte -- eso es un cambio mas grande que esto. Lo que se
+    gana aqui es que ni la busqueda ni la paginacion siguen pagando el
+    costo de traer TODO solo para descartarlo despues."""
+    cap = offset + limit
+    items, hospitales_no_disponibles = await _reunir_todas_las_cuentas(
+        db, tenant_id, vista, q=q, is_active=is_active, cap=cap,
+    )
+
+    # vista == "admin"/"hospital" ya vienen filtradas por panel dentro de
+    # _reunir_todas_las_cuentas (empujado a SQL en cada fuente, antes de
+    # aplicar `cap`) -- antes este filtro se aplicaba ACA, en Python, DESPUES
+    # de que cada fuente ya habia sido acotada a sus top-`cap` mas recientes
+    # sin importar el panel. Si esas primeras `cap` filas de una base eran
+    # todas panel="portal", las cuentas app/sigarh reales quedaban fuera del
+    # resultado sin llegar siquiera a este filtro -- una pagina podia salir
+    # vacia (o con menos cuentas de las que en realidad existian) aunque
+    # hubiera cuentas validas mas atras en esa misma base.
 
     items.sort(key=lambda it: it["_created_at_raw"], reverse=True)
-    total = len(items)
     pagina = items[offset:offset + limit]
     for it in pagina:
         del it["_created_at_raw"]
+
+    total = await _contar_todas_las_cuentas(db, tenant_id, vista, q, is_active)
 
     return {
         "items": pagina,
@@ -331,17 +607,7 @@ async def usuarios_resumen(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
-    items, hospitales_no_disponibles = await _reunir_todas_las_cuentas(db, tenant_id, vista)
-    if vista == "hospital":
-        items = [it for it in items if it["panel"] in ("app", "sigarh")]
-    return {
-        "total": len(items),
-        "activos": sum(1 for it in items if it["is_active"]),
-        "inactivos": sum(1 for it in items if not it["is_active"]),
-        "roles_unicos": len({it["role"] for it in items}),
-        "hospitales_no_disponibles": hospitales_no_disponibles,
-        "es_parcial": len(hospitales_no_disponibles) > 0,
-    }
+    return await _resumen_todas_las_cuentas(db, tenant_id, vista)
 
 
 @router.get("/usuarios/hospital/{tenant_id}", response_model=list[UserListItem], summary="Usuarios por hospital")

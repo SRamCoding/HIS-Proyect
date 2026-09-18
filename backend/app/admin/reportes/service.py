@@ -54,6 +54,12 @@ async def _stats_hospital(tenant: Tenant, start: datetime, end: datetime) -> tup
 
 
 async def get_hospitals_modules_report(db: AsyncSession) -> list[dict]:
+    """Antes devolvia active_modules como codigos crudos (sigarh_infraestructura_hosp,
+    fact_config...) -- la pantalla los pintaba tal cual, un muro de ~38 chips
+    con el codigo tecnico en vez del nombre visible del modulo. Ahora resuelve
+    nombre/categoria desde el catalogo y separa el conteo App/SIGARH, para que
+    el frontend pueda mostrar un resumen legible en vez de todos los codigos
+    de una sola vez."""
     result = await db.execute(
         select(Tenant)
         .options(selectinload(Tenant.modules))
@@ -61,15 +67,32 @@ async def get_hospitals_modules_report(db: AsyncSession) -> list[dict]:
         .order_by(Tenant.name)
     )
     tenants = result.scalars().all()
-    return [
-        {
+
+    catalogo = await get_all_modules(db)
+    info_por_codigo = {m.code: m for m in catalogo}
+
+    reporte = []
+    for t in tenants:
+        codigos = t.active_module_codes
+        modulos = [
+            {
+                "code": code,
+                "name": info_por_codigo[code].name if code in info_por_codigo else code,
+                "category": info_por_codigo[code].category if code in info_por_codigo else "app",
+            }
+            for code in codigos
+        ]
+        modulos.sort(key=lambda m: (m["category"], m["name"]))
+        reporte.append({
             "hospital_name": t.name,
             "domain": t.domain,
-            "active_modules": t.active_module_codes,
-            "total_modules": len(t.active_module_codes),
-        }
-        for t in tenants
-    ]
+            "hospital_level": t.hospital_level,
+            "modules": modulos,
+            "total_modules": len(modulos),
+            "app_modules": sum(1 for m in modulos if m["category"] == "app"),
+            "sigarh_modules": sum(1 for m in modulos if m["category"] == "sigarh"),
+        })
+    return reporte
 
 
 async def get_monthly_report(
@@ -149,26 +172,39 @@ async def get_monthly_report(
     coverage.sort(key=lambda x: x["hospitals_with_module"], reverse=True)
     coverage = coverage[:10]
 
-    # Hospitales registrados en el periodo (independiente de is_active)
-    registrados_rows = await db.execute(
-        select(Tenant)
-        .where(Tenant.created_at >= start, Tenant.created_at < end)
-        .order_by(Tenant.created_at.desc())
-    )
-    registrados = registrados_rows.scalars().all()
+    # Hospitales registrados en el periodo (independiente de is_active). Si
+    # el reporte esta filtrado a UN hospital puntual, esta lista debe seguir
+    # ese mismo filtro -- antes ignoraba `tenant_id` y siempre mostraba los
+    # hospitales registrados de TODO el sistema, incluso viendo el reporte
+    # de un solo hospital.
+    registrados_query = select(Tenant).where(
+        Tenant.created_at >= start, Tenant.created_at < end,
+    ).order_by(Tenant.created_at.desc())
+    if tenant_id:
+        registrados_query = registrados_query.where(Tenant.id == tenant_id)
+    registrados = (await db.execute(registrados_query)).scalars().all()
     hospitales_registrados_periodo = [
         {"name": t.name, "domain": t.domain, "created_at": t.created_at}
         for t in registrados
     ]
 
-    # Usuarios centrales (sin tenant, ej. super-admins) registrados en el periodo
-    usuarios_centrales = await db.scalar(
-        select(func.count(User.id)).where(
-            User.tenant_id.is_(None),
-            User.created_at >= start,
-            User.created_at < end,
+    # Usuarios centrales (sin tenant, ej. super-admins) registrados en el
+    # periodo: no pertenecen a ningun hospital, asi que cuando el reporte
+    # esta filtrado a un hospital puntual esta cifra no aplica -- antes
+    # igual mostraba el total GLOBAL de usuarios centrales aunque se
+    # estuviera viendo el reporte de un solo hospital, lo cual no tiene
+    # relacion con ese hospital. `None` (no 0) para que el frontend pueda
+    # distinguir "no aplica a este filtro" de "de verdad no hubo ninguno".
+    if tenant_id:
+        usuarios_centrales = None
+    else:
+        usuarios_centrales = await db.scalar(
+            select(func.count(User.id)).where(
+                User.tenant_id.is_(None),
+                User.created_at >= start,
+                User.created_at < end,
+            )
         )
-    )
 
     return {
         "month": month,
@@ -177,8 +213,21 @@ async def get_monthly_report(
         "modules_coverage": coverage,
         "hospitales": hospitales_summary,
         "hospitales_registrados_periodo": hospitales_registrados_periodo,
-        "usuarios_centrales_registrados": usuarios_centrales or 0,
+        "usuarios_centrales_registrados": usuarios_centrales if usuarios_centrales is None else usuarios_centrales or 0,
         "hospitales_consultados": len(tenants) - hospitales_no_disponibles,
         "hospitales_totales": len(tenants),
         "es_parcial": hospitales_no_disponibles > 0,
+        # El resto de metricas (hospitales activos, usuarios, modulos) es
+        # estado ACTUAL del sistema, no una foto historica de `month` -- ver
+        # nota en el frontend (mensuales.vue) que lo aclara en pantalla.
+        "es_estado_actual": True,
+        # pacientes_nuevos_total solo suma hospitales ACTUALMENTE activos
+        # (`tenants_query` arriba filtra Tenant.is_active == True): un
+        # hospital que tuvo pacientes reales en `month` pero fue desactivado
+        # DESPUES ya no aparece, y el total de un mes pasado puede cambiar
+        # segun el estado de hoy. Se decidio no ampliar el alcance (eso
+        # exigiria decidir si un hospital inactivo entra a "cobertura de
+        # modulos" tambien) y en cambio dejarlo explicito aca para que el
+        # frontend lo aclare en pantalla.
+        "pacientes_solo_hospitales_activos": True,
     }

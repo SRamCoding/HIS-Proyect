@@ -15,3 +15,11 @@ class DashboardStats(BaseModel):
     top_hospitals_by_modules: list[dict]
     audit_events_by_hour: list[dict]
     audit_actions: dict[str, int]
+    usuarios_hospitales_consultados: int
+    usuarios_hospitales_totales: int
+    usuarios_es_parcial: bool
+    actualizado_en: str
+    hospitales_con_error: int
+    hospitales_pendientes: int
+    auditoria_fallback_pendientes: int
+    usuarios_recientes: list[dict]

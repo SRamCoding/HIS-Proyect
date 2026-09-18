@@ -4,11 +4,20 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
+class ModuleReportItem(BaseModel):
+    code: str
+    name: str
+    category: str
+
+
 class HospitalModuleReportItem(BaseModel):
     hospital_name: str
     domain: str
-    active_modules: list[str]
+    hospital_level: str | None = None
+    modules: list[ModuleReportItem]
     total_modules: int
+    app_modules: int
+    sigarh_modules: int
 
 
 class ModuleCoverageItem(BaseModel):
@@ -44,7 +53,9 @@ class MonthlyReportResponse(BaseModel):
     modules_coverage: list[ModuleCoverageItem]
     hospitales: list[HospitalMonthlySummary]
     hospitales_registrados_periodo: list[HospitalRegistradoPeriodo]
-    usuarios_centrales_registrados: int
+    usuarios_centrales_registrados: int | None
     hospitales_consultados: int = 0
     hospitales_totales: int = 0
     es_parcial: bool = False
+    es_estado_actual: bool = True
+    pacientes_solo_hospitales_activos: bool = True

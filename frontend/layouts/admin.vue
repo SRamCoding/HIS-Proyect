@@ -38,8 +38,8 @@
       >
         <img src="/logo.png" alt="ERP Hospitalario" class="w-8 h-8 rounded-md object-contain shrink-0" />
         <span class="font-semibold text-sm tracking-tight truncate" :class="{ 'md:hidden': collapsed }">ERP Hospitalario</span>
-        <button class="ml-auto p-1.5 rounded-lg hover:bg-white/10 md:hidden" @click="mobileOpen = false">
-          <UIcon name="i-heroicons-x-mark" class="w-5 h-5" style="color: rgba(255,255,255,0.7)" />
+        <button class="ml-auto p-1.5 rounded-lg hover:bg-white/10 md:hidden" aria-label="Cerrar menú" @click="mobileOpen = false">
+          <UIcon name="i-heroicons-x-mark" class="w-5 h-5" style="color: rgba(255,255,255,0.7)" aria-hidden="true" />
         </button>
       </div>
 
@@ -150,20 +150,24 @@
     <!-- Hamburguesa móvil -->
     <button
       class="p-2 rounded-lg hover:bg-white/10 transition-colors md:hidden"
+      aria-label="Abrir menú"
       @click="mobileOpen = true"
     >
-      <UIcon name="i-heroicons-bars-3" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
+      <UIcon name="i-heroicons-bars-3" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" aria-hidden="true" />
     </button>
 
     <!-- Colapsar sidebar (solo escritorio) -->
     <button
       class="p-2 rounded-lg hover:bg-white/10 transition-colors hidden md:block"
+      :aria-label="collapsed ? 'Expandir menú lateral' : 'Contraer menú lateral'"
+      :aria-pressed="collapsed"
       @click="collapsed = !collapsed"
     >
       <UIcon
         :name="collapsed ? 'i-heroicons-bars-3' : 'i-heroicons-chevron-double-left'"
         class="w-5 h-5"
         style="color: rgba(255,255,255,0.6)"
+        aria-hidden="true"
       />
     </button>
 
@@ -173,9 +177,11 @@
 
     <div class="search-wrapper relative flex-1 max-w-sm ml-0 sm:ml-4 hidden sm:block">
       <div class="flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12)">
-        <UIcon name="i-heroicons-magnifying-glass" class="w-4 h-4 shrink-0" style="color: rgba(255,255,255,0.4)" />
+        <UIcon name="i-heroicons-magnifying-glass" class="w-4 h-4 shrink-0" style="color: rgba(255,255,255,0.4)" aria-hidden="true" />
         <input
           v-model="searchQuery"
+          type="search"
+          aria-label="Buscar hospitales o cuentas admin"
           placeholder="Buscar hospitales, cuentas admin..."
           class="bg-transparent border-none outline-none text-sm w-full"
           style="color: white;"
@@ -221,9 +227,15 @@
 
     <div class="ml-auto flex items-center gap-1">
       <div class="notif-wrapper relative">
-        <button class="relative p-2 rounded-lg hover:bg-white/10 transition-colors" @click="toggleNotifs">
-          <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
-          <span v-if="notifUnread > 0" class="notif-badge">{{ notifUnread > 9 ? '9+' : notifUnread }}</span>
+        <button
+          class="relative p-2 rounded-lg hover:bg-white/10 transition-colors"
+          :aria-label="notifUnread > 0 ? `Notificaciones, ${notifUnread} sin leer` : 'Notificaciones'"
+          aria-haspopup="true"
+          :aria-expanded="notifOpen"
+          @click="toggleNotifs"
+        >
+          <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" aria-hidden="true" />
+          <span v-if="notifUnread > 0" class="notif-badge" aria-hidden="true">{{ notifUnread > 9 ? '9+' : notifUnread }}</span>
         </button>
         <div v-if="notifOpen" class="notif-panel">
           <div class="notif-panel-header">
@@ -231,6 +243,10 @@
             <button v-if="notifUnread > 0" class="notif-mark-all" @click="marcarTodasLeidas">Marcar todas leídas</button>
           </div>
           <div v-if="notifLoading" class="notif-empty">Cargando...</div>
+          <div v-else-if="notifError" class="notif-empty" style="color: var(--alert)">
+            No se pudieron cargar las notificaciones.
+            <button class="notif-mark-all" style="display: block; margin: 0.35rem auto 0" @click="cargarNotificaciones">Reintentar</button>
+          </div>
           <div v-else-if="!notificaciones.length" class="notif-empty">Sin notificaciones</div>
           <ul v-else class="notif-list">
             <li
@@ -255,8 +271,14 @@
         </div>
       </div>
       <div class="settings-wrapper relative">
-        <button class="p-2 rounded-lg hover:bg-white/10 transition-colors" @click="settingsOpen = !settingsOpen">
-          <UIcon name="i-heroicons-cog-6-tooth" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" />
+        <button
+          class="p-2 rounded-lg hover:bg-white/10 transition-colors"
+          aria-label="Configuración"
+          aria-haspopup="true"
+          :aria-expanded="settingsOpen"
+          @click="settingsOpen = !settingsOpen"
+        >
+          <UIcon name="i-heroicons-cog-6-tooth" class="w-5 h-5" style="color: rgba(255,255,255,0.6)" aria-hidden="true" />
         </button>
         <div v-if="settingsOpen" class="settings-menu">
           <NuxtLink to="/admin/perfil" class="settings-item" @click="settingsOpen = false">
@@ -299,6 +321,7 @@ interface Notificacion {
 const notifOpen = ref(false)
 const notifLoading = ref(false)
 const notifLoadingMas = ref(false)
+const notifError = ref(false)
 const notifUnread = ref(0)
 const notifTotal = ref(0)
 const notificaciones = ref<Notificacion[]>([])
@@ -316,13 +339,19 @@ const cargarContadorNotif = async () => {
 
 const cargarNotificaciones = async () => {
   notifLoading.value = true
+  notifError.value = false
   try {
     const r = await api<{ items: Notificacion[]; total: number }>(`/admin/notificaciones?limit=${NOTIF_PAGE_SIZE}`)
     notificaciones.value = r.items
     notifTotal.value = r.total
   } catch {
+    // Antes esto tambien vaciaba la lista y la campana terminaba mostrando
+    // "Sin notificaciones" igual que si de verdad no hubiera ninguna --
+    // un fallo de red o del backend se leia como bandeja vacia. notifError
+    // distingue ambos casos y ofrece reintentar en vez de mentir.
     notificaciones.value = []
     notifTotal.value = 0
+    notifError.value = true
   } finally {
     notifLoading.value = false
   }
@@ -457,15 +486,26 @@ const cerrarMenusSiFuera = (e: MouseEvent) => {
   if (searchOpen.value && !target.closest('.search-wrapper')) searchOpen.value = false
 }
 
+// Escape cierra el desplegable abierto (campana/configuracion) sin
+// necesitar el mouse -- la busqueda ya lo hacia con @keydown.esc en su
+// propio input, pero estos dos paneles no tenian ninguna salida de teclado.
+const cerrarMenusConEscape = (e: KeyboardEvent) => {
+  if (e.key !== 'Escape') return
+  notifOpen.value = false
+  settingsOpen.value = false
+}
+
 onMounted(() => {
   cargarContadorNotif()
   notifTimer = setInterval(cargarContadorNotif, 45000)
   document.addEventListener('click', cerrarMenusSiFuera)
+  document.addEventListener('keydown', cerrarMenusConEscape)
 })
 onUnmounted(() => {
   if (notifTimer) clearInterval(notifTimer)
   if (searchDebounce) clearTimeout(searchDebounce)
   document.removeEventListener('click', cerrarMenusSiFuera)
+  document.removeEventListener('keydown', cerrarMenusConEscape)
 })
 
 // En móvil el sidebar siempre se muestra expandido (nunca en modo icono),

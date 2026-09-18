@@ -17,13 +17,21 @@
           </div>
         </div>
         <div class="flex items-center gap-5 mt-1.5 text-xs text-white/60">
-          <span class="flex items-center gap-1.5">
+          <span v-if="sistemaSaludable" class="flex items-center gap-1.5">
             <UIcon name="i-heroicons-check-circle" class="w-3.5 h-3.5 text-emerald-400" />
             Sistema operativo
           </span>
+          <span v-else class="flex items-center gap-1.5" style="color: #fca5a5">
+            <UIcon name="i-heroicons-exclamation-triangle" class="w-3.5 h-3.5" />
+            Requiere atención
+          </span>
           <span class="flex items-center gap-1.5">
             <UIcon name="i-heroicons-clock" class="w-3.5 h-3.5" />
-            Última actualización: {{ minutosDesdeActualizacion }} min
+            Última actualización: hace {{ minutosDesdeActualizacion }} min
+          </span>
+          <span v-if="notifNoLeidas" class="flex items-center gap-1.5">
+            <UIcon name="i-heroicons-bell-alert" class="w-3.5 h-3.5" />
+            {{ notifNoLeidas }} notificaciones sin leer
           </span>
         </div>
       </div>
@@ -81,6 +89,40 @@
       </div>
     </div>
 
+    <!-- Salud del sistema: solo asoma lo que necesita accion, con acceso directo -->
+    <div v-if="!loading && stats && !sistemaSaludable" class="dash-fade-in grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+      <NuxtLink
+        v-if="(stats?.hospitales_con_error ?? 0) > 0 || (stats?.hospitales_pendientes ?? 0) > 0"
+        to="/admin/hospitales"
+        class="salud-card salud-card--alert"
+      >
+        <UIcon name="i-heroicons-server-stack" class="w-5 h-5 shrink-0" />
+        <div class="min-w-0">
+          <p class="text-sm font-semibold truncate">
+            {{ stats?.hospitales_con_error ?? 0 }} hospital(es) con error de aprovisionamiento
+          </p>
+          <p class="text-xs opacity-80 truncate">{{ stats?.hospitales_pendientes ?? 0 }} pendientes de aprovisionar · revisar y reintentar</p>
+        </div>
+        <UIcon name="i-heroicons-arrow-right" class="w-4 h-4 ml-auto shrink-0" />
+      </NuxtLink>
+      <NuxtLink
+        v-if="(stats?.auditoria_fallback_pendientes ?? 0) > 0"
+        to="/admin/auditoria"
+        class="salud-card salud-card--warn"
+      >
+        <UIcon name="i-heroicons-shield-exclamation" class="w-5 h-5 shrink-0" />
+        <div class="min-w-0">
+          <p class="text-sm font-semibold truncate">{{ stats?.auditoria_fallback_pendientes ?? 0 }} eventos de auditoría sin escribir</p>
+          <p class="text-xs opacity-80 truncate">quedaron en fallback, reintentar antes de que se acumulen</p>
+        </div>
+        <UIcon name="i-heroicons-arrow-right" class="w-4 h-4 ml-auto shrink-0" />
+      </NuxtLink>
+    </div>
+    <div v-else-if="!loading && stats" class="dash-fade-in flex items-center gap-2 mb-6 text-xs font-medium px-3 py-2 rounded-lg w-fit" style="background: var(--ok-soft); color: var(--ok)">
+      <UIcon name="i-heroicons-check-circle" class="w-4 h-4" />
+      Todo en orden: sin hospitales con error, sin auditoría pendiente de escribir.
+    </div>
+
     <!-- KPI Cards mejorados -->
     <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       <div v-for="i in 4" :key="i" class="stat-card animate-pulse">
@@ -94,36 +136,38 @@
       No se pudo cargar el dashboard: {{ error }}
     </div>
 
-    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      <div style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px; border-left: 3px solid var(--teal)">
-        <div class="flex items-start justify-between mb-2">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: var(--mist)">
-              <UIcon name="i-heroicons-building-office-2" class="w-5 h-5" style="color: var(--teal)" />
-            </div>
-            <div>
-              <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)">Hospitales Activos</p>
-              <p class="text-2xl font-bold font-mono-data leading-tight" style="color: var(--ink)">
-                {{ stats?.active_hospitals ?? '—' }}
-              </p>
-            </div>
+    <div v-else class="dash-fade-in grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <!-- Tarjeta "hero": unica con fondo oscuro y anillo real, para que no
+           se pierda entre las demas -- es la metrica de mas alto nivel. -->
+      <div class="kpi-hero">
+        <div class="flex items-start justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-white/60">Hospitales Activos</p>
+            <p class="text-3xl font-bold font-mono-data leading-tight text-white mt-1">
+              {{ stats?.active_hospitals ?? '—' }}
+              <span class="text-sm font-normal text-white/50">/ {{ stats?.total_hospitals ?? 0 }}</span>
+            </p>
+          </div>
+          <div class="w-16 h-16 shrink-0 -mr-1 -mt-1">
+            <ClientOnly>
+              <ApexChart type="radialBar" height="80" width="80" :options="heroRingOptions" :series="[porcentajeHospitalesActivos]" />
+            </ClientOnly>
           </div>
         </div>
-        <div class="mt-2">
-          <div class="h-1 rounded-full overflow-hidden" style="background: var(--mist)">
-            <div class="h-full rounded-full" :style="{ width: porcentajeHospitalesActivos + '%', background: 'var(--teal)' }" />
-          </div>
-        </div>
+        <NuxtLink to="/admin/hospitales" class="kpi-hero-link">
+          Ver hospitales
+          <UIcon name="i-heroicons-arrow-right" class="w-3.5 h-3.5" />
+        </NuxtLink>
       </div>
 
-      <div style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px; border-left: 3px solid #6366f1">
+      <div class="kpi-card" style="--kpi-tint: rgba(99,102,241,0.07)">
         <div class="flex items-start justify-between mb-2">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: var(--ok-soft)">
-              <UIcon name="i-heroicons-users" class="w-5 h-5" style="color: #6366f1" />
+            <div class="kpi-icon" style="background: linear-gradient(135deg, #6366f1, #4f46e5)">
+              <UIcon name="i-heroicons-users" class="w-5 h-5 text-white" />
             </div>
             <div>
-              <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)" title="No incluye cuentas de hospitales con base de datos física propia">Cuentas en BD Central</p>
+              <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)" title="Incluye cuentas centrales y las de hospitales con base de datos física propia">Cuentas Totales</p>
               <p class="text-2xl font-bold font-mono-data leading-tight" style="color: var(--ink)">
                 {{ stats?.total_users ?? '—' }}
               </p>
@@ -144,13 +188,17 @@
             SIGARH: {{ usuariosPorPanel.sigarh }}
           </span>
         </div>
+        <div v-if="stats?.usuarios_es_parcial" class="flex items-center gap-1 mt-2 text-xs" style="color: var(--alert)">
+          <UIcon name="i-heroicons-exclamation-triangle" class="w-3.5 h-3.5" />
+          Dato parcial: {{ stats.usuarios_hospitales_consultados }}/{{ stats.usuarios_hospitales_totales }} hospitales consultados
+        </div>
       </div>
 
-      <div style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px; border-left: 3px solid var(--warn)">
+      <div class="kpi-card" style="--kpi-tint: rgba(245,158,11,0.08)">
         <div class="flex items-start justify-between mb-2">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: var(--warn-soft)">
-              <UIcon name="i-heroicons-squares-plus" class="w-5 h-5" style="color: var(--warn)" />
+            <div class="kpi-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706)">
+              <UIcon name="i-heroicons-squares-plus" class="w-5 h-5 text-white" />
             </div>
             <div>
               <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)">Módulos habilitados</p>
@@ -168,17 +216,17 @@
           <p class="text-xs truncate" style="color: var(--ink-soft)">
             {{ tiposDeModulo }} tipos en {{ stats?.active_hospitals ?? 0 }} hospitales
           </p>
-          <div class="h-1 rounded-full overflow-hidden mt-2" style="background: var(--mist)">
-            <div class="h-full rounded-full" :style="{ width: `${coberturaModulos}%`, background: 'var(--warn)' }" />
+          <div class="h-1.5 rounded-full overflow-hidden mt-2" style="background: var(--mist)">
+            <div class="h-full rounded-full kpi-bar" :style="{ width: `${coberturaModulos}%`, background: 'linear-gradient(90deg, #f59e0b, #d97706)' }" />
           </div>
         </div>
       </div>
 
-      <div style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px; border-left: 3px solid var(--alert)">
+      <div class="kpi-card" style="--kpi-tint: rgba(220,38,38,0.07)">
         <div class="flex items-start justify-between mb-2">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: var(--alert-soft)">
-              <UIcon name="i-heroicons-shield-exclamation" class="w-5 h-5" style="color: var(--alert)" />
+            <div class="kpi-icon" style="background: linear-gradient(135deg, var(--alert), #b91c1c)">
+              <UIcon name="i-heroicons-shield-exclamation" class="w-5 h-5 text-white" />
             </div>
             <div>
               <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)">Eventos Auditoría</p>
@@ -201,6 +249,82 @@
             <span class="w-1.5 h-1.5 rounded-full" style="background: var(--warn)"></span>
             Registrados
           </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fila: Notificaciones (timeline) + Usuarios recientes (avatares) + Accesos rápidos -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      <div class="dash-card" style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-sm font-semibold flex items-center gap-1.5" style="color: var(--ink)">
+            <UIcon name="i-heroicons-bell-alert" class="w-4 h-4" style="color: var(--navy)" />
+            Notificaciones
+          </p>
+          <span v-if="notifNoLeidas" class="text-xs font-semibold px-2 py-0.5 rounded-full" style="background: var(--alert-soft); color: var(--alert)">
+            {{ notifNoLeidas }} sin leer
+          </span>
+        </div>
+
+        <div v-if="loadingNotifs" class="flex items-center gap-2 py-6 text-sm justify-center" style="color: var(--ink-soft)">
+          <UIcon name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
+          Cargando…
+        </div>
+        <div v-else-if="!notificacionesRecientes.length" class="py-6 text-sm text-center" style="color: var(--ink-soft)">
+          Sin notificaciones.
+        </div>
+        <ul v-else class="notif-timeline">
+          <li
+            v-for="n in notificacionesRecientes"
+            :key="n.id"
+            class="notif-timeline-item"
+            :class="{ 'notif-timeline-item--unread': !n.is_read }"
+            @click="abrirNotificacion(n)"
+          >
+            <span class="notif-timeline-dot" :class="`notif-timeline-dot--${n.nivel}`" />
+            <div class="min-w-0 flex-1 pb-3">
+              <p class="text-xs font-medium truncate" style="color: var(--ink)">{{ n.titulo }}</p>
+              <p class="text-[11px] truncate" style="color: var(--ink-soft)">{{ n.cuerpo }}</p>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <div class="dash-card" style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px">
+        <p class="text-sm font-semibold mb-3 flex items-center gap-1.5" style="color: var(--ink)">
+          <UIcon name="i-heroicons-user-plus" class="w-4 h-4" style="color: var(--teal)" />
+          Usuarios recientes
+        </p>
+        <div v-if="loading" class="flex items-center gap-2 py-6 text-sm justify-center" style="color: var(--ink-soft)">
+          <UIcon name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
+          Cargando…
+        </div>
+        <div v-else-if="!usuariosRecientes.length" class="py-6 text-sm text-center" style="color: var(--ink-soft)">
+          Sin registros todavía.
+        </div>
+        <ul v-else class="space-y-2.5">
+          <li v-for="(u, i) in usuariosRecientes" :key="i" class="flex items-center gap-2.5">
+            <div class="avatar-chip" :style="{ background: avatarGradiente(u.panel) }">
+              {{ iniciales(u.name) }}
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="text-xs font-medium truncate" style="color: var(--ink)">{{ u.name }}</p>
+              <p class="text-[11px] truncate" style="color: var(--ink-soft)">{{ u.tenant_name }} · {{ etiquetaPanel(u.panel) }}</p>
+            </div>
+            <span class="text-[10px] shrink-0" style="color: var(--ink-soft)">{{ tiempoRelativo(u.created_at) }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="dash-card" style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px">
+        <p class="text-sm font-semibold mb-3" style="color: var(--ink)">Accesos rápidos</p>
+        <div class="grid grid-cols-2 gap-2.5">
+          <NuxtLink v-for="acceso in accesosRapidos" :key="acceso.to" :to="acceso.to" class="acceso-rapido">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" :style="{ background: acceso.fondo }">
+              <UIcon :name="acceso.icono" class="w-4 h-4 text-white" />
+            </div>
+            <span class="text-xs font-medium truncate" style="color: var(--ink)">{{ acceso.label }}</span>
+          </NuxtLink>
         </div>
       </div>
     </div>
@@ -233,7 +357,7 @@
 
       <!-- Anillo: distribución de usuarios por panel -->
       <div style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px">
-        <p class="text-sm font-semibold mb-3" style="color: var(--ink)" title="Solo cuentas en la BD central">Usuarios por panel (BD central)</p>
+        <p class="text-sm font-semibold mb-3" style="color: var(--ink)" title="Incluye cuentas centrales y de hospitales con base física propia">Usuarios por panel</p>
         <ClientOnly>
           <ApexChart
             type="radialBar"
@@ -266,8 +390,8 @@
       <!-- Donut: Distribución de usuarios por panel -->
       <div style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px">
         <div class="flex items-center justify-between mb-3">
-          <p class="text-sm font-semibold" style="color: var(--ink)" title="Solo cuentas en la BD central">Usuarios por panel (BD central)</p>
-          <span class="text-xs" style="color: var(--ink-soft)">Total: {{ stats?.total_users ?? 0 }}</span>
+          <p class="text-sm font-semibold" style="color: var(--ink)" title="Cuentas panel APP y SIGARH, sin contar cuentas panel admin">Usuarios por panel (APP / SIGARH)</p>
+          <span class="text-xs" style="color: var(--ink-soft)">Total: {{ usuariosPorPanel.app + usuariosPorPanel.sigarh }}</span>
         </div>
         <ClientOnly>
           <ApexChart
@@ -558,6 +682,14 @@ interface DashboardStats {
   top_hospitals_by_modules: { id: string; name: string; modules: number }[]
   audit_events_by_hour: { label: string; value: number }[]
   audit_actions: Record<string, number>
+  usuarios_hospitales_consultados: number
+  usuarios_hospitales_totales: number
+  usuarios_es_parcial: boolean
+  actualizado_en: string
+  hospitales_con_error: number
+  hospitales_pendientes: number
+  auditoria_fallback_pendientes: number
+  usuarios_recientes: { name: string; email: string; panel: string; tenant_name: string; created_at: string }[]
 }
 
 interface Hospital {
@@ -568,8 +700,19 @@ interface Hospital {
   active_modules: string[]
 }
 
+interface Notificacion {
+  id: string
+  titulo: string
+  cuerpo: string | null
+  nivel: string
+  link: string | null
+  is_read: boolean
+  created_at: string
+}
+
 const { api } = useApi()
 const authStore = useAuthStore()
+const router = useRouter()
 
 const stats = ref<DashboardStats | null>(null)
 const hospitalesRecientes = ref<Hospital[]>([])
@@ -577,7 +720,73 @@ const errorHospitales = ref('')
 const loading = ref(true)
 const loadingHospitales = ref(true)
 const error = ref('')
-const minutosDesdeActualizacion = ref(2)
+const notificacionesRecientes = ref<Notificacion[]>([])
+const notifNoLeidas = ref(0)
+const loadingNotifs = ref(true)
+
+const sistemaSaludable = computed(() => {
+  if (!stats.value) return true
+  return stats.value.hospitales_con_error === 0
+    && stats.value.hospitales_pendientes === 0
+    && stats.value.auditoria_fallback_pendientes === 0
+})
+
+const accesosRapidos = [
+  { to: '/admin/hospitales/create', label: 'Crear hospital', icono: 'i-heroicons-plus-circle', fondo: 'linear-gradient(135deg, #0891b2, #0e7490)' },
+  { to: '/admin/modulos', label: 'Módulos', icono: 'i-heroicons-squares-plus', fondo: 'linear-gradient(135deg, #f59e0b, #d97706)' },
+  { to: '/admin/modulos/dependencias', label: 'Dependencias', icono: 'i-heroicons-link', fondo: 'linear-gradient(135deg, #6366f1, #4f46e5)' },
+  { to: '/admin/niveles-hospitalarios', label: 'Niveles MINSA', icono: 'i-heroicons-academic-cap', fondo: 'linear-gradient(135deg, var(--navy), #0f2840)' },
+  { to: '/admin/usuarios', label: 'Usuarios', icono: 'i-heroicons-users', fondo: 'linear-gradient(135deg, #6366f1, #4338ca)' },
+  { to: '/admin/auditoria', label: 'Auditoría', icono: 'i-heroicons-shield-check', fondo: 'linear-gradient(135deg, var(--alert), #b91c1c)' },
+  { to: '/admin/reportes/mensuales', label: 'Reporte mensual', icono: 'i-heroicons-chart-bar', fondo: 'linear-gradient(135deg, #0891b2, #0e7490)' },
+  { to: '/admin/reportes/hospitales-modulos', label: 'Hosp. × módulos', icono: 'i-heroicons-table-cells', fondo: 'linear-gradient(135deg, #f59e0b, #d97706)' },
+  { to: '/admin/reportes/exportar', label: 'Exportar datos', icono: 'i-heroicons-arrow-down-tray', fondo: 'linear-gradient(135deg, #16a34a, #15803d)' },
+]
+
+const usuariosRecientes = computed(() => stats.value?.usuarios_recientes ?? [])
+
+const iniciales = (nombre: string) => (nombre || '?')
+  .trim()
+  .split(/\s+/)
+  .slice(0, 2)
+  .map(p => p[0]?.toUpperCase())
+  .join('')
+
+const avatarGradiente = (panel: string) => ({
+  admin: 'linear-gradient(135deg, var(--navy), #0f2840)',
+  app: 'linear-gradient(135deg, #0891b2, #0e7490)',
+  sigarh: 'linear-gradient(135deg, #6366f1, #4338ca)',
+}[panel] || 'linear-gradient(135deg, #64748b, #475569)')
+
+const etiquetaPanel = (panel: string) => ({ admin: 'Admin ERP', app: 'Hospitalario', sigarh: 'SIGARH' }[panel] || panel)
+
+const tiempoRelativo = (iso: string) => {
+  const ms = Date.now() - new Date(iso).getTime()
+  const min = Math.round(ms / 60000)
+  if (min < 1) return 'ahora'
+  if (min < 60) return `${min} min`
+  const horas = Math.round(min / 60)
+  if (horas < 24) return `${horas} h`
+  return `${Math.round(horas / 24)} d`
+}
+
+const abrirNotificacion = async (n: Notificacion) => {
+  if (!n.is_read) {
+    try {
+      await api(`/admin/notificaciones/${n.id}/leer`, { method: 'PATCH' })
+      n.is_read = true
+      notifNoLeidas.value = Math.max(0, notifNoLeidas.value - 1)
+    } catch {
+      // no bloquea la navegacion si falla marcar como leida
+    }
+  }
+  if (n.link) router.push(n.link)
+}
+const minutosDesdeActualizacion = computed(() => {
+  if (!stats.value?.actualizado_en) return 0
+  const ms = Date.now() - new Date(stats.value.actualizado_en).getTime()
+  return Math.max(0, Math.round(ms / 60000))
+})
 
 const nombreUsuario = computed(() => authStore.user?.name || 'bienvenido')
 
@@ -672,6 +881,25 @@ const areaChartOptions = computed(() => ({
   tooltip: { theme: 'light' },
 }))
 
+const heroRingOptions = computed(() => ({
+  chart: { fontFamily: 'IBM Plex Sans, sans-serif', sparkline: { enabled: true } },
+  colors: ['#5fd4c6'],
+  plotOptions: {
+    radialBar: {
+      hollow: { size: '55%' },
+      track: { background: 'rgba(255,255,255,0.12)' },
+      dataLabels: {
+        name: { show: false },
+        value: {
+          show: true, offsetY: 5, fontSize: '13px', fontWeight: 700, color: '#fff',
+          formatter: (val: number) => `${val}%`,
+        },
+      },
+    },
+  },
+  stroke: { lineCap: 'round' },
+}))
+
 const radialChartOptions = computed(() => ({
   chart: { fontFamily: 'IBM Plex Sans, sans-serif' },
   colors: ['#0891b2', '#0b5fa8'],
@@ -757,6 +985,19 @@ onMounted(async () => {
   } finally {
     loadingHospitales.value = false
   }
+
+  try {
+    const [lista, noLeidas] = await Promise.all([
+      api<{ items: Notificacion[]; total: number }>('/admin/notificaciones?limit=5'),
+      api<{ count: number }>('/admin/notificaciones/no-leidas'),
+    ])
+    notificacionesRecientes.value = lista.items
+    notifNoLeidas.value = noLeidas.count
+  } catch {
+    notificacionesRecientes.value = []
+  } finally {
+    loadingNotifs.value = false
+  }
 })
 </script>
 
@@ -835,4 +1076,153 @@ onMounted(async () => {
   color: var(--teal);
 }
 
+/* Entrada suave de las tarjetas del dashboard, en cascada por columna */
+.dash-fade-in,
+.dash-card {
+  animation: dash-fade-up 0.4s ease-out backwards;
+}
+.dash-card:nth-child(2) { animation-delay: 0.06s; }
+
+@keyframes dash-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Tarjetas de salud del sistema: alertas accionables, nunca solo color */
+.salud-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.salud-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md, var(--shadow-card));
+}
+.salud-card--alert { background: var(--alert-soft); color: var(--alert-dark, var(--alert)); }
+.salud-card--warn { background: var(--warn-soft); color: var(--warn-dark, var(--warn)); }
+
+.acceso-rapido {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  background: var(--mist);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.acceso-rapido:hover {
+  transform: translateY(-1px);
+  background: var(--line);
+}
+
+/* Timeline de notificaciones: linea vertical conectando los puntos, para que
+   se lea como una secuencia de eventos y no como una lista plana mas. */
+.notif-timeline {
+  position: relative;
+  padding-left: 1.1rem;
+}
+.notif-timeline::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--line);
+}
+.notif-timeline-item {
+  position: relative;
+  display: flex;
+  cursor: pointer;
+  padding: 0.15rem 0.4rem 0 0;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+.notif-timeline-item:hover { background: var(--mist); }
+.notif-timeline-item--unread .notif-timeline-dot { box-shadow: 0 0 0 3px var(--mist); }
+.notif-timeline-dot {
+  position: absolute;
+  left: -1.1rem;
+  top: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.notif-timeline-dot--exito { background: var(--ok, #16a34a); }
+.notif-timeline-dot--error { background: var(--alert, #dc2626); }
+.notif-timeline-dot--alerta { background: var(--warn, #d97706); }
+.notif-timeline-dot--info { background: var(--teal, #0891b2); }
+
+/* KPI hero: la unica tarjeta con fondo oscuro degradado, para que la
+   metrica principal no se confunda con el resto de tarjetas planas. */
+.kpi-hero {
+  background: linear-gradient(135deg, var(--navy) 0%, #123a5c 60%, #0f2840 100%);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.kpi-hero-link {
+  margin-top: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #5fd4c6;
+  width: fit-content;
+  transition: gap 0.15s ease;
+}
+.kpi-hero-link:hover { gap: 0.5rem; }
+
+/* KPI cards livianas: fondo con un tinte sutil de su color (--kpi-tint), en
+   vez de blanco plano identico en las cuatro tarjetas. */
+.kpi-card {
+  background: linear-gradient(160deg, var(--kpi-tint, transparent), var(--paper) 55%);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md, var(--shadow-card));
+}
+.kpi-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px -4px rgba(0,0,0,0.35);
+}
+.kpi-bar { transition: width 0.6s ease; }
+
+.avatar-chip {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-fade-in, .dash-card { animation: none; }
+  .salud-card, .acceso-rapido, .kpi-card { transition: none; }
+}
 </style>

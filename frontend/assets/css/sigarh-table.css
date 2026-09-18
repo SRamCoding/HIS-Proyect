@@ -492,6 +492,28 @@
 .report-section {
   margin-bottom: 1.5rem;
 }
+/* Distingue, en cada metrica del reporte mensual, si es estado ACTUAL del
+   sistema o un dato real del PERIODO consultado -- ver es_estado_actual en
+   reportes/service.py. */
+.scope-tag {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+.scope-tag--actual {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.scope-tag--periodo {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
 .report-section-title {
   font-size: 0.875rem;
   font-weight: 600;

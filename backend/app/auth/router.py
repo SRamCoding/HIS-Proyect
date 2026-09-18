@@ -19,6 +19,72 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
+# Subconjunto de modulos con category="app" que tiene sentido mostrar como
+# "servicio" en la landing publica de un hospital -- el catalogo completo
+# mezcla atencion clinica real (farmacia, emergencia...) con modulos de
+# configuracion/back-office (fact_config, firma_electronica, auditoria,
+# general, seguridad, informes...) que un visitante nunca deberia ver
+# listados como si fueran una prestacion de salud.
+MODULOS_SERVICIO_PUBLICO = {
+    "admision", "consulta_externa", "emergencia", "hospitalizacion",
+    "farmacia", "laboratorio", "imagenes", "telesalud", "medicina_fisica",
+    "banco_sangre", "hemodialisis", "procedimientos", "archivo_clinico",
+}
+
+
+@router.get("/tenant-publico/{tenant_id}", summary="Datos públicos de un hospital para su landing")
+async def tenant_publico(tenant_id: uuid_lib.UUID, db: AsyncSession = Depends(get_db)):
+    """Sin autenticacion, a proposito: la landing de un hospital
+    (frontend/pages/index.vue con ?tenant=) se ve ANTES de iniciar sesion,
+    asi que necesita poder mostrar el contenido institucional del hospital
+    sin exigir un token todavia. Expone solo los campos que el propio
+    admin ya carga desde el formulario de edicion pensados para esto (ver
+    Tenant.mission/vision/values/address/phone/email, comentados en el
+    modelo como "Landing page del hospital" -- el dato ya existia, lo unico
+    que faltaba era esta vista publica) mas los nombres de los modulos
+    clinicos activos como "servicios". Nunca dominio/schema/database_name
+    ni nada que no sea publico de por si. `Module.category == "app"` ya
+    separa los modulos hospitalarios (admision, farmacia...) de los de
+    SIGARH (RRHH interno), pero adentro de "app" tambien hay modulos que un
+    paciente jamas deberia ver en una pagina publica (Auditoria, Fact -
+    Config, Firma Electronica, General...). MODULOS_SERVICIO_PUBLICO acota a
+    los que sí son un servicio reconocible desde afuera."""
+    from sqlalchemy.orm import selectinload
+    from app.tenants.hospitales.models import Tenant
+    from app.tenants.modulos.models import Module
+
+    result = await db.execute(
+        select(Tenant).options(selectinload(Tenant.modules)).where(Tenant.id == tenant_id)
+    )
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Hospital no encontrado")
+
+    codigos_activos = set(tenant.active_module_codes) & MODULOS_SERVICIO_PUBLICO
+    servicios = []
+    if codigos_activos:
+        modulos = (await db.scalars(
+            select(Module).where(
+                Module.code.in_(codigos_activos), Module.is_active.is_(True),
+            ).order_by(Module.sort_order, Module.name)
+        )).all()
+        servicios = [{"code": m.code, "name": m.name, "description": m.description} for m in modulos]
+
+    return {
+        "id": str(tenant.id),
+        "name": tenant.name,
+        "is_active": tenant.is_active,
+        "hospital_level": tenant.hospital_level,
+        "mission": tenant.mission,
+        "vision": tenant.vision,
+        "values": tenant.values,
+        "address": tenant.address,
+        "phone": tenant.phone,
+        "email": tenant.email,
+        "servicios": servicios,
+    }
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(
     request: Request,

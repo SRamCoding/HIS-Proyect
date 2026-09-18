@@ -1,6 +1,7 @@
 import unittest
+import uuid
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 from app.admin.usuarios.router import usuarios_con_hospital, usuarios_resumen
 
@@ -22,21 +23,41 @@ ITEMS = [
 ]
 
 
-async def _reunir_falso(db, tenant_id, vista=None):
-    # Imita el filtrado real de _reunir_todas_las_cuentas: vista="admin" ya
-    # viene filtrada (nunca toca hospitales), vista="hospital"/None trae
-    # todo sin filtrar (el filtro de "hospital" lo aplica el router despues).
+async def _reunir_falso(db, tenant_id, vista=None, q=None, is_active=None, cap=None):
+    # Imita el filtrado real de _reunir_todas_las_cuentas, que ahora aplica
+    # vista/q/is_active como si fueran WHERE de SQL (antes el router los
+    # aplicaba en Python DESPUES de traer todo; ver test_busqueda_por_nombre_
+    # o_correo / test_filtro_is_active, que antes no ejercitaban esta
+    # funcion en absoluto) y acota con `cap`, igual que la real.
     items = [dict(i) for i in ITEMS]
     if vista == "admin":
         items = [it for it in items if it["panel"] == "admin"]
+    elif vista == "hospital":
+        items = [it for it in items if it["panel"] != "admin"]
+    if is_active is not None:
+        items = [it for it in items if it["is_active"] == is_active]
+    if q:
+        termino = q.strip().lower()
+        items = [it for it in items if termino in it["name"].lower() or termino in it["email"].lower()]
+    items.sort(key=lambda it: it["_created_at_raw"], reverse=True)
+    if cap:
+        items = items[:cap]
     return items, []
+
+
+async def _contar_falso(db, tenant_id, vista, q, is_active):
+    # `_contar_todas_las_cuentas` real cuenta con los mismos filtros pero sin
+    # `cap` -- aca alcanza con reusar el fake de arriba sin acotar.
+    items, _ = await _reunir_falso(db, tenant_id, vista, q=q, is_active=is_active, cap=None)
+    return len(items)
 
 
 class UsuariosConHospitalFiltrosTests(unittest.IsolatedAsyncioTestCase):
     async def _con_hospital(self, **kwargs):
         kwargs.setdefault("limit", 50)
         kwargs.setdefault("offset", 0)
-        with patch("app.admin.usuarios.router._reunir_todas_las_cuentas", _reunir_falso):
+        with patch("app.admin.usuarios.router._reunir_todas_las_cuentas", _reunir_falso), \
+             patch("app.admin.usuarios.router._contar_todas_las_cuentas", _contar_falso):
             return await usuarios_con_hospital(db=AsyncMock(), current_user={}, **kwargs)
 
     async def test_vista_admin_solo_devuelve_panel_admin(self):
@@ -72,10 +93,19 @@ class UsuariosConHospitalFiltrosTests(unittest.IsolatedAsyncioTestCase):
 
 
 class UsuariosResumenFiltrosTests(unittest.IsolatedAsyncioTestCase):
-    async def test_resumen_respeta_la_vista(self):
-        with patch("app.admin.usuarios.router._reunir_todas_las_cuentas",
-                   AsyncMock(return_value=([dict(i) for i in ITEMS], []))):
-            resp = await usuarios_resumen(vista="hospital", db=AsyncMock(), current_user={})
+    """/usuarios/resumen ya no reune cuentas en Python (ver
+    _resumen_todas_las_cuentas, que agrega con COUNT/SUM/DISTINCT en SQL) --
+    el router solo reenvia tenant_id/vista y devuelve la respuesta tal cual,
+    asi que alcanza con verificar ese reenvio."""
+    async def test_resumen_reenvia_tenant_id_y_vista(self):
+        resumen_falso = AsyncMock(return_value={
+            "total": 3, "activos": 2, "inactivos": 1,
+            "roles_unicos": 2, "hospitales_no_disponibles": [], "es_parcial": False,
+        })
+        tid = uuid.uuid4()
+        with patch("app.admin.usuarios.router._resumen_todas_las_cuentas", resumen_falso):
+            resp = await usuarios_resumen(tenant_id=tid, vista="hospital", db=AsyncMock(), current_user={})
+        resumen_falso.assert_awaited_once_with(ANY, tid, "hospital")
         self.assertEqual(resp["total"], 3)
         self.assertEqual(resp["activos"], 2)
         self.assertEqual(resp["inactivos"], 1)
