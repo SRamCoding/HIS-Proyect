@@ -118,9 +118,6 @@ const route = useRoute()
 const { api } = useApi()
 const authStore = useAuthStore()
 const tenantId = computed(() => typeof route.query.tenant === 'string' ? route.query.tenant : '')
-const hospital = ref<HospitalPublico | null>(null)
-const cargando = ref(true)
-const error = ref('')
 const menuAbierto = ref(false)
 const mostrarTodos = ref(false)
 const seccionActiva = ref('inicio')
@@ -180,29 +177,45 @@ function cerrarAlFondo(event: MouseEvent) {
   const rect = dialog.getBoundingClientRect()
   if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close()
 }
-let ultimaCarga = 0
+// useAsyncData corre UNA sola vez y comparte el resultado entre el render
+// del servidor y la hidratacion del cliente. Antes esto era un `await
+// api(...)` suelto dentro de una funcion invocada directo en el setup --
+// Nuxt ejecuta ese codigo dos veces de forma INDEPENDIENTE (una vez en el
+// servidor para armar el HTML inicial, otra vez en el navegador al
+// hidratar). Si el intento del servidor fallaba por cualquier motivo
+// transitorio (una carrera al abrir la pestaña justo despues del clic en
+// "Ver landing", por ejemplo), la pagina mostraba "No pudimos cargar el
+// hospital" durante un instante, hasta que el intento independiente del
+// cliente -- que si funcionaba -- lo pisaba. useAsyncData evita esa doble
+// carrera: el resultado (exito o error) que se calculo en el servidor se
+// serializa en el HTML y el cliente lo reutiliza tal cual al hidratar, en
+// vez de volver a pedirlo por su cuenta.
+const {
+  data: hospital,
+  error: errorCarga,
+  pending: cargando,
+  refresh,
+} = await useAsyncData<HospitalPublico | null>(
+  'hospital-publico',
+  async () => {
+    if (!tenantId.value) {
+      await navigateTo(authStore.isAuthenticated ? authStore.panelRoute : '/login')
+      return null
+    }
+    return await api<HospitalPublico>(`/auth/tenant-publico/${encodeURIComponent(tenantId.value)}`)
+  },
+  { watch: [tenantId] },
+)
+const error = computed(() => errorCarga.value ? apiErr(errorCarga.value, 'No se pudo cargar la información de este hospital.') : '')
+
+// Mismo reseteo de UI que hacia la carga original al reintentar (colapsar
+// el menu movil y la lista de servicios expandida), conservado aca para
+// no cambiar el comportamiento del boton "Volver a intentar".
 async function cargarHospital() {
-  const carga = ++ultimaCarga
-  cargando.value = true
-  error.value = ''
-  hospital.value = null
   menuAbierto.value = false
   mostrarTodos.value = false
-  if (!tenantId.value) {
-    await navigateTo(authStore.isAuthenticated ? authStore.panelRoute : '/login')
-    return
-  }
-  try {
-    const resultado = await api<HospitalPublico>(`/auth/tenant-publico/${encodeURIComponent(tenantId.value)}`)
-    if (carga === ultimaCarga) hospital.value = resultado
-  } catch (e: unknown) {
-    if (carga === ultimaCarga) error.value = apiErr(e, 'No se pudo cargar la información de este hospital.')
-  } finally {
-    if (carga === ultimaCarga) cargando.value = false
-  }
+  await refresh()
 }
-await cargarHospital()
-watch(tenantId, cargarHospital)
 function actualizarSeccion() {
   const ultima = [...navegacion].reverse().find(item => {
     const section = document.getElementById(item.id)
