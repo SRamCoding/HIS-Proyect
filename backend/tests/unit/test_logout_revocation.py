@@ -104,12 +104,18 @@ class LogoutEndpointTests(unittest.IsolatedAsyncioTestCase):
     def _request(self):
         return SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
 
+    def _response(self):
+        # logout() ahora tambien limpia las cookies httpOnly de sesion via
+        # response.delete_cookie(...) -- un MagicMock simplemente absorbe
+        # esas llamadas sin necesitar una Response real de FastAPI.
+        return MagicMock()
+
     async def test_responde_500_si_la_revocacion_no_se_pudo_confirmar(self):
         user = {"sub": UID, "panel": "admin", "name": "Admin"}
         with patch("app.auth.router._revocar_sesion_actual", AsyncMock(return_value=False)), \
              patch("app.auth.router._log_audit_seguro", AsyncMock()) as log_mock:
             with self.assertRaises(HTTPException) as err:
-                await logout(self._request(), user)
+                await logout(self._request(), self._response(), user)
         self.assertEqual(err.exception.status_code, 500)
         log_mock.assert_awaited_once()
         self.assertEqual(log_mock.await_args.args[3], "logout_fallido")
@@ -119,14 +125,14 @@ class LogoutEndpointTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.auth.router._revocar_sesion_actual", AsyncMock(side_effect=RuntimeError("bd caida"))), \
              patch("app.auth.router._log_audit_seguro", AsyncMock()):
             with self.assertRaises(HTTPException) as err:
-                await logout(self._request(), user)
+                await logout(self._request(), self._response(), user)
         self.assertEqual(err.exception.status_code, 500)
 
     async def test_responde_ok_cuando_la_revocacion_se_confirma(self):
         user = {"sub": UID, "panel": "admin", "name": "Admin"}
         with patch("app.auth.router._revocar_sesion_actual", AsyncMock(return_value=True)), \
              patch("app.auth.router._log_audit_seguro", AsyncMock()) as log_mock:
-            result = await logout(self._request(), user)
+            result = await logout(self._request(), self._response(), user)
         self.assertEqual(result, {"ok": True})
         self.assertEqual(log_mock.await_args.args[3], "logout")
 
@@ -141,7 +147,7 @@ class LogoutEndpointTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.auth.router._revocar_sesion_actual", AsyncMock(return_value=True)), \
              patch("app.core.database.AsyncSessionLocal", return_value=_ctx(audit_db)), \
              patch("app.core.audit.guardar_evento_en_fallback", AsyncMock()):
-            result = await logout(self._request(), user)
+            result = await logout(self._request(), self._response(), user)
         self.assertEqual(result, {"ok": True})
 
 

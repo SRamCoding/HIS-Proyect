@@ -19,6 +19,15 @@ async def actualizar_perfil(db: AsyncSession, user_id: str, data) -> User:
     user = await obtener_perfil(db, user_id)
 
     if data.email and data.email != user.email:
+        # El correo es el identificador de acceso: cambiarlo sin verificar
+        # la contraseña actual permitiria a quien tenga la sesion abierta
+        # (ej. equipo compartido, token robado) desplazar al dueño real de
+        # la cuenta sin volver a probar que es quien dice ser -- igual
+        # exigencia que ya aplica para cambiar la contraseña.
+        if not data.current_password:
+            raise HTTPException(400, "Ingresa tu contraseña actual para cambiar el correo")
+        if not bcrypt.checkpw(data.current_password.encode(), user.password.encode()):
+            raise HTTPException(400, "La contraseña actual no es correcta")
         existente = await db.scalar(select(User.id).where(User.email == data.email, User.id != user.id))
         if existente:
             raise HTTPException(400, f"Ya existe un usuario con el correo {data.email}")

@@ -1,31 +1,87 @@
-from fastapi import Depends, HTTPException, status
+import time
+from fastapi import Depends, HTTPException, status, Request, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 
+from app.core.config import settings
 from app.core.database import get_db_central
 from app.core.redis import get_redis
 from app.core.security import verify_token
 
-bearer_scheme = HTTPBearer()
+# auto_error=False: si no viene Authorization, no debe cortar aca con un
+# 403 generico -- todavia hay que revisar la cookie httpOnly del panel
+# correspondiente antes de decidir que no hay sesion. Se acepta cualquiera
+# de los dos, no solo uno, porque quitar el header de un dia para el otro
+# rompe cualquier cliente que todavia lo use (scripts, tests, un frontend
+# no actualizado).
+bearer_scheme = HTTPBearer(auto_error=False)
+
+_PREFIJO_A_PANEL = {"/admin": "admin", "/app": "app", "/sigarh": "sigarh"}
+
+
+def _panel_de_la_ruta(path: str) -> str | None:
+    for prefijo, panel in _PREFIJO_A_PANEL.items():
+        if path.startswith(prefijo):
+            return panel
+    return None
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db_central),
     redis: Redis = Depends(get_redis),
+    # Las cookies de sesion estan nombradas por panel (access_token_admin,
+    # access_token_app, ...) para que un mismo navegador pueda tener varias
+    # sesiones simultaneas en pestañas distintas sin que una pise a la
+    # otra (ver PANELES_CON_COOKIE en auth/router.py). Para rutas bajo
+    # /admin, /app o /sigarh el panel se infiere de la propia URL; para
+    # rutas panel-agnosticas (como /auth/logout) el frontend lo manda
+    # explicito por query, porque no hay otra forma de saberlo antes de
+    # decodificar un token que todavia no se sabe cual cookie contiene.
+    panel_hint: str | None = Query(None, alias="panel"),
 ) -> dict:
     """
     Dependency que verifica el JWT y retorna el usuario actual.
     Equivalente al middleware Authenticate de Laravel.
     """
-    token = credentials.credentials
+    if credentials:
+        token = credentials.credentials
+    else:
+        # Orden: query explicito > header X-Panel (el frontend lo manda en
+        # toda peticion, ver useApi.ts) > inferido de la URL -- los dos
+        # primeros no dependen de que la ruta caiga bajo /admin, /app o
+        # /sigarh, asi que cubren cualquier endpoint panel-agnostico sin
+        # tener que enumerarlo aca.
+        panel = panel_hint or request.headers.get("x-panel") or _panel_de_la_ruta(request.url.path)
+        token = request.cookies.get(f"access_token_{panel}") if panel else None
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No autenticado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     payload = verify_token(token)
 
     if not payload or payload.get("type") != "access":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token inválido o expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # El limite absoluto de sesion (session_started_at) antes solo se
+    # comprobaba en /auth/refresh -- un access token emitido momentos antes
+    # de cumplirse el limite seguia funcionando en CUALQUIER peticion
+    # protegida hasta su propia expiracion (hasta 1h mas), sin importar que
+    # la sesion ya deberia haber terminado. Se repite el mismo chequeo aca,
+    # en el camino que de verdad usa el token en cada peticion.
+    inicio = payload.get("session_started_at")
+    if inicio and time.time() - inicio > settings.SESSION_MAX_DURATION_HOURS * 3600:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="La sesión alcanzó su duración máxima; vuelve a iniciar sesión",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

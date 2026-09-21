@@ -42,7 +42,17 @@ async def _bd_fisica_sigarh(request: Request) -> str | None:
 
     from fastapi import HTTPException
     auth = request.headers.get("Authorization", "")
-    payload = verify_token(auth.removeprefix("Bearer ").strip()) if auth.startswith("Bearer ") else None
+    if auth.startswith("Bearer "):
+        token = auth.removeprefix("Bearer ").strip()
+    else:
+        # Cookies nombradas por panel (ver PANELES_CON_COOKIE en
+        # auth/router.py). Esta funcion solo se llama para /sigarh/* y
+        # /app/* (ver get_db abajo), pero un admin PUEDE llegar aca
+        # impersonando un hospital via X-Tenant-ID -- su token vive en la
+        # cookie de panel "admin", no en la del panel de la ruta.
+        panel_ruta = "sigarh" if request.url.path.startswith("/sigarh/") else "app"
+        token = request.cookies.get(f"access_token_{panel_ruta}") or request.cookies.get("access_token_admin")
+    payload = verify_token(token) if token else None
     if not payload or payload.get("type") != "access":
         raise HTTPException(401, "Token invalido o expirado")
     is_admin = payload.get("panel") == "admin" and payload.get("role") == "administrador"

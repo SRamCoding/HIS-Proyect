@@ -35,6 +35,15 @@ class User(Base):
     # ese correo, la regla dejaba de aplicar en silencio.
     is_superadmin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # MFA (TOTP) solo aplica al panel admin -- obligatorio para toda cuenta
+    # panel="admin" (ver auth/router.py::login). mfa_secret se genera en el
+    # primer login y queda "pendiente de confirmar" hasta que el usuario
+    # verifique un codigo con exito (mfa_enabled pasa a True recien ahi).
+    # Se guarda CIFRADO (app/core/crypto.py), nunca en texto plano -- un
+    # dump/leak de la BD no debe entregar directamente el secreto TOTP de
+    # cada admin. 255 alcanza para el token de Fernet (~140 chars tipicos).
+    mfa_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

@@ -678,6 +678,32 @@ async def toggle_usuario(
     return UserListItem.model_validate(user)
 
 
+@router.post("/usuarios/{user_id}/mfa/resetear", summary="Resetear MFA de una cuenta admin bloqueada")
+async def resetear_mfa(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
+    """Unico camino de recuperacion hoy si un admin pierde el dispositivo
+    con su app de autenticacion: no hay recuperacion self-service (el
+    panel admin no es publico, no tiene flujo de correo/SMS). Otro admin
+    con acceso puede resetear el MFA de la cuenta bloqueada -- vuelve a
+    pedir el QR de configuracion en su proximo login."""
+    from app.auth.models import User
+
+    if user_id == uuid.UUID(str(current_user.get("sub"))):
+        raise HTTPException(400, "No podés resetear el MFA de tu propia cuenta -- pedile a otro administrador.")
+
+    user = await db.get(User, user_id)
+    if not user or user.panel != "admin":
+        raise HTTPException(404, "Cuenta admin no encontrada")
+
+    user.mfa_secret = None
+    user.mfa_enabled = False
+    await db.commit()
+    return {"ok": True}
+
+
 @router.delete("/usuarios/{user_id}", summary="Eliminar usuario")
 async def eliminar_usuario(
     user_id: uuid.UUID,

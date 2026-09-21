@@ -85,6 +85,52 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None,
 )
 
+register_exception_handlers(app)
+
+# CSRF (patron doble-presentacion): solo se exige cuando la peticion se
+# autentica por una cookie httpOnly (access_token_<panel>, o mfa_pending
+# mientras dura el segundo paso del login admin) -- si en cambio trae un
+# header Authorization explicito, no hay nada que un sitio ajeno pueda
+# reproducir sin conocer el token (las cookies SI se adjuntan solas por el
+# navegador, un header manual no), asi que ese caso no es vulnerable a CSRF
+# y no tiene sentido exigirle el token. /auth/login queda afuera porque
+# todavia no existe ninguna cookie csrf_token antes de loguearse.
+_CSRF_METODOS_MUTANTES = {"POST", "PUT", "PATCH", "DELETE"}
+_CSRF_RUTAS_EXENTAS = {"/auth/login"}
+
+
+def _usa_cookie_de_sesion(cookies) -> bool:
+    return "mfa_pending" in cookies or any(k.startswith("access_token_") for k in cookies)
+
+
+@app.middleware("http")
+async def csrf_proteccion(request, call_next):
+    usa_cookie = _usa_cookie_de_sesion(request.cookies)
+    sin_header_auth = "authorization" not in request.headers
+    if (
+        request.method in _CSRF_METODOS_MUTANTES
+        and request.url.path not in _CSRF_RUTAS_EXENTAS
+        and usa_cookie
+        and sin_header_auth
+    ):
+        from fastapi.responses import JSONResponse
+        cookie_csrf = request.cookies.get("csrf_token")
+        header_csrf = request.headers.get("x-csrf-token")
+        if not cookie_csrf or not header_csrf or cookie_csrf != header_csrf:
+            return JSONResponse(
+                {"ok": False, "status": 403, "message": "Token CSRF ausente o inválido"},
+                status_code=403,
+            )
+    return await call_next(request)
+
+
+# CORSMiddleware se agrega DESPUES (no antes) de registrar csrf_proteccion:
+# en Starlette, el ultimo middleware agregado queda MAS AFUERA en la pila.
+# Si CORS quedara mas adentro que csrf_proteccion, una respuesta 403 que
+# csrf_proteccion corta antes de llamar a call_next() nunca pasaria por
+# CORSMiddleware -- le faltaria el header Access-Control-Allow-Origin, y el
+# navegador lo reportaria como "bloqueado por CORS" en vez del 403 real,
+# ocultando la causa verdadera del error.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -92,8 +138,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-register_exception_handlers(app)
 
 
 @app.get("/health", tags=["sistema"])

@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from app.core.config import settings
@@ -17,13 +18,36 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def create_refresh_token(data: dict) -> str:
-    """Token de refresco de larga duración."""
+def create_refresh_token(data: dict, jti: str | None = None) -> str:
+    """Token de refresco de larga duración.
+
+    `jti` es un id unico por token, nuevo en CADA llamada (incluso si
+    `data` trae uno heredado del token anterior -- se pisa siempre) para
+    que app/core/refresh_tracking pueda distinguir "el ultimo refresh token
+    emitido" de cualquier copia previa ya rotada. Se puede pasar un `jti`
+    explicito (en vez de generarlo aca) cuando el llamador ya reservo ese
+    valor de forma atomica ANTES de este punto -- ver refresh_token() en
+    auth/router.py, donde la reserva tiene que pasar antes de cualquier
+    `await` para cerrar una condicion de carrera real entre dos renovaciones
+    concurrentes con el mismo token viejo.
+    """
     payload = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(
         days=settings.REFRESH_TOKEN_EXPIRE_DAYS
     )
-    payload.update({"exp": expire, "type": "refresh"})
+    payload.update({"exp": expire, "type": "refresh", "jti": jti or str(uuid.uuid4())})
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def create_mfa_pending_token(sub: str, purpose: str) -> str:
+    """Token corto (5 min) que prueba "ya pasaste la contraseña, falta el
+    codigo TOTP" -- separado de access/refresh a proposito: nunca debe
+    servir para acceder a ningun endpoint protegido por get_current_user,
+    solo para /auth/mfa/verify. `purpose` es "setup" (primera vez, todavia
+    sin confirmar un codigo) o "verify" (login normal con MFA ya activo).
+    """
+    payload = {"sub": sub, "type": "mfa_pending", "purpose": purpose}
+    payload["exp"] = datetime.now(timezone.utc) + timedelta(minutes=5)
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 

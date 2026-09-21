@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Limite absoluto de una sesion, sin importar cuantas veces se refresque
+    # el token. Sin esto, cada refresh emite un refresh_token nuevo con sus
+    # propios 7 dias de vida (REFRESH_TOKEN_EXPIRE_DAYS), asi que una sesion
+    # activa podia extenderse indefinidamente refrescando cada 5 minutos.
+    SESSION_MAX_DURATION_HOURS: int = 24
 
     DNI_API_URL: str = "https://dni-api.prowebsolutions.lat/api/consultar"
     DNI_API_KEY: str = ""

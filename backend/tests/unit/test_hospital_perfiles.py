@@ -43,7 +43,7 @@ def test_seguimiento_hospitalario_separa_notas_de_altas():
 def cuenta(**kwargs):
     return SimpleNamespace(id=uuid.uuid4(), name="Prueba", email="prueba@example.test", panel="app",
         role=kwargs.get("role", "medico"), perfil_hospital_id=kwargs.get("perfil_hospital_id"),
-        empleado_id=kwargs.get("empleado_id"))
+        empleado_id=kwargs.get("empleado_id"), session_version=kwargs.get("session_version", 0))
 
 
 def test_medico_sin_perfil_no_hereda_modulos():
@@ -72,7 +72,12 @@ def test_medico_no_recibe_modulos_extra_ni_no_habilitados():
     assert r['empleado_id'] == str(empleado.id)
 
 
-def test_enfermeria_solo_recibe_sus_modulos_asistenciales():
+def test_enfermeria_recibe_los_modulos_de_su_perfil_sigarh():
+    # El alcance de medico/enfermera ya no se recorta contra un allowlist
+    # fijo en codigo: lo define el perfil configurado en SIGARH (ver
+    # comentario en contexto_hospital). Si el perfil incluye "atenciones",
+    # la cuenta lo recibe -- solo se filtra contra los modulos habilitados
+    # del hospital.
     perfil = SimpleNamespace(id=uuid.uuid4(), role="enfermera", modulos=[
         "consulta_externa.confirmacion", "consulta_externa.triaje",
         "consulta_externa.atenciones", "hospitalizacion.seguimiento",
@@ -81,9 +86,10 @@ def test_enfermeria_solo_recibe_sus_modulos_asistenciales():
     db = SimpleNamespace(scalar=AsyncMock(side_effect=[perfil, empleado]))
     user = cuenta(role="enfermera", perfil_hospital_id=perfil.id, empleado_id=empleado.id)
     r = asyncio.run(contexto_hospital(db, user, SimpleNamespace(id=uuid.uuid4()), {"consulta_externa", "hospitalizacion"}))
-    assert r['active_modules'] == [
-        "consulta_externa.confirmacion", "consulta_externa.triaje", "hospitalizacion.seguimiento",
-    ]
+    assert r['active_modules'] == sorted([
+        "consulta_externa.confirmacion", "consulta_externa.triaje",
+        "consulta_externa.atenciones", "hospitalizacion.seguimiento",
+    ])
 
 
 def test_perfil_de_otro_hospital_no_se_asigna():

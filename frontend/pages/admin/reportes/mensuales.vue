@@ -206,6 +206,11 @@
         </div>
       </div>
     </template>
+
+    <div v-else class="table-error" style="background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg);">
+      <UIcon name="i-heroicons-exclamation-triangle" class="w-8 h-8" style="color: var(--alert)" />
+      <p style="color: var(--alert)">No se pudo cargar el reporte.</p>
+    </div>
   </div>
 </template>
 

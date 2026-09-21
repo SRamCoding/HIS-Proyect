@@ -38,8 +38,9 @@ const handleLogin = async () => {
       },
     })
 
-    authStore.token = response.access_token
-    authStore.refreshToken = response.refresh_token
+    // El access_token y el refresh_token ya llegaron como cookies httpOnly
+    // (ver backend/app/auth/router.py) -- no hay nada que leer del body ni
+    // guardar en el store aparte de los datos del usuario.
     authStore.user = response.user
 
     const resolvedTenant = tenantId.value || response.user?.tenant_id || ''

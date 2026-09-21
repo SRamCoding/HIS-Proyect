@@ -139,6 +139,12 @@
           </template>
         </SFormCard>
       </template>
+
+      <div v-else class="form-card" style="padding: 1.5rem; text-align: center">
+        <UIcon name="i-heroicons-exclamation-triangle" class="w-8 h-8" style="color: var(--alert)" />
+        <p style="margin-top: 0.75rem; color: var(--ink)">{{ saveError || 'No se pudo cargar el hospital' }}</p>
+        <NuxtLink to="/admin/hospitales" class="btn-outline" style="margin-top: 1rem; display: inline-flex">Volver al listado</NuxtLink>
+      </div>
     </template>
 
     <template #sidebar>

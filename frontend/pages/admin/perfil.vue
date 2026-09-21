@@ -55,7 +55,7 @@
 
         <div class="form-group full-width">
           <div class="field-hint" style="margin: 0.5rem 0 1rem 0; padding-top: 0.75rem; border-top: 1px solid var(--line);">
-            Cambiar contraseña (déjalo en blanco para no modificarla)
+            Cambiar contraseña (déjalo en blanco para no modificarla). Al cambiarla se cierra la sesión en todos los dispositivos, no solo en este.
           </div>
         </div>
 
@@ -65,6 +65,7 @@
             <UIcon name="i-heroicons-lock-closed" class="input-icon" />
             <input v-model="form.current_password" type="password" class="input-clinical" :class="{ 'input-error': errors.current_password }" />
           </div>
+          <p class="field-hint">También se pide para cambiar el correo de acceso, no solo la contraseña.</p>
           <span v-if="errors.current_password" class="error-message">{{ errors.current_password }}</span>
         </div>
 
@@ -126,6 +127,7 @@ const loading = ref(true)
 const saving = ref(false)
 const saveError = ref('')
 const saveSuccess = ref('')
+const emailOriginal = ref('')
 
 const form = reactive({
   name: '',
@@ -158,7 +160,10 @@ const validar = (): boolean => {
   errors.new_password = ''
   errors.new_password_confirm = ''
 
-  if (form.new_password || form.new_password_confirm || form.current_password) {
+  const cambiaEmail = form.email !== emailOriginal.value
+  const cambiaPassword = !!(form.new_password || form.new_password_confirm)
+
+  if (cambiaPassword) {
     if (!form.current_password) errors.current_password = 'Ingresa tu contraseña actual'
     if (!form.new_password) {
       errors.new_password = 'La nueva contraseña es requerida'
@@ -167,6 +172,11 @@ const validar = (): boolean => {
     }
     if (!form.new_password_confirm) errors.new_password_confirm = 'Confirma la nueva contraseña'
     else if (form.new_password !== form.new_password_confirm) errors.new_password_confirm = 'Las contraseñas no coinciden'
+  } else if (cambiaEmail && !form.current_password) {
+    // Cambiar el correo de acceso tambien exige reautenticacion, igual que
+    // la contraseña -- sin esto, cualquiera con la sesion abierta podria
+    // desplazar al dueño real de la cuenta.
+    errors.current_password = 'Ingresa tu contraseña actual para cambiar el correo'
   }
 
   return !Object.values(errors).some(Boolean)
@@ -183,6 +193,8 @@ const handleSave = async () => {
     if (form.new_password) {
       body.current_password = form.current_password
       body.new_password = form.new_password
+    } else if (form.email !== emailOriginal.value) {
+      body.current_password = form.current_password
     }
     const cambioPassword = !!form.new_password
     await api('/admin/perfil', { method: 'PATCH', body })
@@ -202,6 +214,7 @@ const handleSave = async () => {
     form.current_password = ''
     form.new_password = ''
     form.new_password_confirm = ''
+    emailOriginal.value = form.email
     // El sidebar lee authStore.user, no vuelve a pedirlo solo -- sin esto,
     // seguia mostrando el nombre/correo viejo hasta el proximo refresh de
     // token (o hasta cerrar sesion y volver a entrar).
@@ -219,6 +232,7 @@ onMounted(async () => {
     const perfil = await api<{ name: string; email: string }>('/admin/perfil')
     form.name = perfil.name
     form.email = perfil.email
+    emailOriginal.value = perfil.email
   } catch (e: any) {
     saveError.value = apiErr(e, 'No se pudo cargar el perfil')
   } finally {

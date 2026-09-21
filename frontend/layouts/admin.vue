@@ -134,7 +134,7 @@
             <p class="text-xs truncate" style="color: #7fa1b3">{{ authStore.user?.email }}</p>
           </div>
         </div>
-        <button @click="handleLogout" class="nav-link w-full text-left" :class="{ 'nav-collapsed': collapsedDesktop }">
+        <button @click="handleLogout" class="nav-link w-full text-left" :class="{ 'nav-collapsed': collapsedDesktop }" title="Cierra la sesión en todos los dispositivos donde hayas iniciado sesión, no solo en este">
           <UIcon name="i-heroicons-arrow-left-on-rectangle" class="nav-icon" />
           <span :class="{ 'md:hidden': collapsed }">Cerrar sesion</span>
         </button>

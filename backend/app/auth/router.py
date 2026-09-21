@@ -1,18 +1,93 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from fastapi.responses import JSONResponse
 from app.core.dependencies import get_current_user
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 import bcrypt
+import secrets
 import uuid as uuid_lib
 
-from app.core.database import get_db
-from app.core.security import create_access_token, create_refresh_token, verify_token
+from app.core.database import get_db, get_db_central
+from app.core.security import create_access_token, create_refresh_token, verify_token, create_mfa_pending_token
 from app.core.config import settings
 from app.auth.models import User
 from app.sigarh.mantenimiento.models import UsuarioSigarh, PerfilUsuario
-from app.auth.schemas import LoginRequest, TokenResponse, RefreshRequest
+from app.auth.schemas import (
+    LoginRequest, SessionResponse, RefreshRequest, MfaRequiredResponse, MfaVerifyRequest,
+)
+from app.core.rate_limit import verificar_limite_login, registrar_intento_fallido, limpiar_intentos
+from app.core.refresh_tracking import emitir_jti, reservar_rotacion, olvidar
+from app.core.totp import generar_secreto, uri_otpauth, qr_png_base64, verificar_codigo
+from app.core.crypto import cifrar, descifrar
+import time
 
 router = APIRouter()
+
+# Los tokens viajan SOLO por cookie httpOnly, nunca en el body de la
+# respuesta (ver SessionResponse en schemas.py) -- devolverlos tambien en
+# JSON anulaba el punto de usar httpOnly: cualquier script en el mismo
+# origen podia leerlos ahi sin tocar la cookie para nada. El header
+# Authorization: Bearer SI se sigue aceptando en get_current_user y
+# _bd_fisica_sigarh (database.py, que NO pasa por get_current_user) como
+# via alternativa para quien lo arme por su cuenta (scripts, otro
+# cliente), pero el backend ya no es quien se lo entrega.
+#
+# Nombradas por panel (access_token_admin, access_token_app, ...) en vez de
+# un unico "access_token": las cookies son por ORIGEN de navegador, no por
+# pestaña. Antes, con el token guardado en sessionStorage, cada pestaña
+# tenia su propia sesion independiente (asi se podia estar logueado en
+# admin y en el panel de un hospital al mismo tiempo, en pestañas
+# distintas). Una sola cookie de sesion, sin distinguir panel, haria que
+# loguearse en otro panel en otra pestaña PISE la sesion de la primera
+# (misma cookie, mismo nombre, mismo origen). Nombrando la cookie por panel,
+# cada una convive con las demas sin pisarse -- ver PANELES_CON_COOKIE.
+#
+# SameSite="none" + secure=True funciona tanto cruzando puertos en local
+# (localhost:3000 -> localhost:8000, ambos considerados "contexto seguro"
+# por navegadores modernos aunque sea http://) como en produccion, donde
+# Apache expone frontend y backend en el mismo origen (ver HANDOFF.md) --
+# "none" es un superconjunto de "lax"/"strict", asi que tambien funciona
+# ahi sin condicionar la config por entorno.
+PANELES_CON_COOKIE = ("admin", "app", "sigarh", "portal")
+
+
+def _set_csrf_cookie(response: Response) -> None:
+    # NO httponly, y NO por panel: el frontend lo lee por JS y lo reenvia
+    # como header X-CSRF-Token en peticiones que mutan estado (patron
+    # "doble presentacion" -- ver el middleware de CSRF en main.py). No
+    # esta atado a una identidad, solo prueba que el JS que llama corre en
+    # este origen, asi que compartirlo entre paneles/pestañas no debilita
+    # nada: un atacante cross-site no puede leerlo para reproducir el
+    # header sea cual sea el panel activo. Se setea tanto al terminar el
+    # login como en la respuesta "MFA requerido" -- el paso de /auth/mfa/
+    # verify tambien muta estado y necesita el mismo CSRF ya presente.
+    response.set_cookie("csrf_token", secrets.token_urlsafe(32), httponly=False, secure=True, samesite="none",
+                         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400, path="/")
+
+
+def _set_auth_cookies(response: Response, panel: str, access_token: str, refresh_token: str) -> None:
+    response.set_cookie(f"access_token_{panel}", access_token, httponly=True, secure=True, samesite="none",
+                         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, path="/")
+    response.set_cookie(f"refresh_token_{panel}", refresh_token, httponly=True, secure=True, samesite="none",
+                         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400, path="/auth")
+    _set_csrf_cookie(response)
+
+
+def _clear_auth_cookies(response: Response, panel: str) -> None:
+    response.delete_cookie(f"access_token_{panel}", path="/")
+    response.delete_cookie(f"refresh_token_{panel}", path="/auth")
+
+
+def _json_con_cookies(modelo, response: Response) -> JSONResponse:
+    """FastAPI a veces solo conserva UN Set-Cookie del `response` inyectado
+    cuando la ruta devuelve un modelo Pydantic plano sin response_model
+    declarado (se confirmo empiricamente: `response.raw_headers` trae
+    todos los Set-Cookie antes de retornar, pero la respuesta HTTP final
+    solo trae el primero). Construir el JSONResponse a mano y copiarle los
+    headers directamente evita depender de ese merge interno."""
+    final = JSONResponse(content=modelo.model_dump())
+    final.raw_headers.extend(h for h in response.raw_headers if h[0] == b"set-cookie")
+    return final
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -85,18 +160,26 @@ async def tenant_publico(tenant_id: uuid_lib.UUID, db: AsyncSession = Depends(ge
     }
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login")
 async def login(
     request: Request,
+    response: Response,
     data: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
+    ip = request.client.host if request.client else None
+    verificar_limite_login(ip, data.email)
+
     # --- Panel admin: sigue 100% contra la BD central ---
     if data.panel == "admin":
-        result = await db.execute(select(User).where(User.email == data.email))
+        from sqlalchemy import func as sa_func
+        result = await db.execute(
+            select(User).where(sa_func.lower(User.email) == data.email.strip().lower())
+        )
         user = result.scalar_one_or_none()
 
         if not user or not verify_password(data.password, user.password):
+            registrar_intento_fallido(ip, data.email)
             await _log_audit(db, None, "Sistema", None, "login_failed", "User",
                               f"Intento de inicio de sesión fallido: {data.email}",
                               request.client.host if request.client else None)
@@ -108,19 +191,43 @@ async def login(
         if user.panel != "admin":
             raise HTTPException(status.HTTP_403_FORBIDDEN, "No tienes acceso al panel 'admin'")
 
-        await _log_audit(db, str(user.id), user.name, None, "login", "User",
-                          "Inicio de sesión", request.client.host if request.client else None)
+        # get_admin_user exige panel="admin" Y role="administrador" para
+        # cualquier ruta protegida -- si el login solo comprobara el panel,
+        # una cuenta admin con otro rol recibiria un token utilizable para
+        # nada (403 en cuanto tocara cualquier endpoint real). Se corta aca
+        # con un mensaje claro en vez de dejar que lo descubra despues.
+        if user.role != "administrador":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Tu cuenta no tiene rol de administrador")
 
-        token_data = {
-            "sub": str(user.id), "email": user.email, "name": user.name,
-            "role": user.role, "panel": user.panel, "tenant_id": None,
-            "active_modules": [], "session_version": user.session_version,
-        }
-        return TokenResponse(
-            access_token=create_access_token(token_data),
-            refresh_token=create_refresh_token(token_data),
-            user={**token_data, "id": token_data["sub"]},
+        # MFA (TOTP) obligatorio para TODA cuenta panel=admin: la
+        # contraseña sola ya no basta para terminar el login. No se emite
+        # ningun token real todavia -- solo una cookie de corta duracion
+        # que prueba "paso la contraseña" y habilita /auth/mfa/verify.
+        # limpiar_intentos/auditoria de "login" exitoso se hacen reciEn ahi,
+        # cuando el segundo factor tambien se confirma.
+        if not user.mfa_enabled:
+            if user.mfa_secret:
+                secreto_plano = descifrar(user.mfa_secret)
+            else:
+                secreto_plano = generar_secreto()
+                user.mfa_secret = cifrar(secreto_plano)  # nunca en claro en la BD
+                await db.commit()
+            uri = uri_otpauth(secreto_plano, user.email)
+            response.set_cookie(
+                "mfa_pending", create_mfa_pending_token(str(user.id), "setup"),
+                httponly=True, secure=True, samesite="none", max_age=5 * 60, path="/auth",
+            )
+            _set_csrf_cookie(response)
+            return _json_con_cookies(MfaRequiredResponse(
+                mfa_setup=True, otpauth_uri=uri, qr_png_base64=qr_png_base64(uri), secret=secreto_plano,
+            ), response)
+
+        response.set_cookie(
+            "mfa_pending", create_mfa_pending_token(str(user.id), "verify"),
+            httponly=True, secure=True, samesite="none", max_age=5 * 60, path="/auth",
         )
+        _set_csrf_cookie(response)
+        return _json_con_cookies(MfaRequiredResponse(mfa_setup=False), response)
 
     # --- Paneles app / sigarh / portal: requieren hospital resuelto por header ---
     from app.core.tenant_db import get_tenant_by_id, tenant_session
@@ -150,10 +257,12 @@ async def login(
                 func.lower(UsuarioSigarh.username) == identifier,
             )).limit(2))).all()
             if len(matches) != 1 or not verify_password(data.password, matches[0].password):
+                registrar_intento_fallido(ip, data.email)
                 raise HTTPException(401, "Credenciales incorrectas o identificador ambiguo")
+            limpiar_intentos(ip, data.email)
             token_data = await contexto_sigarh(tdb, matches[0], hospital=tenant)
             token_data["tenant_id"] = str(tenant.id)
-            return _respuesta_sesion(token_data)
+            return _respuesta_sesion(token_data, response)
 
         from sqlalchemy import func, or_
         identifier = data.email.strip().lower()
@@ -162,6 +271,7 @@ async def login(
         user = matches[0] if len(matches) == 1 else None
 
         if not user or not verify_password(data.password, user.password):
+            registrar_intento_fallido(ip, data.email)
             await _log_audit(db, None, "Sistema", str(tenant.id), "login_failed", "User",
                               f"Intento de inicio de sesión fallido: {data.email}",
                               request.client.host if request.client else None)
@@ -173,6 +283,7 @@ async def login(
         if user.panel != data.panel:
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"No tienes acceso al panel '{data.panel}'")
 
+        limpiar_intentos(ip, data.email)
         await _log_audit(db, str(user.id), user.name, str(tenant.id), "login", "User",
                           "Inicio de sesión", request.client.host if request.client else None)
 
@@ -188,28 +299,81 @@ async def login(
         if user.panel == "app":
             from app.auth.hospital_access import contexto_hospital, validar_rol_hospital, limitar_por_rol
             if user.perfil_usuario_id:
-                return _respuesta_sesion(await contexto_hospital(tdb, user, tenant, set(active_modules)))
+                return _respuesta_sesion(await contexto_hospital(tdb, user, tenant, set(active_modules)), response)
             rol = await validar_rol_hospital(db, user.role)
-            return _respuesta_sesion(limitar_por_rol(await contexto_hospital(tdb, user, tenant, set(active_modules)), rol))
+            return _respuesta_sesion(limitar_por_rol(await contexto_hospital(tdb, user, tenant, set(active_modules)), rol), response)
 
         token_data = {
             "sub": str(user.id), "email": user.email, "name": user.name,
             "role": user.role, "panel": user.panel, "tenant_id": str(tenant.id),
             "active_modules": active_modules, "session_version": user.session_version,
         }
-        return TokenResponse(
-            access_token=create_access_token(token_data),
-            refresh_token=create_refresh_token(token_data),
-            user={**token_data, "id": token_data["sub"]},
-        )
+        return _emitir_tokens(token_data, response)
 
 
-@router.post("/refresh", response_model=TokenResponse)
+@router.post("/mfa/verify", response_model=SessionResponse)
+async def mfa_verify(
+    request: Request,
+    response: Response,
+    data: MfaVerifyRequest,
+    db: AsyncSession = Depends(get_db_central),
+):
+    pending = request.cookies.get("mfa_pending")
+    payload = verify_token(pending) if pending else None
+    if not payload or payload.get("type") != "mfa_pending":
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sesión de verificación expirada; vuelve a iniciar sesión")
+
+    try:
+        uid = uuid_lib.UUID(str(payload.get("sub")))
+    except (ValueError, TypeError):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sesión de verificación inválida")
+
+    user = await db.get(User, uid)
+    if not user or not user.is_active or not user.mfa_secret:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Cuenta no encontrada o inactiva")
+
+    ip = request.client.host if request.client else None
+    # Mismo limitador que el login con contraseña: un codigo TOTP de 6
+    # digitos son solo 1 millon de combinaciones, probarlo sin limite
+    # equivaldria a no tener MFA en absoluto.
+    verificar_limite_login(ip, user.email)
+    if not verificar_codigo(str(user.id), descifrar(user.mfa_secret), data.code):
+        registrar_intento_fallido(ip, user.email)
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Código incorrecto")
+    limpiar_intentos(ip, user.email)
+
+    if payload.get("purpose") == "setup" and not user.mfa_enabled:
+        user.mfa_enabled = True
+        await db.commit()
+
+    await _log_audit(db, str(user.id), user.name, None, "login", "User",
+                      "Inicio de sesión", ip)
+
+    token_data = {
+        "sub": str(user.id), "email": user.email, "name": user.name,
+        "role": user.role, "panel": user.panel, "tenant_id": None,
+        "active_modules": [], "session_version": user.session_version,
+    }
+    # ANTES de _emitir_tokens, no despues: _emitir_tokens construye la
+    # respuesta final (_json_con_cookies) copiando en ese momento los
+    # Set-Cookie ya presentes en `response` -- borrar mfa_pending despues
+    # mutaba un objeto que la respuesta ya devuelta no referenciaba para
+    # nada, asi que la cookie nunca se borraba de verdad.
+    response.delete_cookie("mfa_pending", path="/auth")
+    return _emitir_tokens(token_data, response)
+
+
+@router.post("/refresh", response_model=SessionResponse)
 async def refresh_token(
-    data: RefreshRequest,
+    request: Request,
+    response: Response,
+    data: RefreshRequest = RefreshRequest(),
     db: AsyncSession = Depends(get_db),
 ):
-    payload = verify_token(data.refresh_token)
+    refresh_token_str = data.refresh_token
+    if not refresh_token_str and data.panel in PANELES_CON_COOKIE:
+        refresh_token_str = request.cookies.get(f"refresh_token_{data.panel}")
+    payload = verify_token(refresh_token_str) if refresh_token_str else None
 
     if not payload or payload.get("type") != "refresh":
         raise HTTPException(
@@ -217,8 +381,48 @@ async def refresh_token(
             detail="Refresh token inválido o expirado"
         )
 
+    # Limite absoluto de sesion: session_started_at viaja intacto desde el
+    # login original en cada refresh sucesivo (ver _emitir_tokens), asi que
+    # no importa cuantas veces se haya refrescado -- si ya paso el maximo,
+    # se corta y hay que volver a autenticarse con contraseña.
+    inicio = payload.get("session_started_at")
+    if inicio and time.time() - inicio > settings.SESSION_MAX_DURATION_HOURS * 3600:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "La sesión alcanzó su duración máxima; vuelve a iniciar sesión")
+
+    # sid identifica la CADENA de renovaciones de esta sesion en particular
+    # (un uuid fijado en el login original, ver _emitir_tokens), no la
+    # cuenta -- asi loguearse en un segundo dispositivo no pisa el
+    # seguimiento de reuso de la primera sesion. Tokens de antes de este
+    # cambio no traen sid: se cae al user_id como sid heredado en vez de
+    # rechazarlos de golpe.
+    sid = payload.get("sid") or str(payload.get("sub"))
+
+    # Reuso de un refresh token ya rotado: alguna copia vieja del token
+    # (robada, o quedada en otra pestaña/dispositivo desincronizado) se esta
+    # usando despues de que ya se emitio uno mas nuevo. No hay forma de
+    # saber cual copia es la legitima, asi que se revocan TODAS las sesiones
+    # de la cuenta -- _revocar_sesion_actual ya sabe resolver donde vive
+    # (central o BD del hospital) a partir del propio payload.
+    #
+    # nuevo_jti se genera y RESERVA aca, antes de cualquier `await` (ver
+    # reservar_rotacion): si el chequeo y el registro estuvieran separados
+    # por las consultas a la BD de usuario_actual() de abajo, dos
+    # renovaciones concurrentes con el mismo token viejo podrian pasar
+    # ambas el chequeo antes de que cualquiera se registrara, y una
+    # terminaria pisando a la otra sin que nadie detectara el reuso.
+    nuevo_jti = str(uuid_lib.uuid4())
+    if not reservar_rotacion(sid, payload.get("jti"), nuevo_jti):
+        await _revocar_sesion_actual(payload)
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sesión revocada por uso indebido del token; vuelve a iniciar sesión")
+
     from app.sigarh.mantenimiento.security import usuario_actual
     token_data = await usuario_actual(db, payload)
+    token_data["session_started_at"] = inicio
+    # contexto_hospital/contexto_sigarh (paneles app/sigarh) arman
+    # token_data desde cero, sin heredar del payload original -- sin esto,
+    # sid cambiaria en cada refresh para esos dos paneles y el seguimiento
+    # de reuso de arriba nunca encontraria una coincidencia real.
+    token_data["sid"] = sid
     if token_data.get("auth_source") != "sigarh" and token_data.get("panel") != "app":
         from app.tenants.hospitales.models import TenantModule
         active_modules = []
@@ -228,13 +432,36 @@ async def refresh_token(
                 TenantModule.tenant_id == uuid.UUID(token_data["tenant_id"]), TenantModule.is_active.is_(True),
             ))).all())
         token_data["active_modules"] = active_modules
-    return _respuesta_sesion(token_data)
+    return _respuesta_sesion(token_data, response, jti=nuevo_jti)
 
 
-def _respuesta_sesion(token_data):
-    claims = {k: v for k, v in token_data.items() if k not in {"exp", "type", "iat", "nbf"}}
-    return TokenResponse(access_token=create_access_token(claims), refresh_token=create_refresh_token(claims),
-                         user={"id": claims["sub"], **claims})
+def _respuesta_sesion(token_data, response: Response, jti: str | None = None):
+    claims = {k: v for k, v in token_data.items() if k not in {"exp", "type", "iat", "nbf", "jti"}}
+    return _emitir_tokens(claims, response, jti=jti)
+
+
+def _emitir_tokens(claims: dict, response: Response, jti: str | None = None) -> JSONResponse:
+    claims.setdefault("session_started_at", time.time())
+    claims.setdefault("sid", str(uuid_lib.uuid4()))
+    access_token = create_access_token(claims)
+    # `jti` viene ya reservado atomicamente cuando esto se llama desde un
+    # refresh (ver reservar_rotacion en refresh_token()) -- si se generara
+    # OTRO aca, no coincidiria con el que quedo reservado, y el PROXIMO
+    # refresh de esta misma sesion se rechazaria como reuso de su propio
+    # token legitimo. Al loguearse (sin reserva previa) queda None y
+    # create_refresh_token genera uno nuevo por su cuenta.
+    refresh_token_str = create_refresh_token(claims, jti=jti)
+    nuevo_payload = verify_token(refresh_token_str) or {}
+    emitir_jti(claims["sid"], nuevo_payload.get("jti"))
+    _set_auth_cookies(response, claims["panel"], access_token, refresh_token_str)
+    token_response = SessionResponse(user={"id": claims["sub"], **claims})
+    # Se devuelve como JSONResponse construido a mano (no el modelo
+    # Pydantic plano) por la misma razon que _json_con_cookies: en rutas
+    # sin (o con) response_model, FastAPI a veces solo conserva UN
+    # Set-Cookie del `response` inyectado cuando hay mas de uno -- aca
+    # siempre hay tres (access_token_<panel>, refresh_token_<panel>,
+    # csrf_token), asi que este bug es determinante, no cosmetico.
+    return _json_con_cookies(token_response, response)
 
 
 async def _revocar_sesion_actual(user: dict) -> bool:
@@ -270,7 +497,10 @@ async def _revocar_sesion_actual(user: dict) -> bool:
                 update(User).where(User.id == uid).values(session_version=User.session_version + 1)
             )
             await db.commit()
-        return result.rowcount > 0
+        if result.rowcount > 0:
+            olvidar(user.get("sid") or str(uid))
+            return True
+        return False
 
     try:
         tenant_uuid = uuid_lib.UUID(str(tenant_id_str))
@@ -296,7 +526,10 @@ async def _revocar_sesion_actual(user: dict) -> bool:
                 update(User).where(User.id == uid).values(session_version=User.session_version + 1)
             )
         await tdb.commit()
-    return result.rowcount > 0
+    if result.rowcount > 0:
+        olvidar(user.get("sid") or str(uid))
+        return True
+    return False
 
 
 async def _log_audit_seguro(
@@ -340,7 +573,9 @@ async def _log_audit_seguro(
 
 
 @router.post("/logout")
-async def logout(request: Request, user=Depends(get_current_user)):
+async def logout(request: Request, response: Response, user=Depends(get_current_user)):
+    if user.get("panel") in PANELES_CON_COOKIE:
+        _clear_auth_cookies(response, user["panel"])
     # session_version sube al cerrar sesion para que el token que quedo en el
     # navegador (o una copia filtrada) deje de servir de inmediato -- antes
     # solo pasaba para SIGARH y, ademas, solo si esa cuenta vivia en la BD
