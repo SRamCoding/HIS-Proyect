@@ -447,20 +447,73 @@ sin excepción). Completamente verdes: `test_archivo_clinico` (8/8),
 `test_laboratorio` (8/9), `test_hospitalizacion` (4/6), `test_referencias`
 (5/6), `test_seguridad` (1/4).
 
-**Pendiente, sin resolver esta sesión**: los otros 13 archivos
-(`test_admision_extra`, `test_banco_sangre`, `test_caja`,
-`test_epidemiologia`, `test_fact_config`, `test_farmacia`,
-`test_firma_electronica`, `test_his`, `test_informes`, `test_salud_ambiental`,
-`test_servicio_social`, `test_sis`, `test_telesalud`) fallan al 100% por
-una causa **distinta e independiente** de las dos de arriba:
-`ForeignKeyViolationError` durante el fixture de cada archivo, porque
-varias filas dependientes se agregan al ORM en un solo `flush()`/`commit()`
-sin la granularidad que ese caso necesita. Confirmado con un experimento
-en `test_caja.py` (revertido, no quedó en el repo): ni siquiera alcanza
-con un `flush()` por nivel de dependencia — hace falta uno después de
-*cada* `db.add()` cuyo resultado se referencia más adelante en el mismo
-método. Es mecánico pero hay que hacerlo archivo por archivo; no se
-tocó por alcance de tiempo esta sesión.
+**Actualizado 2026-09-21: 133/133 tests pasan de verdad.** Se arreglaron
+los 13 archivos pendientes más `test_hospitalizacion`, `test_referencias`,
+`test_seguridad` y `test_laboratorio` (que ya tenían fallas parciales
+previas, de otra causa). Hallazgos reales, no solo mecánicos:
+
+- **Causa raíz #1 (la ya identificada)**: falta de `flush()` granular.
+  Confirmado y corregido en los 13 archivos — hace falta un `await
+  db.flush()` después de *cada* `db.add()` cuyo id se referencia en un
+  objeto agregado más adelante dentro del mismo bloque `async with
+  self.session()`. Un solo `flush()`/`commit()` al final del bloque NO
+  basta ni siquiera agrupando por "nivel de dependencia": el orden de
+  INSERT que emite SQLAlchemy dentro de un mismo flush no se puede asumir
+  topológico cuando las FKs se asignan como UUID crudo (sin `relationship()`
+  de por medio) — hay que forzar el orden a mano con flushes intermedios.
+- **Causa raíz #2 (nueva)**: varios fixtures ponían `empleado_id` en los
+  claims del JWT de prueba, pero `contexto_hospital()`
+  (`app/auth/hospital_access.py`) SIEMPRE re-resuelve `empleado_id` desde
+  la columna real `User.empleado_id` en BD, ignorando el claim — sin un
+  `UPDATE users SET empleado_id=...` real el endpoint respondía 422 "la
+  cuenta debe estar vinculada a un empleado" (`test_caja`,
+  `test_hospitalizacion`). Mismo mecanismo para pruebas de aislamiento
+  multi-tenant: si el `User.empleado_id` de prueba apunta a un `Empleado`
+  del tenant A, una request con JWT de tenant B devuelve 403 "empleado de
+  otro hospital" en vez de 404 — hay que limpiar `empleado_id` a `NULL`
+  al simular el cambio de tenant.
+- **Causa raíz #3**: roles inventados en fixtures (`"admision"`,
+  `"enfermeria"`) que no existen en el catálogo real de `SystemRole`
+  (panel='app'): `administrador, enfermera, farmaceutico, laboratorista,
+  cajero, tuasis, medico`. `validar_rol_hospital()` los rechaza con 403
+  "rol hospitalario inactivo o no existe". Corregido usando roles reales
+  (`test_admision_extra`).
+- **Causa raíz #4**: columnas NOT NULL genuinamente omitidas en el
+  fixture (`Medicamento.nombre_generico`, `CajaSesion.registrado_por`) y
+  FKs a catálogos que no existían (`Profesion.grupo_ocupacional_id`
+  apuntando a un UUID inventado en vez de crear el `GrupoOcupacional`
+  real primero) — `test_farmacia`, `test_laboratorio`,
+  `test_epidemiologia`, `test_salud_ambiental`, `test_servicio_social`,
+  `test_firma_electronica`.
+- **Bug real corregido en producción** (no solo en tests):
+  `app/hospital/his/service.py::list_atenciones_his` no tenía `ORDER BY`
+  en las dos queries que arman el reporte HIS-MINSA — con dos atenciones
+  firmadas en el mismo microsegundo (posible en Windows por resolución de
+  reloj), el orden de las filas devueltas por Postgres no era
+  determinista, así que el mismo reporte podía salir en distinto orden en
+  dos corridas idénticas. Se agregó `.order_by(firmado_at, id)` a ambas
+  queries — deploy verificado (`py_compile` + `import main` + restart de
+  `HisErpBackend` sin traceback + `curl` con JWT real de Lennart contra
+  `/app/his/formato-his` en Reque, 200 con datos reales).
+- **Bugs de test genuinamente mal escritos** (no del código real),
+  corregidos para reflejar el comportamiento real y correcto observado:
+  `test_caja` esperaba formato Decimal con 4 decimales fijos en campos
+  que en realidad vienen de `Tarifario.precio` (columna `Float`, no
+  `Numeric`) y por eso no traen ceros de relleno; `test_referencias`
+  probaba un caso "duplicado" con un payload incompleto que en realidad
+  dispara 422 de validación antes de llegar al 409 de negocio;
+  `test_seguridad` asumía un total absoluto de cuentas `panel='app'`
+  ignorando que esa consulta es deliberadamente global (sin filtro por
+  tenant — el aislamiento real es por BD física, ver docstring del
+  archivo) y que la BD central de este servidor ya tiene datos reales
+  preexistentes (la cuenta real "Lennart Sosa") — se cambió a medir un
+  baseline en caliente y comparar por delta, en vez de un número fijo
+  inventado.
+
+Todos los detalles y el patrón exacto de flush a aplicar quedan en los
+commits de esta sesión — revisar el diff de `backend/tests/*.py` y
+`backend/app/hospital/his/service.py` si hace falta repetir el patrón en
+un archivo de test nuevo.
 
 ## 7. Reglas que el usuario pidió mantener siempre
 
@@ -707,3 +760,59 @@ Verificado igual que la fusión anterior: compila, importa, 3 bases
 migradas, ambos servicios reiniciados sin traceback, suite de tests en
 52/130 (mismo baseline, sin regresión). Push final a `origin/main`:
 `f7a03be` (la fusión) y `eaba2f1` (el fix de las migraciones faltantes).
+
+### Tercera fusión (sesión 2026-09-21) — MFA obligatorio + cookies httpOnly
+El otro dev subió 1 commit (`9ea9570`): MFA (TOTP) obligatorio para el panel
+admin, sesión migrada de localStorage/Authorization header a cookies
+httpOnly por panel (`access_token_admin`/`access_token_app`/
+`access_token_sigarh`), CSRF, rate limiting de login y tracking de refresh
+tokens. Tocaba justo los mismos 3 archivos de login (`pages/login.vue`,
+`pages/app/login.vue`, `pages/sigarh/login.vue`) y `stores/auth.store.ts`
+que esta sesión había tocado hoy mismo (toast de bienvenida post-login).
+
+**Procedimiento seguido** (mismo patrón que las fusiones anteriores,
+adaptado a que esta vez había trabajo local sin commitear en vez de
+commits locales):
+1. `git stash push -u` — guarda todo el trabajo de diseño en curso
+   (dashboard/sidebar/Panel de Camas/Citados/Pacientes + los fixtures de
+   tests arreglados) sin commitear nada prematuramente.
+2. `git merge origin/main` — fast-forward limpio, sin conflictos de
+   historial (el local no tenía commits propios, solo working tree sucio).
+3. `git stash pop` — acá sí apareció el único conflicto real, en
+   `pages/login.vue` (función `signIn`): el otro dev agregó la rama MFA
+   (`response.mfa_required`), esta sesión había agregado el toast. Se
+   resolvió moviendo el toast a `finalizarLogin()` (la función que
+   **ambos** caminos —login directo sin MFA, y login-luego-verificar-MFA—
+   llaman al terminar de verdad), en vez de dejarlo en `signIn()` donde
+   dispararía antes de tiempo si al usuario le faltaba el segundo factor.
+   `app/login.vue` y `sigarh/login.vue` fusionaron solos (sin conflicto):
+   el otro dev quitó el guardado manual de `access_token`/`refresh_token`
+   en el store (ahora llegan como cookie httpOnly), el toast de esta sesión
+   quedó intacto en la misma función.
+4. Dependencias nuevas del backend (`pyotp`, `qrcode` — generación/
+   verificación TOTP y QR) instaladas en el venv real.
+5. 2 migraciones nuevas (`b0fbaf767c28_mfa_totp_en_users`,
+   `c1a2b3d4e5f6_cifrar_mfa_secret`) aplicadas a las 3 bases reales.
+6. Confirmado por lectura de código (`app/core/dependencies.py`) que el
+   `Authorization: Bearer` sigue aceptado como fallback además de la
+   cookie httpOnly — los scripts de verificación con JWT manual que usa
+   esta sesión (`create_access_token()` + curl) siguen funcionando sin
+   cambios.
+
+Verificado: `alembic heads` un solo head, backend compila e importa,
+frontend compila sin errores nuevos, ambos servicios reiniciados sin
+traceback, **suite de tests completa: 136/136 pasan** (subió de 133 por
+los tests nuevos que trajo el otro dev — `test_crypto`, `test_totp_replay`,
+`test_rate_limit_login`, `test_refresh_tracking`,
+`test_dashboard_usuarios_hospital`, `test_reportes_mensuales_filtro_tenant`
+— todos verdes, sin regresión de ningún lado). Verificado además con curl
++ JWT real contra Reque (`/app/consulta-externa/citas`,
+`/app/admision/buscar`) → 200 en ambos, confirmando que el merge no rompió
+las páginas trabajadas hoy.
+
+**Sin commitear/pushear todavía**: el trabajo de diseño de esta sesión
+(dashboard, sidebar, Panel de Camas, Citados, Pacientes, tema global
+`hospital-theme.css`, fixtures de tests) sigue solo en el working tree
+local, ya reconciliado con el merge pero no subido a `origin/main` —
+pendiente de que el usuario confirme antes de hacer push, para no pisar
+al otro dev si sigue trabajando en paralelo.
