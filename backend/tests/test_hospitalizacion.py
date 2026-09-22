@@ -6,13 +6,14 @@ docker compose exec -T -e RUN_ARCHIVO_DB_TESTS=1 backend python -m unittest test
 import unittest
 import uuid
 from datetime import date
-from sqlalchemy import select
+from sqlalchemy import select, update
 import test_archivo_clinico as archive
 from app.tenants.hospitales.models import TenantModule
 from app.hospital.admision.models import Patient, ClinicalRecord
 from app.hospital.emergencia.models import AdmisionEmergencia, AtencionEmergencia, DestinoEmergencia
 from app.sigarh.infraestructura_hosp.models import Cama
 from app.sigarh.rrhh.models import Empleado, Especialidad
+from app.auth.models import User
 from app.core.security import create_access_token
 
 
@@ -22,6 +23,9 @@ class HospitalizacionTests(archive.ArchivoClinicoTests):
         async with self.session() as db:
             db.add(TenantModule(tenant_id=self.tenant_id, module_code="hospitalizacion"))
             db.add(TenantModule(tenant_id=self.tenant_id, module_code="emergencia"))
+            # La interconsulta admitida desde emergencia tambien aparece en la cola de
+            # Consulta Externa (mismo flujo real) -- ese endpoint exige el modulo activo.
+            db.add(TenantModule(tenant_id=self.tenant_id, module_code="consulta_externa"))
             self.pid = await db.scalar(select(ClinicalRecord.patient_id).where(ClinicalRecord.id == self.record_id))
             self.staff = uuid.uuid4()
             self.espec = uuid.uuid4()
@@ -52,6 +56,10 @@ class HospitalizacionTests(archive.ArchivoClinicoTests):
                 motivo_consulta="Dolor toracico", destino_atencion="INTERCONSULTA", estado="firmado"))
             db.add(DestinoEmergencia(id=self.destino_interc_id, tenant_id=self.tenant_id, atencion_id=self.atencion_emerg_id2,
                 destino="INTERCONSULTA", estado="pendiente"))
+            await db.flush()
+            # contexto_hospital() resuelve empleado_id desde User.empleado_id (BD), no
+            # desde el claim del JWT -- ver misma nota en test_caja.py.
+            await db.execute(update(User).where(User.id == self.user_id).values(empleado_id=self.staff))
             await db.commit()
         self.prefix = "/app/hospitalizacion"
         self.claims = {**self.claims, "empleado_id": str(self.staff)}
@@ -184,7 +192,10 @@ class HospitalizacionTests(archive.ArchivoClinicoTests):
         hosp = await self.admitir()
         self.client.headers["Authorization"] = "Bearer " + create_access_token(self.claims | {"tenant_id": str(self.other_tenant), "empleado_id": str(uuid.uuid4())})
         async with self.session() as db:
-            db.add(TenantModule(tenant_id=self.other_tenant, module_code="hospitalizacion")); await db.commit()
+            db.add(TenantModule(tenant_id=self.other_tenant, module_code="hospitalizacion"))
+            # Ver nota equivalente en test_caja.py::test_caja_tenant_isolation.
+            await db.execute(update(User).where(User.id == self.user_id).values(empleado_id=None))
+            await db.commit()
         r = await self.client.get(self.prefix+f"/hospitalizaciones/{hosp['id']}")
         self.assertEqual(r.status_code, 404)
 

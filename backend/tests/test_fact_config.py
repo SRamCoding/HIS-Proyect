@@ -25,11 +25,12 @@ class FactConfigTests(archive.ArchivoClinicoTests):
             self.seguro_id = uuid.uuid4()
             self.tarifa_id = uuid.uuid4()
             db.add(Catalogo(id=self.tipo_id, tenant_id=self.tenant_id, categoria="tipos_producto", nombre="Medicamento"))
+            db.add(Especialidad(id=self.espec_id, tenant_id=self.tenant_id, nombre="Medicina Interna"))
+            db.add(Seguro(id=self.seguro_id, tenant_id=self.tenant_id, codigo="SIS", nombre="SIS - Seguro Integral de Salud"))
+            await db.flush()
             db.add(Medicamento(id=self.med_id, tenant_id=self.tenant_id, tipo_producto_id=self.tipo_id,
                 codigo_interno="MED-FC", nombre_comercial="Amoxicilina 500mg", nombre_generico="Amoxicilina",
                 dci="Amoxicilina", precio_referencia=12.5))
-            db.add(Especialidad(id=self.espec_id, tenant_id=self.tenant_id, nombre="Medicina Interna"))
-            db.add(Seguro(id=self.seguro_id, tenant_id=self.tenant_id, codigo="SIS", nombre="SIS - Seguro Integral de Salud"))
             db.add(Tarifario(id=self.tarifa_id, tenant_id=self.tenant_id, descripcion_servicio="Consulta general",
                 tipo_servicio="CONSULTA_EXTERNA", especialidad_id=self.espec_id, seguro_id=self.seguro_id, precio=35.0))
             await db.commit()

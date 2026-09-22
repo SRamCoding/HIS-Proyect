@@ -42,11 +42,11 @@ class ReferenciasTests(archive.ArchivoClinicoTests):
         self.assertEqual(r.status_code, status, r.text)
         return r.json()
 
-    async def admitir(self, **overrides):
+    async def admitir(self, status=201, **overrides):
         body = {"destino_id": str(self.destino_id), "nombre_ipress_destino": "Hospital Regional de Prueba",
             "especialidad_destino": "Cardiología", "diagnostico_id": str(self.dx), "motivo": "Evaluación especializada"}
         body.update(overrides)
-        return await self.post("/referencias/admitir-emergencia", body)
+        return await self.post("/referencias/admitir-emergencia", body, status)
 
     async def test_ref_admitir_desde_emergencia_resuelve_destino(self):
         ref = await self.admitir()
@@ -55,7 +55,7 @@ class ReferenciasTests(archive.ArchivoClinicoTests):
         self.assertEqual(ref["destino_tipo"], "EXTERNO")
         r = await self.client.get(self.prefix+"/emergencia-pendientes")
         self.assertEqual(r.json(), [])
-        await self.post("/referencias/admitir-emergencia", {"destino_id": str(self.destino_id), "motivo": "x"}, 409)
+        await self.admitir(status=409)
 
     async def test_ref_sin_destino_rechaza(self):
         await self.post("/referencias/admitir-emergencia", {"destino_id": str(self.destino_id), "motivo": "x"}, 422)

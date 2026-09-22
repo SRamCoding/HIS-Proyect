@@ -12,7 +12,7 @@ from app.tenants.hospitales.models import TenantModule
 from app.hospital.admision.models import ClinicalRecord
 from app.hospital.emergencia.models import AdmisionEmergencia, AtencionEmergencia
 from app.sigarh.rrhh.models import Empleado
-from app.sigarh.mantenimiento.models import Profesion
+from app.sigarh.mantenimiento.models import Profesion, GrupoOcupacional
 from app.core.security import create_access_token
 
 
@@ -23,17 +23,23 @@ class EpidemiologiaTests(archive.ArchivoClinicoTests):
             db.add(TenantModule(tenant_id=self.tenant_id, module_code="epidemiologia"))
             self.pid = await db.scalar(select(ClinicalRecord.patient_id).where(ClinicalRecord.id == self.record_id))
 
+            grupo_id = uuid.uuid4()
+            db.add(GrupoOcupacional(id=grupo_id, tenant_id=self.tenant_id, nombre="Médicos"))
+            await db.flush()
             profesion_id = uuid.uuid4()
-            db.add(Profesion(id=profesion_id, tenant_id=self.tenant_id, grupo_ocupacional_id=uuid.uuid4(),
+            db.add(Profesion(id=profesion_id, tenant_id=self.tenant_id, grupo_ocupacional_id=grupo_id,
                 nombre="Médico Cirujano", codigo="MED"))
+            await db.flush()
             self.medico_id = uuid.uuid4()
             db.add(Empleado(id=self.medico_id, tenant_id=self.tenant_id, dni="44445555", nombres="Medico",
                 apellido_paterno="Notificante", apellido_materno="Prueba",
                 profesion_id=profesion_id, habilitado_colegio=True, numero_cmp="CMP-4444"))
+            await db.flush()
 
             self.admision_id = uuid.uuid4()
             db.add(AdmisionEmergencia(id=self.admision_id, tenant_id=self.tenant_id, patient_id=self.pid,
                 numero_cuenta="EMG-EPI-0001", estado="en_atencion"))
+            await db.flush()
             self.atencion_id = uuid.uuid4()
             db.add(AtencionEmergencia(id=self.atencion_id, tenant_id=self.tenant_id, admision_id=self.admision_id,
                 motivo_consulta="Fiebre y dolor retroocular", destino_atencion="AMBULATORIA", estado="borrador"))

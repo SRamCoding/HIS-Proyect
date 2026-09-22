@@ -59,7 +59,8 @@ async def list_atenciones_his(db: AsyncSession, tid: uuid.UUID, fecha_desde: dat
         .outerjoin(Servicio, Servicio.id == ProgramacionMedica.servicio_id)
         .outerjoin(Especialidad, Especialidad.id == ProgramacionMedica.especialidad_id)
         .where(AtencionMedica.tenant_id == tid, AtencionMedica.estado == "firmado",
-               AtencionMedica.firmado_at >= inicio, AtencionMedica.firmado_at <= fin))
+               AtencionMedica.firmado_at >= inicio, AtencionMedica.firmado_at <= fin)
+        .order_by(AtencionMedica.firmado_at, AtencionMedica.id))
     for atencion, cita, paciente, historia, prog, medico, servicio, especialidad in (await db.execute(q_medica)).all():
         district_ids.add(paciente.district_id)
         seguro = await db.scalar(select(Seguro.nombre).where(Seguro.tenant_id == tid, Seguro.is_active.is_(True),
@@ -87,7 +88,8 @@ async def list_atenciones_his(db: AsyncSession, tid: uuid.UUID, fecha_desde: dat
         .outerjoin(ClinicalRecord, ClinicalRecord.patient_id == Patient.id)
         .outerjoin(Empleado, Empleado.id == AtencionEmergencia.medico_id)
         .where(AdmisionEmergencia.tenant_id == tid, AtencionEmergencia.estado == "firmado",
-               AtencionEmergencia.firmado_at >= inicio, AtencionEmergencia.firmado_at <= fin))
+               AtencionEmergencia.firmado_at >= inicio, AtencionEmergencia.firmado_at <= fin)
+        .order_by(AtencionEmergencia.firmado_at, AtencionEmergencia.id))
     for atencion, admision, paciente, historia, medico in (await db.execute(q_emerg)).all():
         district_ids.add(paciente.district_id)
         seguro = await db.scalar(select(Seguro.nombre).where(Seguro.tenant_id == tid, Seguro.is_active.is_(True),

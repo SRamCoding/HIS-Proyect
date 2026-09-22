@@ -29,6 +29,7 @@ class TelesaludTests(archive.ArchivoClinicoTests):
                 numero_cmp="CMP-1234"))
             db.add(Especialidad(id=self.esp_id, tenant_id=self.tenant_id, nombre="Medicina General",
                 codigo="MED-GEN", is_active=True))
+            await db.flush()
             db.add(EmpleadoEspecialidad(id=uuid.uuid4(), empleado_id=self.medico_id, especialidad_id=self.esp_id,
                 numero_rne="RNE-5678"))
 
@@ -36,13 +37,14 @@ class TelesaludTests(archive.ArchivoClinicoTests):
             db.add(ProgramacionMedica(id=self.prog_virtual_id, tenant_id=self.tenant_id, medico_id=self.medico_id,
                 especialidad_id=self.esp_id, fecha=date.today(), turno="T", hora_inicio="15:00", hora_fin="15:30",
                 modalidad="VIRTUAL"))
-            self.cita_virtual_id = uuid.uuid4()
-            db.add(Cita(id=self.cita_virtual_id, tenant_id=self.tenant_id, programacion_medica_id=self.prog_virtual_id,
-                patient_id=self.pid, hora_inicio="15:00", hora_fin="15:15", estado="separada"))
-
             self.prog_presencial_id = uuid.uuid4()
             db.add(ProgramacionMedica(id=self.prog_presencial_id, tenant_id=self.tenant_id, medico_id=self.medico_id,
                 fecha=date.today(), turno="M", hora_inicio="09:00", hora_fin="09:30", modalidad="PRESENCIAL"))
+            await db.flush()
+
+            self.cita_virtual_id = uuid.uuid4()
+            db.add(Cita(id=self.cita_virtual_id, tenant_id=self.tenant_id, programacion_medica_id=self.prog_virtual_id,
+                patient_id=self.pid, hora_inicio="15:00", hora_fin="15:15", estado="separada"))
             self.cita_presencial_id = uuid.uuid4()
             db.add(Cita(id=self.cita_presencial_id, tenant_id=self.tenant_id, programacion_medica_id=self.prog_presencial_id,
                 patient_id=self.pid, hora_inicio="09:00", hora_fin="09:15", estado="separada"))

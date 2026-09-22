@@ -11,7 +11,7 @@ import test_archivo_clinico as archive
 from app.tenants.hospitales.models import TenantModule
 from app.hospital.admision.models import ClinicalRecord
 from app.sigarh.rrhh.models import Empleado
-from app.sigarh.mantenimiento.models import Profesion
+from app.sigarh.mantenimiento.models import Profesion, GrupoOcupacional
 from app.core.security import create_access_token
 
 
@@ -22,16 +22,21 @@ class ServicioSocialTests(archive.ArchivoClinicoTests):
             db.add(TenantModule(tenant_id=self.tenant_id, module_code="servicio_social"))
             self.pid = await db.scalar(select(ClinicalRecord.patient_id).where(ClinicalRecord.id == self.record_id))
 
+            grupo_id = uuid.uuid4()
+            db.add(GrupoOcupacional(id=grupo_id, tenant_id=self.tenant_id, nombre="Salud"))
+            await db.flush()
+
             profesion_tso = uuid.uuid4()
-            db.add(Profesion(id=profesion_tso, tenant_id=self.tenant_id, grupo_ocupacional_id=uuid.uuid4(),
+            db.add(Profesion(id=profesion_tso, tenant_id=self.tenant_id, grupo_ocupacional_id=grupo_id,
                 nombre="Trabajador Social", codigo="TSO"))
+            profesion_otra = uuid.uuid4()
+            db.add(Profesion(id=profesion_otra, tenant_id=self.tenant_id, grupo_ocupacional_id=grupo_id,
+                nombre="Enfermería", codigo="ENF"))
+            await db.flush()
+
             self.trabajador_id = uuid.uuid4()
             db.add(Empleado(id=self.trabajador_id, tenant_id=self.tenant_id, dni="22223333", nombres="Trabajadora",
                 apellido_paterno="Social", apellido_materno="Prueba", profesion_id=profesion_tso))
-
-            profesion_otra = uuid.uuid4()
-            db.add(Profesion(id=profesion_otra, tenant_id=self.tenant_id, grupo_ocupacional_id=uuid.uuid4(),
-                nombre="Enfermería", codigo="ENF"))
             self.no_trabajador_id = uuid.uuid4()
             db.add(Empleado(id=self.no_trabajador_id, tenant_id=self.tenant_id, dni="11112222", nombres="Otro",
                 apellido_paterno="Profesional", apellido_materno="Prueba", profesion_id=profesion_otra))

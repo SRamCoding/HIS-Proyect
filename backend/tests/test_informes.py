@@ -33,48 +33,50 @@ class InformesTests(archive.ArchivoClinicoTests):
                 apellido_paterno="De Prueba", apellido_materno="Informes"))
             db.add(Especialidad(id=self.esp_id, tenant_id=self.tenant_id, nombre="Medicina Interna",
                 codigo="MED-INT", is_active=True))
+            self.cama_id = uuid.uuid4()
+            db.add(Cama(id=self.cama_id, tenant_id=self.tenant_id, codigo="C-01", nombre="Cama 1"))
+            await db.flush()
 
             self.prog_id = uuid.uuid4()
             db.add(ProgramacionMedica(id=self.prog_id, tenant_id=self.tenant_id, medico_id=self.medico_id,
                 fecha=date.today(), turno="M", hora_inicio="09:00", hora_fin="10:00",
                 tiempo_promedio_atencion=15))  # 4 cupos de 15 min
+            await db.flush()
+
             self.cita_id = uuid.uuid4()
             db.add(Cita(id=self.cita_id, tenant_id=self.tenant_id, programacion_medica_id=self.prog_id,
                 patient_id=self.pid, hora_inicio="09:00", hora_fin="09:15", estado="atendida"))
             self.cita2_id = uuid.uuid4()
             db.add(Cita(id=self.cita2_id, tenant_id=self.tenant_id, programacion_medica_id=self.prog_id,
                 patient_id=self.pid, hora_inicio="09:15", hora_fin="09:30", estado="cancelada"))
-            self.atencion_id = uuid.uuid4()
-            db.add(AtencionMedica(id=self.atencion_id, tenant_id=self.tenant_id, cita_id=self.cita_id,
-                motivo_consulta="Control", destino_atencion="ALTA", estado="firmado",
-                firmado_por_id=self.medico_id, firmado_at=datetime.utcnow()))
-            db.add(Interconsulta(id=uuid.uuid4(), tenant_id=self.tenant_id, atencion_medica_id=self.atencion_id,
-                patient_id=self.pid, especialidad_destino_id=self.esp_id, motivo="Evaluacion"))
-
-            self.cama_id = uuid.uuid4()
-            db.add(Cama(id=self.cama_id, tenant_id=self.tenant_id, codigo="C-01", nombre="Cama 1"))
             self.hosp_id = uuid.uuid4()
             db.add(Hospitalizacion(id=self.hosp_id, tenant_id=self.tenant_id, patient_id=self.pid,
                 cama_id=self.cama_id, especialidad_ingreso_id=self.esp_id, numero_hospitalizacion="HOSP-0001",
                 fecha_ingreso=datetime.utcnow() - timedelta(days=3),
                 fecha_alta=datetime.utcnow() - timedelta(days=1), estado="alta"))
-
-            db.add(OrdenLaboratorio(id=uuid.uuid4(), tenant_id=self.tenant_id, atencion_medica_id=self.atencion_id,
-                patient_id=self.pid, numero_orden="LAB-0001", estado="pendiente"))
-            db.add(Receta(id=uuid.uuid4(), tenant_id=self.tenant_id, atencion_medica_id=self.atencion_id,
-                numero_receta="REC-0001", estado="pendiente"))
-
             self.admision_em_id = uuid.uuid4()
             db.add(AdmisionEmergencia(id=self.admision_em_id, tenant_id=self.tenant_id, patient_id=self.pid,
                 numero_cuenta="EMG-0001", estado="admitido"))
-
             db.add(ListaEspera(id=uuid.uuid4(), tenant_id=self.tenant_id, patient_id=self.pid, estado="pendiente"))
-
             db.add(Referencia(id=uuid.uuid4(), tenant_id=self.tenant_id, atencion_medica_id=None,
                 patient_id=self.pid, nombre_ipress_destino="Hospital Regional", motivo="Evaluacion especializada",
                 numero_referencia="REF-0001", estado="contrarreferida",
                 fecha_contrarreferencia=date.today() - timedelta(days=1),
                 created_at=datetime.utcnow() - timedelta(days=5)))
+            await db.flush()
+
+            self.atencion_id = uuid.uuid4()
+            db.add(AtencionMedica(id=self.atencion_id, tenant_id=self.tenant_id, cita_id=self.cita_id,
+                motivo_consulta="Control", destino_atencion="ALTA", estado="firmado",
+                firmado_por_id=self.medico_id, firmado_at=datetime.utcnow()))
+            await db.flush()
+
+            db.add(Interconsulta(id=uuid.uuid4(), tenant_id=self.tenant_id, atencion_medica_id=self.atencion_id,
+                patient_id=self.pid, especialidad_destino_id=self.esp_id, motivo="Evaluacion"))
+            db.add(OrdenLaboratorio(id=uuid.uuid4(), tenant_id=self.tenant_id, atencion_medica_id=self.atencion_id,
+                patient_id=self.pid, numero_orden="LAB-0001", estado="pendiente"))
+            db.add(Receta(id=uuid.uuid4(), tenant_id=self.tenant_id, atencion_medica_id=self.atencion_id,
+                numero_receta="REC-0001", estado="pendiente"))
             await db.commit()
         self.prefix = "/app/informes"
         self.hoy = date.today().isoformat()

@@ -35,28 +35,39 @@ class HisTests(archive.ArchivoClinicoTests):
                 descripcion="Fiebre, no especificada"))
             db.add(Seguro(id=uuid.uuid4(), tenant_id=self.tenant_id, codigo="PARTICULAR", nombre="Particular",
                 tipo_entidad="Privado", requiere_fua=False, is_active=True))
+            await db.flush()
 
             self.prog_id = uuid.uuid4()
             db.add(ProgramacionMedica(id=self.prog_id, tenant_id=self.tenant_id, medico_id=self.medico_id,
                 fecha=date.today(), turno="M", hora_inicio="09:00", hora_fin="09:15"))
+            await db.flush()
+
             self.cita_id = uuid.uuid4()
             db.add(Cita(id=self.cita_id, tenant_id=self.tenant_id, programacion_medica_id=self.prog_id,
                 patient_id=self.pid, hora_inicio="09:00", hora_fin="09:15", fuente_financiamiento="Particular"))
-            self.atencion_id = uuid.uuid4()
-            db.add(AtencionMedica(id=self.atencion_id, tenant_id=self.tenant_id, cita_id=self.cita_id,
-                motivo_consulta="Control", destino_atencion="ALTA", estado="firmado",
-                firmado_por_id=self.medico_id, firmado_at=datetime.utcnow()))
-            db.add(AtencionDiagnostico(atencion_medica_id=self.atencion_id, diagnostico_cie10_id=self.dx1_id, tipo="definitivo"))
-            db.add(AtencionDiagnostico(atencion_medica_id=self.atencion_id, diagnostico_cie10_id=self.dx2_id, tipo="repetitivo"))
-
             # Atencion sin diagnostico -- igual debe reportarse (una fila con dx en blanco).
             self.cita_sin_dx_id = uuid.uuid4()
             db.add(Cita(id=self.cita_sin_dx_id, tenant_id=self.tenant_id, programacion_medica_id=self.prog_id,
                 patient_id=self.pid, hora_inicio="09:15", hora_fin="09:30"))
+            await db.flush()
+
+            # Timestamps de firma explicitamente distintos (no dos datetime.utcnow()
+            # sucesivos): en Windows la resolucion del reloj puede hacer que ambas
+            # llamadas devuelvan el mismo microsegundo, y el reporte HIS -- ordenado
+            # por fecha_atencion desc -- queda con un desempate no determinista entre
+            # las dos atenciones (filas[0] deja de ser predecible de una corrida a otra).
+            self.atencion_id = uuid.uuid4()
+            db.add(AtencionMedica(id=self.atencion_id, tenant_id=self.tenant_id, cita_id=self.cita_id,
+                motivo_consulta="Control", destino_atencion="ALTA", estado="firmado",
+                firmado_por_id=self.medico_id, firmado_at=datetime.utcnow()))
             self.atencion_sin_dx_id = uuid.uuid4()
             db.add(AtencionMedica(id=self.atencion_sin_dx_id, tenant_id=self.tenant_id, cita_id=self.cita_sin_dx_id,
                 motivo_consulta="Sin diagnostico", destino_atencion="ALTA", estado="firmado",
-                firmado_por_id=self.medico_id, firmado_at=datetime.utcnow()))
+                firmado_por_id=self.medico_id, firmado_at=datetime.utcnow() - timedelta(seconds=1)))
+            await db.flush()
+
+            db.add(AtencionDiagnostico(atencion_medica_id=self.atencion_id, diagnostico_cie10_id=self.dx1_id, tipo="definitivo"))
+            db.add(AtencionDiagnostico(atencion_medica_id=self.atencion_id, diagnostico_cie10_id=self.dx2_id, tipo="repetitivo"))
             await db.commit()
         self.prefix = "/app/his"
         self.hoy = date.today().isoformat()

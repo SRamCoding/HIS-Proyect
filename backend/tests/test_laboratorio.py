@@ -205,11 +205,14 @@ class LaboratorioTests(archive.ArchivoClinicoTests):
             caja_id = uuid.uuid4()
             sesion_id = uuid.uuid4()
             db.add(CajaFisica(id=caja_id, tenant_id=self.tenant_id, nombre="Caja de prueba"))
+            await db.flush()
             db.add(CajaSesion(id=sesion_id, tenant_id=self.tenant_id, caja_id=caja_id, cajero_id=self.staff,
-                numero="CS-TEST-1", estado="abierta"))
+                numero="CS-TEST-1", estado="abierta", registrado_por="Prueba"))
+            await db.flush()
             cobro_id = uuid.uuid4()
             db.add(Cobro(id=cobro_id, tenant_id=self.tenant_id, caja_sesion_id=sesion_id, numero="CB-TEST-1",
                 numero_cuenta="CUENTA-TEST", forma_pago="EFECTIVO", monto=20, registrado_por="Prueba"))
+            await db.flush()
             db.add(CobroItem(tenant_id=self.tenant_id, cobro_id=cobro_id, origen="LABORATORIO",
                 origen_id=mov["id"], descripcion="Pago parcial de prueba", monto=20))
             await db.commit()

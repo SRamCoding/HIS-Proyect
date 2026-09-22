@@ -25,12 +25,15 @@ class BancoSangreTests(archive.ArchivoClinicoTests):
             self.medico_id = uuid.uuid4()
             db.add(Empleado(id=self.medico_id, tenant_id=self.tenant_id, dni="66665555", nombres="Medico",
                 apellido_paterno="De Prueba", apellido_materno="Banco"))
+            await db.flush()
             self.prog_id = uuid.uuid4()
             db.add(ProgramacionMedica(id=self.prog_id, tenant_id=self.tenant_id, medico_id=self.medico_id,
                 fecha=datetime.utcnow().date(), turno="M", hora_inicio="09:00", hora_fin="09:15"))
+            await db.flush()
             self.cita_id = uuid.uuid4()
             db.add(Cita(id=self.cita_id, tenant_id=self.tenant_id, programacion_medica_id=self.prog_id,
                 patient_id=self.pid, hora_inicio="09:00", hora_fin="09:15", estado="atendida"))
+            await db.flush()
             self.atencion_id = uuid.uuid4()
             db.add(AtencionMedica(id=self.atencion_id, tenant_id=self.tenant_id, cita_id=self.cita_id,
                 motivo_consulta="Anemia", destino_atencion="ALTA", estado="firmado",

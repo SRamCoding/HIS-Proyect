@@ -36,29 +36,35 @@ class SisTests(archive.ArchivoClinicoTests):
                 nombre="SIS - Seguro Integral de Salud", tipo_entidad="Público", requiere_fua=True, is_active=True))
             db.add(Seguro(id=self.seguro_particular_id, tenant_id=self.tenant_id, codigo="PARTICULAR",
                 nombre="Particular", tipo_entidad="Privado", requiere_fua=False, is_active=True))
+            await db.flush()
 
             self.prog_id = uuid.uuid4()
             db.add(ProgramacionMedica(id=self.prog_id, tenant_id=self.tenant_id, medico_id=self.medico_id,
                 fecha=date.today(), turno="M", hora_inicio="08:00", hora_fin="08:15"))
+            await db.flush()
+
             self.cita_sis_id = uuid.uuid4()
             db.add(Cita(id=self.cita_sis_id, tenant_id=self.tenant_id, programacion_medica_id=self.prog_id,
                 patient_id=self.pid, hora_inicio="08:00", hora_fin="08:15",
                 fuente_financiamiento="SIS - Seguro Integral de Salud", numero_cuenta="CTA-SIS-1"))
-            self.atencion_sis_id = uuid.uuid4()
-            db.add(AtencionMedica(id=self.atencion_sis_id, tenant_id=self.tenant_id, cita_id=self.cita_sis_id,
-                motivo_consulta="Control", prestaciones=["FARMACIA"], destino_atencion="ALTA",
-                estado="firmado", firmado_por_id=self.medico_id, firmado_at=datetime.utcnow()))
-            db.add(AtencionDiagnostico(atencion_medica_id=self.atencion_sis_id, diagnostico_cie10_id=self.dx_id, tipo="definitivo"))
-
             # Segunda atencion, financiada por Particular -- no debe aparecer como pendiente de FUA.
             self.cita_particular_id = uuid.uuid4()
             db.add(Cita(id=self.cita_particular_id, tenant_id=self.tenant_id, programacion_medica_id=self.prog_id,
                 patient_id=self.pid, hora_inicio="08:15", hora_fin="08:30",
                 fuente_financiamiento="Particular", numero_cuenta="CTA-PART-1"))
+            await db.flush()
+
+            self.atencion_sis_id = uuid.uuid4()
+            db.add(AtencionMedica(id=self.atencion_sis_id, tenant_id=self.tenant_id, cita_id=self.cita_sis_id,
+                motivo_consulta="Control", prestaciones=["FARMACIA"], destino_atencion="ALTA",
+                estado="firmado", firmado_por_id=self.medico_id, firmado_at=datetime.utcnow()))
             self.atencion_particular_id = uuid.uuid4()
             db.add(AtencionMedica(id=self.atencion_particular_id, tenant_id=self.tenant_id, cita_id=self.cita_particular_id,
                 motivo_consulta="Control particular", destino_atencion="ALTA",
                 estado="firmado", firmado_por_id=self.medico_id, firmado_at=datetime.utcnow()))
+            await db.flush()
+
+            db.add(AtencionDiagnostico(atencion_medica_id=self.atencion_sis_id, diagnostico_cie10_id=self.dx_id, tipo="definitivo"))
             await db.commit()
         self.prefix = "/app/sis"
         self.client.headers["Authorization"] = "Bearer " + create_access_token(self.claims)

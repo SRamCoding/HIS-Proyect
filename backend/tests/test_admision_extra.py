@@ -30,16 +30,10 @@ class AdmisionExtraTests(archive.ArchivoClinicoTests):
             # --- Fixtures para Altas ---
             self.cama_id = uuid.uuid4()
             db.add(Cama(id=self.cama_id, tenant_id=self.tenant_id, codigo="CAMA-ALTA-1", nombre="Cama de prueba"))
-            db.add(Hospitalizacion(tenant_id=self.tenant_id, patient_id=self.pid, cama_id=self.cama_id,
-                numero_hospitalizacion="HOSP-TEST-ALTA-1", estado="alta",
-                fecha_alta=datetime.utcnow(), resumen_alta="Evolución favorable, egresa por mejoría"))
             self.pid2 = await self.crear_paciente_extra(db, "Emergencia Alta")
             self.admision_emerg_id = uuid.uuid4()
             db.add(AdmisionEmergencia(id=self.admision_emerg_id, tenant_id=self.tenant_id, patient_id=self.pid2,
                 numero_cuenta="EMG-ALTA-1", servicio_emergencia="Emergencia General", estado="atendido"))
-            db.add(AtencionEmergencia(tenant_id=self.tenant_id, admision_id=self.admision_emerg_id,
-                motivo_consulta="Cefalea", plan_tratamiento="Analgesia y control ambulatorio",
-                destino_atencion="ALTA", estado="firmado", firmado_at=datetime.utcnow()))
 
             # --- Fixtures para Lista de Espera (servicio + programacion + cita) ---
             self.servicio_id = uuid.uuid4()
@@ -47,10 +41,20 @@ class AdmisionExtraTests(archive.ArchivoClinicoTests):
             self.medico_id = uuid.uuid4()
             db.add(Empleado(id=self.medico_id, tenant_id=self.tenant_id, dni="88888888",
                 nombres="Medico", apellido_paterno="Lista", apellido_materno="Espera"))
+            await db.flush()
+
+            db.add(Hospitalizacion(tenant_id=self.tenant_id, patient_id=self.pid, cama_id=self.cama_id,
+                numero_hospitalizacion="HOSP-TEST-ALTA-1", estado="alta",
+                fecha_alta=datetime.utcnow(), resumen_alta="Evolución favorable, egresa por mejoría"))
+            db.add(AtencionEmergencia(tenant_id=self.tenant_id, admision_id=self.admision_emerg_id,
+                motivo_consulta="Cefalea", plan_tratamiento="Analgesia y control ambulatorio",
+                destino_atencion="ALTA", estado="firmado", firmado_at=datetime.utcnow()))
             self.prog_id = uuid.uuid4()
             db.add(ProgramacionMedica(id=self.prog_id, tenant_id=self.tenant_id, medico_id=self.medico_id,
                 servicio_id=self.servicio_id, fecha=date.today() + timedelta(days=1), turno="mañana",
                 hora_inicio="08:00", hora_fin="08:15"))
+            await db.flush()
+
             self.cita_id = uuid.uuid4()
             db.add(Cita(id=self.cita_id, tenant_id=self.tenant_id, programacion_medica_id=self.prog_id,
                 patient_id=self.pid, hora_inicio="08:00", hora_fin="08:15"))
@@ -58,10 +62,14 @@ class AdmisionExtraTests(archive.ArchivoClinicoTests):
             # --- Fixtures para Mensajito ---
             self.remitente_id = uuid.uuid4()
             self.destinatario_id = uuid.uuid4()
+            # role="administrador": unico rol seeded en SystemRole (panel='app') que no
+            # exige PerfilHospital/RolSistema ni Empleado vinculado (ver
+            # contexto_hospital() en app/auth/hospital_access.py) -- evita fixture
+            # adicional de perfil/empleado que esta prueba de mensajeria no necesita.
             db.add(User(id=self.remitente_id, name="Remitente Prueba", email="remitente.adm@test.com",
-                password="x", role="admision", panel="app", is_active=True))
+                password="x", role="administrador", panel="app", is_active=True))
             db.add(User(id=self.destinatario_id, name="Destinatario Prueba", email="destinatario.adm@test.com",
-                password="x", role="enfermeria", panel="app", is_active=True))
+                password="x", role="administrador", panel="app", is_active=True))
 
             await db.commit()
         self.prefix = "/app/admision"
@@ -181,14 +189,14 @@ class AdmisionExtraTests(archive.ArchivoClinicoTests):
 
     async def test_mensajito_broadcast_por_rol(self):
         r = await self.client.post(self.prefix + "/mensajito", json={
-            "contenido": "Reunión de coordinación a las 3pm", "destinatario_role": "enfermeria"})
+            "contenido": "Reunión de coordinación a las 3pm", "destinatario_role": "administrador"})
         self.assertEqual(r.status_code, 201, r.text)
 
         self.client.headers["Authorization"] = "Bearer " + create_access_token(
-            {**self.claims, "sub": str(self.destinatario_id), "role": "enfermeria"})
+            {**self.claims, "sub": str(self.destinatario_id)})
         r = await self.client.get(self.prefix + "/mensajito/inbox")
         self.assertEqual(len(r.json()), 1)
-        self.assertEqual(r.json()[0]["destinatario_role"], "enfermeria")
+        self.assertEqual(r.json()[0]["destinatario_role"], "administrador")
 
 
 def load_tests(loader, tests, pattern):

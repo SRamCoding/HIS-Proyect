@@ -17,6 +17,7 @@ los módulos por igual.
 """
 import unittest
 import uuid
+from sqlalchemy import select, func
 import test_archivo_clinico as archive
 from app.tenants.hospitales.models import TenantModule
 from app.auth.models import User, PerfilHospital
@@ -28,6 +29,25 @@ class SeguridadTests(archive.ArchivoClinicoTests):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         async with self.session() as db:
+            # /app/seguridad/empleados NO filtra por tenant_id -- las cuentas
+            # panel='app' se aislan por BD FISICA del hospital en producción real
+            # (ver docstring del módulo arriba), no por columna. Este arnés de
+            # pruebas comparte una sola BD central real con datos preexistentes
+            # (incluye la cuenta real "Lennart Sosa" y la que crea el fixture base
+            # de ArchivoClinicoTests), así que contar filas "totales" en vez de
+            # contra un baseline medido en caliente da un número distinto según
+            # qué más exista en la BD -- se mide antes de agregar los usuarios
+            # propios de esta prueba, en vez de asumir un total absoluto.
+            base = select(User).where(User.panel == "app")
+            self.baseline_total = await db.scalar(select(func.count()).select_from(base.subquery()))
+            self.baseline_activos = await db.scalar(select(func.count()).select_from(
+                base.where(User.is_active.is_(True)).subquery()))
+            self.baseline_sin_perfil = await db.scalar(select(func.count()).select_from(
+                base.where(User.perfil_usuario_id.is_(None), User.perfil_hospital_id.is_(None)).subquery()))
+            self.baseline_sin_empleado = await db.scalar(select(func.count()).select_from(
+                base.where(User.empleado_id.is_(None)).subquery()))
+            self.baseline_roles = set(await db.scalars(select(User.role).where(User.panel == "app").distinct()))
+
             db.add(TenantModule(tenant_id=self.tenant_id, module_code="seguridad"))
             self.empleado_id = uuid.uuid4()
             self.perfil_id = uuid.uuid4()
@@ -56,7 +76,7 @@ class SeguridadTests(archive.ArchivoClinicoTests):
     async def test_seg_lista_solo_panel_app(self):
         r = await self.client.get(self.prefix + "/empleados")
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(r.json()["total"], 2)
+        self.assertEqual(r.json()["total"], self.baseline_total + 2)
 
     async def test_seg_busqueda_por_nombre_y_filtros(self):
         r = await self.client.get(self.prefix + "/empleados", params={"q": "Medico De Prueba"})
@@ -78,17 +98,17 @@ class SeguridadTests(archive.ArchivoClinicoTests):
         r = await self.client.get(self.prefix + f"/empleados/{uuid.uuid4()}")
         self.assertEqual(r.status_code, 404)
         r = await self.client.get(self.prefix + "/catalogos/roles")
-        self.assertEqual(sorted(r.json()), ["enfermera", "medico"])
+        self.assertEqual(sorted(r.json()), sorted(self.baseline_roles | {"enfermera", "medico"}))
 
     async def test_seg_resumen_agrega_correctamente(self):
         r = await self.client.get(self.prefix + "/resumen")
         self.assertEqual(r.status_code, 200, r.text)
         data = r.json()
-        self.assertEqual(data["total"], 2)
-        self.assertEqual(data["activos"], 1)
-        self.assertEqual(data["inactivos"], 1)
-        self.assertEqual(data["sin_perfil_hospitalario"], 1)
-        self.assertEqual(data["sin_empleado_vinculado"], 1)
+        self.assertEqual(data["total"], self.baseline_total + 2)
+        self.assertEqual(data["activos"], self.baseline_activos + 1)
+        self.assertEqual(data["inactivos"], data["total"] - data["activos"])
+        self.assertEqual(data["sin_perfil_hospitalario"], self.baseline_sin_perfil + 1)
+        self.assertEqual(data["sin_empleado_vinculado"], self.baseline_sin_empleado + 1)
 
 
 def load_tests(loader, tests, pattern):

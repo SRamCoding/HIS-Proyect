@@ -16,7 +16,7 @@ from app.hospital.admision.models import ClinicalRecord
 from app.hospital.consulta_externa.models import ProgramacionMedica, Cita, AtencionMedica, AtencionDiagnostico, Triaje
 from app.hospital.emergencia.models import AdmisionEmergencia, AtencionEmergencia
 from app.sigarh.rrhh.models import Empleado
-from app.sigarh.mantenimiento.models import Profesion, RolSistema, PerfilUsuario
+from app.sigarh.mantenimiento.models import Profesion, RolSistema, PerfilUsuario, GrupoOcupacional
 from app.sigarh.general.models import DiagnosticoCIE10
 from app.auth.models import User
 from app.core.security import create_access_token
@@ -37,50 +37,58 @@ class FirmaElectronicaTests(archive.ArchivoClinicoTests):
             self.pid = await db.scalar(select(ClinicalRecord.patient_id).where(ClinicalRecord.id == self.record_id))
 
             self.medico_empleado_id = uuid.uuid4()
+            grupo_id = uuid.uuid4()
+            db.add(GrupoOcupacional(id=grupo_id, tenant_id=self.tenant_id, nombre="Médicos"))
+            await db.flush()
             profesion_id = uuid.uuid4()
-            db.add(Profesion(id=profesion_id, tenant_id=self.tenant_id, grupo_ocupacional_id=uuid.uuid4(),
+            db.add(Profesion(id=profesion_id, tenant_id=self.tenant_id, grupo_ocupacional_id=grupo_id,
                 nombre="Médico Cirujano", codigo="MED"))
-            db.add(Empleado(id=self.medico_empleado_id, tenant_id=self.tenant_id, dni="77778888",
-                nombres="Medico", apellido_paterno="De", apellido_materno="Firma",
-                profesion_id=profesion_id, habilitado_colegio=True, numero_cmp="CMP-9999"))
-
             rol_id = uuid.uuid4()
             db.add(RolSistema(id=rol_id, tenant_id=self.tenant_id, nombre="Médico", panel="app",
                 tipo_usuario="medico", modulos_permitidos=json.dumps(["firma_electronica"])))
+            self.admision_id = uuid.uuid4()
+            db.add(AdmisionEmergencia(id=self.admision_id, tenant_id=self.tenant_id, patient_id=self.pid,
+                numero_cuenta="EMG-FIRMA-0001", estado="en_atencion"))
+            await db.flush()
+
+            db.add(Empleado(id=self.medico_empleado_id, tenant_id=self.tenant_id, dni="77778888",
+                nombres="Medico", apellido_paterno="De", apellido_materno="Firma",
+                profesion_id=profesion_id, habilitado_colegio=True, numero_cmp="CMP-9999"))
             perfil_id = uuid.uuid4()
             db.add(PerfilUsuario(id=perfil_id, tenant_id=self.tenant_id, nombre="Médico",
                 rol_sistema_id=rol_id, modulos_acceso=json.dumps(["firma_electronica"])))
+            self.dx_id = uuid.uuid4()
+            db.add(DiagnosticoCIE10(id=self.dx_id, tenant_id=self.tenant_id, codigo_cie10="J00",
+                descripcion="Rinofaringitis aguda"))
+            self.atencion_emg_id = uuid.uuid4()
+            db.add(AtencionEmergencia(id=self.atencion_emg_id, tenant_id=self.tenant_id, admision_id=self.admision_id,
+                motivo_consulta="Dolor abdominal", destino_atencion="ALTA", estado="borrador"))
+            await db.flush()
 
             self.medico_user_id = uuid.uuid4()
             db.add(User(id=self.medico_user_id, name="Medico De Firma", email="medico.firma@test.pe",
                 password="x", role="medico", panel="app", is_active=True,
                 empleado_id=self.medico_empleado_id, perfil_usuario_id=perfil_id))
-
             self.prog_id = uuid.uuid4()
             db.add(ProgramacionMedica(id=self.prog_id, tenant_id=self.tenant_id, medico_id=self.medico_empleado_id,
                 fecha=date.today(), turno="T", hora_inicio="16:00", hora_fin="16:30"))
+            await db.flush()
+
             self.cita_id = uuid.uuid4()
             db.add(Cita(id=self.cita_id, tenant_id=self.tenant_id, programacion_medica_id=self.prog_id,
                 patient_id=self.pid, hora_inicio="16:00", hora_fin="16:15", estado="confirmada"))
+            await db.flush()
+
             db.add(Triaje(id=uuid.uuid4(), tenant_id=self.tenant_id, cita_id=self.cita_id, pulso=72,
                 temperatura=36.5, presion_sistolica=120, presion_diastolica=80, peso=70, talla=170))
-
-            self.dx_id = uuid.uuid4()
-            db.add(DiagnosticoCIE10(id=self.dx_id, tenant_id=self.tenant_id, codigo_cie10="J00",
-                descripcion="Rinofaringitis aguda"))
             self.atencion_id = uuid.uuid4()
             db.add(AtencionMedica(id=self.atencion_id, tenant_id=self.tenant_id, cita_id=self.cita_id,
                 motivo_consulta="Control", enfermedad_actual="Ninguna", examen_clinico="Sin hallazgos",
                 plan_tratamiento="Observación", indicaciones_alta="Reposo relativo",
                 destino_atencion="ALTA", estado="borrador", antecedentes_snapshot=dict(_ANTECEDENTES)))
-            db.add(AtencionDiagnostico(atencion_medica_id=self.atencion_id, diagnostico_cie10_id=self.dx_id, tipo="definitivo"))
+            await db.flush()
 
-            self.admision_id = uuid.uuid4()
-            db.add(AdmisionEmergencia(id=self.admision_id, tenant_id=self.tenant_id, patient_id=self.pid,
-                numero_cuenta="EMG-FIRMA-0001", estado="en_atencion"))
-            self.atencion_emg_id = uuid.uuid4()
-            db.add(AtencionEmergencia(id=self.atencion_emg_id, tenant_id=self.tenant_id, admision_id=self.admision_id,
-                motivo_consulta="Dolor abdominal", destino_atencion="ALTA", estado="borrador"))
+            db.add(AtencionDiagnostico(atencion_medica_id=self.atencion_id, diagnostico_cie10_id=self.dx_id, tipo="definitivo"))
             await db.commit()
 
         self.prefix = "/app/firma-electronica"
