@@ -87,61 +87,78 @@
           <thead>
             <tr>
               <th class="col-check"><input type="checkbox" :checked="todos" @change="marcarTodos" /></th>
-              <th><span class="th-content">Ticket</span></th>
-              <th><span class="th-content">HC</span></th>
-              <th><span class="th-content">Cuenta</span></th>
               <th><span class="th-content">Paciente</span></th>
-              <th><span class="th-content">Teléfono</span></th>
-              <th><span class="th-content">Fecha</span></th>
-              <th><span class="th-content">Hora</span></th>
+              <th><span class="th-content">Fecha y hora</span></th>
+              <th><span class="th-content">Atención</span></th>
               <th><span class="th-content">Seguro</span></th>
-              <th><span class="th-content">Especialidad</span></th>
-              <th><span class="th-content">Servicio</span></th>
-              <th><span class="th-content">Modalidad</span></th>
-              <th><span class="th-content">Médico</span></th>
               <th><span class="th-content">Estado</span></th>
-              <th class="col-actions"><span class="th-content">Acción</span></th>
+              <th class="col-actions"><span class="th-content">Acciones</span></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="c in citas" :key="c.id" class="table-row" :class="{ selected: seleccionados.includes(c.id) }">
+            <tr v-for="c in citasPagina" :key="c.id" class="table-row" :class="{ selected: seleccionados.includes(c.id) }">
               <td class="col-check">
                 <input v-model="seleccionados" type="checkbox" :value="c.id" :disabled="['atendida','cancelada'].includes(c.estado)" />
               </td>
-              <td class="font-mono-data muted">{{ ticket(c.id) }}</td>
-              <td class="font-mono-data muted">{{ c.paciente_record || '—' }}</td>
-              <td class="font-mono-data muted">{{ c.numero_cuenta || '—' }}</td>
-              <td><span class="name-text">{{ c.paciente_nombre }}</span></td>
-              <td class="muted">{{ c.paciente_telefono || '—' }}</td>
-              <td class="muted">{{ fecha(c.fecha) }}</td>
-              <td class="font-mono-data muted">{{ c.hora_inicio }}</td>
+              <td>
+                <div class="patient-cell">
+                  <span class="name-text">{{ c.paciente_nombre }}</span>
+                  <span class="patient-meta">DNI {{ c.paciente_dni || '—' }} · Tel {{ c.paciente_telefono || '—' }}</span>
+                  <span class="patient-meta font-mono-data">HC {{ c.paciente_record || '—' }} · Cta {{ c.numero_cuenta || '—' }} · {{ ticket(c.id) }}</span>
+                </div>
+              </td>
+              <td>
+                <div class="datetime-cell">
+                  <span>{{ fecha(c.fecha) }}</span>
+                  <span class="muted font-mono-data">{{ c.hora_inicio }}</span>
+                </div>
+              </td>
+              <td>
+                <div class="atencion-cell">
+                  <span class="name-text">{{ c.especialidad_nombre || c.servicio_nombre || '—' }}</span>
+                  <span class="muted">{{ c.medico_nombre || '—' }}</span>
+                  <span class="modalidad-tag">{{ c.tipo_consulta || 'PRESENCIAL' }}</span>
+                </div>
+              </td>
               <td class="muted">{{ c.paciente_insurance || c.fuente_financiamiento || '—' }}</td>
-              <td class="muted">{{ c.especialidad_nombre || '—' }}</td>
-              <td class="muted">{{ c.servicio_nombre || '—' }}</td>
-              <td class="muted">{{ c.tipo_consulta || 'PRESENCIAL' }}</td>
-              <td class="muted">{{ c.medico_nombre || '—' }}</td>
               <td><span class="badge" :class="badgeClase(c.estado)">{{ estado(c.estado) }}</span></td>
               <td class="col-actions">
-                <div class="action-buttons">
-                  <button class="action-btn action-view" title="Detalle" @click="ver(c)">
-                    <UIcon name="i-heroicons-eye" class="w-4 h-4" />
+                <div class="action-menu" @click.stop>
+                  <button class="action-trigger" title="Acciones rápidas" @click="menuAbierto = menuAbierto === c.id ? null : c.id">
+                    <UIcon name="i-heroicons-ellipsis-horizontal" class="w-5 h-5" />
                   </button>
-                  <button class="action-btn action-print" title="Imprimir cita" @click="imprimir(c.id)">
-                    <UIcon name="i-heroicons-printer" class="w-4 h-4" />
-                  </button>
-                  <button
-                    v-if="!['atendida','cancelada'].includes(c.estado)"
-                    class="action-btn action-edit"
-                    title="Reprogramar"
-                    @click="abrirReprogramar(c)"
-                  >
-                    <UIcon name="i-heroicons-calendar-days" class="w-4 h-4" />
-                  </button>
+                  <div v-if="menuAbierto === c.id" class="action-dropdown">
+                    <button class="action-option" @click="menuAbierto = null; ver(c)">
+                      <UIcon name="i-heroicons-eye" class="w-4 h-4" /> Ver detalle
+                    </button>
+                    <button class="action-option" @click="menuAbierto = null; imprimir(c.id)">
+                      <UIcon name="i-heroicons-printer" class="w-4 h-4" /> Imprimir cita
+                    </button>
+                    <button
+                      v-if="!['atendida','cancelada'].includes(c.estado)"
+                      class="action-option"
+                      @click="menuAbierto = null; abrirReprogramar(c)"
+                    >
+                      <UIcon name="i-heroicons-calendar-days" class="w-4 h-4" /> Reprogramar
+                    </button>
+                  </div>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
+      </div>
+      <div class="table-footer">
+        <span class="footer-info">Mostrando {{ citasPagina.length ? (pagina - 1) * porPagina + 1 : 0 }}–{{ (pagina - 1) * porPagina + citasPagina.length }} de {{ citas.length }}</span>
+        <nav class="pagination">
+          <button class="btn-secondary btn-sm" :disabled="pagina <= 1" @click="irAPagina(pagina - 1)">
+            <UIcon name="i-heroicons-chevron-left" class="w-4 h-4" /> Anterior
+          </button>
+          <span class="page-info">{{ pagina }} / {{ totalPaginas }}</span>
+          <button class="btn-secondary btn-sm" :disabled="pagina >= totalPaginas" @click="irAPagina(pagina + 1)">
+            Siguiente <UIcon name="i-heroicons-chevron-right" class="w-4 h-4" />
+          </button>
+        </nav>
       </div>
     </div>
 
@@ -165,6 +182,7 @@
           <div><b>Paciente</b><span>{{ actual.paciente_nombre }}</span></div>
           <div><b>N.° cuenta</b><span>{{ actual.numero_cuenta || '—' }}</span></div>
           <div><b>DNI</b><span>{{ actual.paciente_dni || '—' }}</span></div>
+          <div><b>Teléfono</b><span>{{ actual.paciente_telefono || '—' }}</span></div>
           <div><b>Historia clínica</b><span>{{ actual.paciente_record || '—' }}</span></div>
           <div><b>Especialidad</b><span>{{ actual.especialidad_nombre || '—' }}</span></div>
           <div><b>Servicio</b><span>{{ actual.servicio_nombre || '—' }}</span></div>
@@ -239,22 +257,45 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'app', middleware: ['auth'] })
 const { api } = useApi(); const { abrirComprobante } = useCitaPdf(); const hoy = new Date().toISOString().slice(0, 10)
-const filtros = reactive({ dni:'', cuenta:'', historia:'', apellido:'', desde:hoy, hasta:hoy, medico:'', estado:'' })
+// Sin fecha por defecto: mostrar TODAS las citas (pasadas y futuras) hasta
+// que el usuario decida filtrar por rango -- con desde=hasta=hoy por defecto
+// la busqueda quedaba vacia en cuanto no habia una cita justo el dia de hoy,
+// sin ninguna pista de que el motivo era el filtro de fecha.
+const filtros = reactive({ dni:'', cuenta:'', historia:'', apellido:'', desde:'', hasta:'', medico:'', estado:'' })
 const citas=ref<any[]>([]), seleccionados=ref<string[]>([]), cargando=ref(false), error=ref(''), medicos=ref<any[]>([])
 const modalDetalle=ref(false), modalReprogramar=ref(false), modoBloque=ref(false), actual=ref<any>({}), programaciones=ref<any[]>([]), cupos=ref<any[]>([]), guardando=ref(false), modalError=ref('')
 const reprog=reactive({ fecha:hoy, programacion:'', cupo:'', mensaje:'' })
 const elegibles=computed(()=>citas.value.filter(c=>!['atendida','cancelada'].includes(c.estado))); const todos=computed(()=>elegibles.value.length>0&&elegibles.value.every(c=>seleccionados.value.includes(c.id)))
 const ticket=(id:string)=>id?.split('-')[0].toUpperCase(); const fecha=(v:string)=>v?new Date(`${v}T12:00:00`).toLocaleDateString('es-PE'):'—'; const estado=(v:string)=>({separada:'Separada',confirmada:'Confirmada',atendida:'Atendida',cancelada:'Cancelada',no_asistio:'No asistió'} as any)[v]||v
 const badgeClase=(v:string)=>({separada:'badge--warn',confirmada:'badge--info',atendida:'badge--ok',cancelada:'badge--alert',no_asistio:'badge--neutral'} as any)[v]||'badge--neutral'
+
+// Paginación (estática, client-side): el listado ya llega completo del backend
+// (el endpoint /app/consulta-externa/citas no pagina), se corta en páginas de
+// 15 filas en el propio front para no forzar scroll horizontal ni una tabla
+// interminable.
+const porPagina = 15
+const pagina = ref(1)
+const totalPaginas = computed(() => Math.max(1, Math.ceil(citas.value.length / porPagina)))
+const citasPagina = computed(() => citas.value.slice((pagina.value - 1) * porPagina, pagina.value * porPagina))
+function irAPagina(p: number) { if (p < 1 || p > totalPaginas.value) return; pagina.value = p }
+
+// Menú de acciones rápidas por fila (reemplaza los 3 botones sueltos que
+// obligaban a la tabla a desbordar horizontalmente).
+const menuAbierto = ref<string | null>(null)
+function cerrarMenuSiFuera(e: MouseEvent) { const t = e.target as HTMLElement; if (menuAbierto.value && !t.closest('.action-menu')) menuAbierto.value = null }
+onMounted(() => document.addEventListener('click', cerrarMenuSiFuera))
+onUnmounted(() => document.removeEventListener('click', cerrarMenuSiFuera))
+
 function marcarTodos(e:any){seleccionados.value=e.target.checked?elegibles.value.map(c=>c.id):[]} function ver(c:any){actual.value=c;modalDetalle.value=true} async function imprimir(id:string){try{await abrirComprobante(id)}catch(e:any){error.value=e?.data?.detail||'No se pudo generar el PDF'}}
-async function cargar(){cargando.value=true;error.value='';try{const q=new URLSearchParams();Object.entries({fecha_desde:filtros.desde,fecha_hasta:filtros.hasta,dni:filtros.dni,cuenta:filtros.cuenta,historia:filtros.historia,apellido:filtros.apellido,medico_id:filtros.medico,estado:filtros.estado}).forEach(([k,v])=>v&&q.set(k,v));citas.value=await api(`/app/consulta-externa/citas?${q}`);const map=new Map();citas.value.forEach(c=>c.medico_nombre&&map.set(c.medico_nombre,{id:c.medico_id,nombre:c.medico_nombre}));medicos.value=[...map.values()];seleccionados.value=[]}catch(e:any){error.value=e?.data?.detail||'No se pudieron cargar los citados'}finally{cargando.value=false}}
-function limpiar(){Object.assign(filtros,{dni:'',cuenta:'',historia:'',apellido:'',desde:hoy,hasta:hoy,medico:'',estado:''});cargar()} function preparar(){Object.assign(reprog,{fecha:hoy,programacion:'',cupo:'',mensaje:''});programaciones.value=[];cupos.value=[];modalError.value='';modalReprogramar.value=true}
+async function cargar(){cargando.value=true;error.value='';try{const q=new URLSearchParams();Object.entries({fecha_desde:filtros.desde,fecha_hasta:filtros.hasta,dni:filtros.dni,cuenta:filtros.cuenta,historia:filtros.historia,apellido:filtros.apellido,medico_id:filtros.medico,estado:filtros.estado}).forEach(([k,v])=>v&&q.set(k,v));citas.value=await api(`/app/consulta-externa/citas?${q}`);const map=new Map();citas.value.forEach(c=>c.medico_nombre&&map.set(c.medico_nombre,{id:c.medico_id,nombre:c.medico_nombre}));medicos.value=[...map.values()];seleccionados.value=[];pagina.value=1}catch(e:any){error.value=e?.data?.detail||'No se pudieron cargar los citados'}finally{cargando.value=false}}
+function limpiar(){Object.assign(filtros,{dni:'',cuenta:'',historia:'',apellido:'',desde:'',hasta:'',medico:'',estado:''});cargar()} function preparar(){Object.assign(reprog,{fecha:hoy,programacion:'',cupo:'',mensaje:''});programaciones.value=[];cupos.value=[];modalError.value='';modalReprogramar.value=true}
 function abrirReprogramar(c:any){actual.value=c;modoBloque.value=false;preparar();reprog.fecha=c.fecha||hoy;cargarProgramaciones()} function abrirBloque(){modoBloque.value=true;preparar();cargarProgramaciones()} function cerrarReprogramar(){modalReprogramar.value=false}
 async function cargarProgramaciones(){reprog.programacion='';reprog.cupo='';cupos.value=[];if(!reprog.fecha)return;try{programaciones.value=await api(`/app/consulta-externa/programacion-medica?fecha=${reprog.fecha}`)}catch{modalError.value='No se pudo cargar la programación SIGARH'}} async function cargarCupos(){reprog.cupo='';if(!reprog.programacion)return;try{cupos.value=(await api(`/app/consulta-externa/citas/cupos/${reprog.programacion}`)).filter((c:any)=>c.disponible)}catch{modalError.value='No se pudieron cargar los cupos'}}
 async function guardarReprogramacion(){modalError.value='';if(!reprog.programacion||(!modoBloque.value&&!reprog.cupo)){modalError.value='Selecciona una programación y un cupo libre';return}guardando.value=true;try{if(modoBloque.value){await api('/app/consulta-externa/citas/acciones/reprogramar-bloque',{method:'POST',body:{cita_ids:seleccionados.value,programacion_medica_id:reprog.programacion,mensaje:reprog.mensaje||null}})}else{const [inicio,fin]=reprog.cupo.split('|');await api(`/app/consulta-externa/citas/${actual.value.id}/reprogramar`,{method:'POST',body:{programacion_medica_id:reprog.programacion,hora_inicio:inicio,hora_fin:fin,mensaje:reprog.mensaje||null}})}modalReprogramar.value=false;await cargar()}catch(e:any){modalError.value=e?.data?.detail||'No se pudo reprogramar'}finally{guardando.value=false}} onMounted(cargar)
 </script>
 
 <style scoped>
+/* Colores y tipografía: heredados de .app-shell (assets/css/hospital-theme.css). */
 .citados-container {
   max-width: 1900px;
   margin: 0 auto;
@@ -550,9 +591,9 @@ async function guardarReprogramacion(){modalError.value='';if(!reprog.programaci
 
 .citados-table {
   width: 100%;
-  min-width: 1500px;
   border-collapse: collapse;
   font-size: 0.8125rem;
+  table-layout: fixed;
 }
 
 .citados-table thead {
@@ -588,8 +629,37 @@ async function guardarReprogramacion(){modalError.value='';if(!reprog.programaci
 }
 
 .col-actions {
-  width: 8%;
+  width: 4.5rem;
   text-align: right;
+}
+
+.patient-cell,
+.datetime-cell,
+.atencion-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.patient-meta {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modalidad-tag {
+  align-self: flex-start;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--mist);
+  padding: 0.0625rem 0.4375rem;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+  margin-top: 0.125rem;
 }
 
 .table-row {
@@ -619,49 +689,69 @@ async function guardarReprogramacion(){modalError.value='';if(!reprog.programaci
   color: var(--navy);
 }
 
-/* Action Buttons */
-.action-buttons {
+/* Menú de acciones rápidas: un solo botón por fila en vez de 3 íconos
+   diminutos -- libera ancho de columna (evita el scroll horizontal) y da un
+   objetivo de clic más grande. */
+.action-menu {
+  position: relative;
   display: flex;
-  align-items: center;
   justify-content: flex-end;
-  gap: 0.25rem;
 }
 
-.action-btn {
+.action-trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--paper);
   color: var(--ink-soft);
   cursor: pointer;
-  transition: all 0.2s ease;
-  text-decoration: none;
+  transition: all 0.15s ease;
 }
 
-.action-btn:hover {
-  background: var(--mist);
-}
-
-.action-view:hover {
+.action-trigger:hover {
   color: var(--teal);
-  border-color: var(--teal-soft);
+  border-color: var(--teal);
   background: var(--teal-soft);
 }
 
-.action-print:hover {
-  color: var(--navy);
-  border-color: var(--navy-soft);
-  background: var(--navy-soft);
+.action-dropdown {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 0.375rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
 }
 
-.action-edit:hover {
-  color: var(--amber);
-  border-color: var(--amber-soft);
-  background: var(--amber-soft);
+.action-option {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.action-option:hover {
+  background: var(--mist);
+  color: var(--teal);
 }
 
 /* Empty State */

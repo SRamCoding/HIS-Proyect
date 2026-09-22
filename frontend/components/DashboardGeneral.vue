@@ -1,69 +1,32 @@
 <template>
   <div class="dash-container">
-    <!-- ============ BANNER ============ -->
-    <div class="dash-banner">
-      <div class="banner-content">
-        <div class="header-badge">
-          <UIcon name="i-heroicons-sparkles" class="w-4 h-4" />
-          <span>Panel operativo</span>
-        </div>
-        <h1 class="dash-title">{{ saludo }}, {{ nombreCorto }}</h1>
-        <p class="dash-subtitle cap">{{ fechaLarga }}</p>
-        <div class="banner-actions">
-          <div class="live-pill">
-            <span class="live-dot" />
-            <span>En vivo</span>
-          </div>
-          <button class="btn-secondary btn-sm" :disabled="cargando" @click="cargar">
-            <UIcon name="i-heroicons-arrow-path" class="w-4 h-4" :class="{ 'animate-spin': cargando }" />
-            Actualizar
-          </button>
-        </div>
+    <section class="quick-start" aria-labelledby="quick-start-title">
+      <h1 id="quick-start-title">&iquest;Qu&eacute; deseas <span>realizar hoy?</span></h1>
+      <div class="quick-grid">
+        <NuxtLink v-for="action in accesos" :key="action.path" :to="link(action.path)" class="quick-card">
+          <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path v-for="(d, index) in action.paths" :key="index" :d="d" />
+          </svg>
+          <span>{{ action.label }}</span>
+        </NuxtLink>
       </div>
-
-      <div class="banner-art">
-        <svg class="banner-svg" viewBox="0 0 440 190" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-          <circle class="banner-float banner-float--1" cx="370" cy="35" r="50" fill="rgba(255,255,255,0.06)" />
-          <circle class="banner-float banner-float--2" cx="290" cy="140" r="34" fill="rgba(255,255,255,0.05)" />
-          <circle class="banner-float banner-float--3" cx="405" cy="148" r="22" fill="rgba(255,255,255,0.08)" />
-          <circle class="banner-float banner-float--4" cx="330" cy="18" r="14" fill="rgba(255,255,255,0.14)" />
-          <circle class="banner-float banner-float--5" cx="420" cy="75" r="8" fill="rgba(255,255,255,0.07)" />
-
-          <g class="banner-cross" transform="translate(340,50)" opacity="0.45">
-            <rect x="-3.5" y="-16" width="7" height="32" rx="2" fill="#eef4ff" />
-            <rect x="-16" y="-3.5" width="32" height="7" rx="2" fill="#eef4ff" />
-          </g>
-          <g class="banner-cross banner-cross--delay" transform="translate(400,95)" opacity="0.35">
-            <rect x="-2.5" y="-12" width="5" height="24" rx="2" fill="#eef4ff" />
-            <rect x="-12" y="-2.5" width="24" height="5" rx="2" fill="#eef4ff" />
-          </g>
-          <g class="banner-cross banner-cross--delay2" transform="translate(310,145)" opacity="0.3">
-            <rect x="-2" y="-9" width="4" height="18" rx="2" fill="#eef4ff" />
-            <rect x="-9" y="-2" width="18" height="4" rx="2" fill="#eef4ff" />
-          </g>
-
-          <path
-            class="banner-pulse"
-            d="M0,105 L75,105 L95,105 L112,55 L130,150 L150,100 L170,100 L188,72 L206,100 L410,100"
-            fill="none" stroke="#eef4ff" stroke-width="2.5"
-            stroke-linecap="round" stroke-linejoin="round" pathLength="1"
-          />
-
-          <g transform="translate(60, 75)" opacity="0.3">
-            <rect x="0" y="6" width="28" height="22" rx="2" fill="none" stroke="#eef4ff" stroke-width="1.5" />
-            <rect x="8" y="14" width="4" height="14" fill="#eef4ff" opacity="0.5" />
-            <rect x="16" y="14" width="4" height="14" fill="#eef4ff" opacity="0.5" />
-            <rect x="10" y="0" width="8" height="6" rx="1" fill="#eef4ff" opacity="0.4" />
-            <line x1="14" y1="0" x2="14" y2="6" stroke="#eef4ff" stroke-width="1" opacity="0.4" />
-          </g>
-
-          <circle cx="150" cy="30" r="3" fill="rgba(255,255,255,0.18)" class="banner-particle" />
-          <circle cx="220" cy="160" r="2.5" fill="rgba(255,255,255,0.1)" class="banner-particle banner-particle--delay" />
-          <circle cx="180" cy="170" r="2" fill="rgba(255,255,255,0.12)" class="banner-particle banner-particle--delay2" />
-          <circle cx="130" cy="155" r="3.5" fill="rgba(255,255,255,0.08)" class="banner-particle banner-particle--delay3" />
-        </svg>
+      <p v-if="!accesos.length" class="quick-empty">Los accesos se mostrar&aacute;n seg&uacute;n los m&oacute;dulos habilitados para tu cuenta.</p>
+    </section>
+    <header class="workspace-header">
+      <div>
+        <p class="workspace-section">Gesti&oacute;n asistencial</p>
+        <h2 class="dash-title">Resumen hospitalario</h2>
+        <p class="dash-subtitle">{{ fechaLarga }}</p>
       </div>
-    </div>
+      <div class="workspace-actions">
+        <span class="update-time" role="status">{{ cargando ? 'Actualizando...' : ultimaActualizacion ? `Actualizado ${ultimaActualizacion}` : 'Sin actualizar' }}</span>
+        <button class="btn-secondary" :disabled="cargando" @click="cargar">
+          <UIcon name="i-heroicons-arrow-path" class="w-4 h-4" :class="{ 'animate-spin': cargando }" />
+          Actualizar
+        </button>
+      </div>
+    </header>
+    <div class="section-heading"><h2>Estado de la atenci&oacute;n</h2><span>Jornada actual</span></div>
 
     <!-- ============ ERROR ============ -->
     <div v-if="error" class="error-banner">
@@ -78,11 +41,11 @@
         :key="t.label"
         :to="link(t.path)"
         class="stat-card"
-        :style="{ borderLeftColor: t.color }"
+
       >
         <div class="stat-top">
-          <div class="stat-icon" :style="{ background: t.colorSoft }">
-            <UIcon :name="t.icon" class="w-5 h-5" :style="{ color: t.color }" />
+          <div class="stat-icon">
+            <UIcon :name="t.icon" class="w-5 h-5"  />
           </div>
           <span v-if="t.badge" class="stat-badge" :class="{ 'stat-badge--alert': t.alerta }">{{ t.badge }}</span>
         </div>
@@ -136,7 +99,7 @@
             </div>
             <div class="legend-item">
               <span class="legend-dot" :style="{ background: GRIS }" />
-              <span>Disponibles</span>
+              <span>No ocupadas</span>
               <b>{{ Math.max(kpis.camas_total - kpis.camas_ocupadas, 0) }}</b>
             </div>
           </div>
@@ -272,11 +235,24 @@
 
 <script setup lang="ts">
 const { api } = useApi()
-const { link } = useHospitalNav()
+const { link, gruposVisibles } = useHospitalNav()
+// Poppins se carga globalmente via assets/css/hospital-theme.css.
+const accesos = computed(() => {
+  const allowed = new Set(gruposVisibles.value.flatMap(group => group.items.map(item => item.path)))
+  return [
+    { label: 'Agendar una cita', path: '/app/admision/agendamiento', paths: ['M13 14h38v40H13z M13 25h38 M22 9v10 M42 9v10', 'M25 39h14 M32 32v14'] },
+    { label: 'Gestionar pacientes', path: '/app/admision/pacientes', paths: ['M40 21a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z', 'M16 53v-6a16 16 0 0 1 32 0v6H16Z M48 15a7 7 0 0 1 0 14 M52 36a12 12 0 0 1 7 11v6'] },
+    { label: 'Consultar el panel de camas', path: '/app/hospitalizacion/panel-camas', paths: ['M9 20v35 M55 31v24 M9 46h46 M9 31h40a6 6 0 0 1 6 6v9', 'M16 25h10v6H16z M32 20h17v11'] },
+    { label: 'Atender emergencias', path: '/app/emergencia/atenciones', paths: ['M24 8h16v16h16v16H40v16H24V40H8V24h16V8Z', 'M26 32h12 M32 26v12'] },
+    { label: 'Revisar citas pendientes', path: '/app/consulta-externa/citas-por-confirmar', paths: ['M12 14h39v18 M12 14v40h21 M12 25h39 M21 9v10 M42 9v10', 'M57 46a12 12 0 1 1-24 0 12 12 0 0 1 24 0Z M45 39v8l5 3'] },
+    { label: 'Consultar laboratorio', path: '/app/laboratorio/ordenes', paths: ['M23 9h18 M27 9v20L13 50q-3 5 3 5h32q6 0 3-5L37 29V9 M21 39h22', 'M27 46h1 M37 49h1'] },
+    { label: 'Gestionar recetas', path: '/app/farmacia/recetas', paths: ['M16 8h25l9 9v39H16V8Z M40 8v12h10 M24 37h18 M24 44h14', 'M24 25h10 M29 20v10'] },
+  ].filter(action => allowed.has(action.path))
+})
 const authStore = useAuthStore()
 
 // Paleta del panel: un solo azul (#6495ED) como acento, gris neutro para contexto
-const ACCENT = '#6495ed'
+const ACCENT = '#00a6bc'
 const GRIS = '#c7ccd1'
 const INK_SOFT = '#8a97a0'
 
@@ -291,6 +267,7 @@ const puedeFarmacia = computed(() => tieneAlguno(['farmacia']))
 const puedeAuditoria = computed(() => tieneAlguno(['auditoria']))
 const puedeAdmision = computed(() => tieneAlguno(['admision']))
 
+const ultimaActualizacion = ref('')
 const cargando = ref(false)
 const error = ref('')
 const actividad = ref<any[]>([])
@@ -483,7 +460,7 @@ const ocupacionChartOptions = computed(() => ({
         value: {
           show: true,
           fontSize: '1.5rem',
-          fontWeight: 800,
+          fontWeight: 500,
           color: '#101c24',
           offsetY: 8,
           formatter: (v: number) => `${v}%`,
@@ -535,8 +512,7 @@ const serieChartOptions = computed(() => {
     colors: s?.colores || [ACCENT],
     stroke: { curve: 'smooth', width: 2.5 },
     fill: {
-      type: 'gradient',
-      gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.02, stops: [0, 90, 100] },
+      type: 'solid', opacity: 0.06,
     },
     markers: { size: 4, strokeWidth: 2, strokeColors: '#fff', hover: { size: 6 } },
     dataLabels: { enabled: false },
@@ -656,6 +632,7 @@ async function cargar() {
     }
 
     await Promise.all(tareas)
+    ultimaActualizacion.value = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
   } catch (e: any) {
     error.value = e?.data?.detail || 'No se pudieron cargar algunos indicadores del escritorio'
   } finally {
@@ -668,206 +645,40 @@ onMounted(cargar)
 
 <style scoped>
 /* ============ CONTENEDOR ============ */
+/* Colores y tipografía: heredados de .app-shell (assets/css/hospital-theme.css),
+   no se redefinen acá. */
 .dash-container {
-  max-width: 1400px;
+  background: var(--mist);
+  max-width: none;
+  min-height: 100%;
   margin: 0 auto;
   padding: 1.5rem 2rem 3rem;
 }
 
-/* ============ BANNER ============ */
-.dash-banner {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: stretch;
-  margin-bottom: 1.5rem;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  min-height: 190px;
-  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-hover) 100%);
-}
-
-.banner-content {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 1.75rem 2rem;
-  flex: 1;
-  min-width: 0;
-  color: white;
-}
-
-.header-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: white;
-  background: rgba(255, 255, 255, 0.14);
-  padding: 0.25rem 0.625rem;
-  border-radius: 999px;
-  width: fit-content;
-}
-
-.dash-title {
-  font-size: 1.75rem;
-  font-weight: 800;
-  color: white;
-  margin: 0;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-}
-
-.dash-subtitle {
-  font-size: 0.875rem;
-  color: rgba(255, 255, 255, 0.75);
-  margin: 0;
-}
-
-.dash-subtitle.cap {
-  text-transform: capitalize;
-}
-
-.banner-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
-}
-
-.live-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #bdf5cf;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 0.35rem 0.75rem;
-  border-radius: 999px;
-}
-
-.live-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: #4ade80;
-  box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
-  animation: pulse 1.8s infinite;
-}
-
-@keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6); }
-  70% { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
-}
-
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.9rem;
-  border-radius: 8px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.08);
-  color: white;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.btn-secondary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-sm {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
-}
-
-.banner-art {
-  position: relative;
-  display: none;
-  flex-shrink: 0;
-  width: 42%;
-  max-width: 420px;
-}
-
-@media (min-width: 640px) {
-  .banner-art {
-    display: block;
-  }
-}
-
-.banner-svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.banner-pulse {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: banner-draw 4s ease-in-out infinite;
-}
-
-@keyframes banner-draw {
-  0% { stroke-dashoffset: 1; opacity: 0.3; }
-  50% { stroke-dashoffset: 0; opacity: 1; }
-  100% { stroke-dashoffset: -1; opacity: 0.3; }
-}
-
-.banner-float {
-  animation: banner-drift 6s ease-in-out infinite;
-}
-.banner-float--1 { animation-duration: 7s; }
-.banner-float--2 { animation-duration: 5.5s; animation-delay: 0.5s; }
-.banner-float--3 { animation-duration: 6.5s; animation-delay: 1s; }
-.banner-float--4 { animation-duration: 8s; animation-delay: 1.5s; }
-.banner-float--5 { animation-duration: 9s; animation-delay: 2s; }
-
-@keyframes banner-drift {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
-}
-
-.banner-cross {
-  animation: banner-pulse-fade 3s ease-in-out infinite;
-}
-.banner-cross--delay { animation-delay: 1.5s; }
-.banner-cross--delay2 { animation-delay: 2.5s; }
-
-@keyframes banner-pulse-fade {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.6; }
-}
-
-.banner-particle {
-  animation: banner-particle-float 8s ease-in-out infinite;
-}
-.banner-particle--delay { animation-delay: 2s; }
-.banner-particle--delay2 { animation-delay: 4s; }
-.banner-particle--delay3 { animation-delay: 6s; }
-
-@keyframes banner-particle-float {
-  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.3; }
-  25% { transform: translate(-8px, -12px) scale(1.2); opacity: 0.6; }
-  50% { transform: translate(5px, -20px) scale(0.8); opacity: 0.8; }
-  75% { transform: translate(10px, -5px) scale(1.3); opacity: 0.5; }
-}
+.quick-start { max-width:1280px; margin:0 auto; padding:40px 0 48px; }
+.quick-start h1 { margin:0 0 52px; text-align:center; color:#081b3d; font-size:clamp(25px, 2.5vw, 36px); font-weight:600; line-height:1.35; letter-spacing:-.7px; }
+.quick-start h1 span { color:#009eb2; }
+.quick-grid { display:flex; flex-wrap:wrap; justify-content:center; gap:24px; }
+.quick-card { flex:0 1 calc((100% - 72px) / 4); min-width:0; min-height:174px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px 18px; border:1px solid transparent; border-radius:20px; background:#fff; color:#081b3d; box-shadow:0 16px 30px rgba(22,38,62,.08); text-decoration:none; text-align:center; font-size:16px; font-weight:400; line-height:1.4; transition:border-color .15s, box-shadow .15s; }
+.quick-card svg { width:66px; height:66px; color:#00abc4; flex-shrink:0; }
+.quick-card:hover { border-color:#00abc4; box-shadow:0 12px 24px rgba(22,38,62,.12); }
+.quick-empty { text-align:center; color:var(--ink-soft); font-size:14px; }
+@media(max-width:1100px) { .quick-card { flex-basis:calc((100% - 24px) / 2); } }
+@media(max-width:540px) { .quick-start { padding:20px 0 32px; } .quick-start h1 { margin-bottom:28px; } .quick-grid { gap:14px; } .quick-card { flex-basis:100%; min-height:148px; } }
+.workspace-header { display:flex; justify-content:space-between; align-items:center; gap:24px; padding:4px 0 24px; margin-bottom:24px; border-bottom:1px solid var(--line); }
+.workspace-section { font-size:12px; color:var(--ink-soft); margin:0 0 6px; }
+.dash-title { font-size:24px; line-height:1.3; font-weight:600; color:var(--ink); margin:0; }
+.dash-subtitle { font-size:13px; color:var(--ink-soft); margin:8px 0 0; }
+.dash-subtitle::first-letter { text-transform:uppercase; }
+.workspace-actions { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+.update-time { font-size:12px; color:var(--ink-soft); }
+.btn-secondary { display:inline-flex; align-items:center; gap:8px; background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:9px 14px; color:var(--ink); font-size:13px; cursor:pointer; }
+.btn-secondary:hover { background:var(--mist); }
+.btn-secondary:disabled { opacity:.6; cursor:wait; }
+.section-heading { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:12px; }
+.section-heading h2 { font-size:14px; font-weight:500; margin:0; }
+.section-heading span { color:var(--ink-soft); font-size:12px; }
+a:focus-visible, button:focus-visible { outline:2px solid var(--teal); outline-offset:3px; }
 
 .error-banner {
   display: flex;
@@ -890,7 +701,7 @@ onMounted(cargar)
 /* ============ KPIs ============ */
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
@@ -900,18 +711,17 @@ onMounted(cargar)
   flex-direction: column;
   gap: 0.375rem;
   padding: 1.125rem 1.25rem;
-  border-radius: var(--radius-lg);
+  border-radius: 8px;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--teal);
   background: var(--paper);
-  box-shadow: var(--shadow-card);
+  box-shadow: none;
   text-decoration: none;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 28px -12px rgba(15, 23, 42, 0.18);
+  border-color: var(--teal);
+  background: #f9fbfd;
 }
 
 .stat-top {
@@ -921,8 +731,9 @@ onMounted(cargar)
 }
 
 .stat-icon {
-  width: 42px;
-  height: 42px;
+  width: 24px;
+  height: 24px;
+  color: var(--ink-soft);
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -932,7 +743,7 @@ onMounted(cargar)
 
 .stat-badge {
   font-size: 0.6875rem;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--ink-soft);
   background: var(--mist);
   padding: 0.2rem 0.5rem;
@@ -946,7 +757,7 @@ onMounted(cargar)
 
 .stat-num {
   font-size: 1.5rem;
-  font-weight: 800;
+  font-weight: 600;
   color: var(--ink);
   line-height: 1.2;
   letter-spacing: -0.02em;
@@ -981,7 +792,7 @@ onMounted(cargar)
 /* ============ CHARTS ============ */
 .charts-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1rem;
   margin-bottom: 1.5rem;
   align-items: stretch;
@@ -994,7 +805,7 @@ onMounted(cargar)
 .chart-panel {
   display: flex;
   flex-direction: column;
-  min-height: 400px;
+  min-height: 300px;
 }
 
 .chart-body {
@@ -1009,8 +820,9 @@ onMounted(cargar)
 }
 
 @media (max-width: 900px) {
+  .charts-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .chart-panel--wide {
-    grid-column: span 1;
+    grid-column: span 2;
   }
 }
 
@@ -1049,7 +861,7 @@ onMounted(cargar)
 .legend-item b {
   margin-left: 0.25rem;
   color: var(--ink);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .legend-dot {
@@ -1100,10 +912,11 @@ onMounted(cargar)
 
 .panel {
   background: var(--paper);
-  border-radius: var(--radius-lg);
+  border-radius: 8px;
   border: 1px solid var(--line);
   padding: 1.25rem;
-  box-shadow: var(--shadow-card);
+  min-width: 0;
+  box-shadow: none;
 }
 
 .panel-header {
@@ -1115,7 +928,7 @@ onMounted(cargar)
 
 .panel-title {
   font-size: 0.9375rem;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--ink);
   margin: 0;
   display: flex;
@@ -1230,7 +1043,7 @@ onMounted(cargar)
   align-items: center;
   justify-content: center;
   font-size: 0.6875rem;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--ink);
 }
 
@@ -1266,6 +1079,8 @@ onMounted(cargar)
     padding: 1rem 1rem 2rem;
   }
 
+  .workspace-header { align-items:flex-start; flex-direction:column; gap:16px; }
+  .chart-panel--wide { grid-column: span 1; }
   .dash-title {
     font-size: 1.5rem;
   }

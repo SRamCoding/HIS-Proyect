@@ -1,10 +1,10 @@
-?<template>
+<template>
   <div class="pacientes-container">
     <!-- Header -->
     <div class="page-header">
       <div class="header-left">
-        <div class="header-icon" style="background: var(--teal-soft)">
-          <UIcon name="i-heroicons-user-group" class="w-5 h-5" style="color: var(--teal)" />
+        <div class="header-icon">
+          <UIcon name="i-heroicons-user-group" class="w-5 h-5" />
         </div>
         <div>
           <h1 class="page-title">Pacientes</h1>
@@ -22,12 +22,13 @@
       <div class="search-card">
         <div class="search-header">
           <UIcon name="i-heroicons-magnifying-glass" class="search-header-icon" />
-          <span class="search-header-title">Búsqueda de Pacientes</span>
+          <label for="patient-search" class="search-header-title">Buscar pacientes</label>
         </div>
         <div class="search-body">
           <div class="search-input-wrapper">
             <UIcon name="i-heroicons-user" class="search-input-icon" />
             <input
+              id="patient-search"
               v-model="q"
               type="text"
               placeholder="DNI, Nro Historia, nombres o apellidos..."
@@ -51,7 +52,7 @@
     </div>
 
     <!-- Error Message -->
-    <div v-if="error" class="error-banner">
+    <div v-if="error" class="error-banner" role="alert">
       <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4 shrink-0" />
       {{ error }}
     </div>
@@ -65,7 +66,7 @@
     </div>
 
     <!-- Results Table -->
-    <div v-if="resultados.length" class="table-card">
+    <div v-if="resultados.length" class="table-card" :aria-busy="cargando">
       <div class="table-header">
         <div class="table-header-left">
           <span class="table-title">{{ q.trim() ? 'Resultados de búsqueda' : 'Todos los pacientes' }}</span>
@@ -74,6 +75,7 @@
       </div>
       <div class="table-responsive">
         <table class="pacientes-table">
+          <caption class="sr-only">Listado de pacientes: documento, historia clínica, nombre, edad, seguro y acciones</caption>
           <thead>
             <tr>
               <th class="col-dni">
@@ -102,10 +104,10 @@
               :key="p.id"
               class="table-row"
             >
-              <td class="col-dni">
+              <td class="col-dni" data-label="DNI">
                 <span class="dni-text font-mono-data">{{ p.dni || 'NN' }}</span>
               </td>
-              <td class="col-record">
+              <td class="col-record" data-label="Historia clínica">
                 <span class="record-text font-mono-data">{{ p.record_number || '—' }}</span>
               </td>
               <td class="col-name">
@@ -116,10 +118,10 @@
                   <span class="name-text">{{ p.full_name }}</span>
                 </div>
               </td>
-              <td class="col-age">
+              <td class="col-age" data-label="Edad">
                 <span class="age-badge">{{ p.age }}</span>
               </td>
-              <td class="col-insurance">
+              <td class="col-insurance" data-label="Seguro">
                 <span class="insurance-text">{{ p.insurance_type || '—' }}</span>
               </td>
               <td class="col-actions">
@@ -127,13 +129,15 @@
                   <NuxtLink
                     :to="link(`/app/admision/pacientes/${p.id}`)"
                     class="action-btn action-view"
-                    title="Ver / Editar paciente"
+                    :aria-label="`Ver paciente ${p.full_name}`"
+                    title="Ver paciente"
                   >
                     <UIcon name="i-heroicons-eye" class="w-5 h-5" />
                   </NuxtLink>
                   <NuxtLink
                     :to="link(`/app/admision/pacientes/${p.id}`)"
                     class="action-btn action-edit"
+                    :aria-label="`Editar paciente ${p.full_name}`"
                     title="Editar paciente"
                   >
                     <UIcon name="i-heroicons-pencil-square" class="w-5 h-5" />
@@ -204,15 +208,16 @@ const getInitials = (name: string) => {
 }
 
 const getPatientColor = (name: string) => {
+  // --pink-soft y --blue-soft no existen en ningun lado del sistema de
+  // variables (ver assets/css/main.css): esos dos avatares salian con fondo
+  // transparente para cualquier paciente cuyo hash cayera en esos indices.
   const colors = [
     'var(--teal-soft)',
     'var(--purple-soft)',
     'var(--navy-soft)',
     'var(--amber-soft)',
     'var(--green-soft)',
-    'var(--pink-soft)',
-    'var(--blue-soft)',
-    'var(--orange-soft)'
+    'var(--orange-soft)',
   ]
   let hash = 0
   for (let i = 0; i < name.length; i++) {
@@ -263,593 +268,38 @@ onMounted(cargar)
 </script>
 
 <style scoped>
+/* Colores y tipografía: heredados de .app-shell (assets/css/hospital-theme.css). */
 .pacientes-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 1.5rem 2rem;
-}
-
-/* Page Header */
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 2rem;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.2;
-}
-
-.page-subtitle {
-  font-size: 0.875rem;
-  color: var(--ink-soft);
-  margin: 0.125rem 0 0 0;
-}
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.5rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  background: var(--teal);
-  color: white;
-  border: none;
-  text-decoration: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-primary:hover {
-  background: var(--teal-dark);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-secondary:hover {
+  padding: 24px 32px 40px;
+  min-height: 100%;
   background: var(--mist);
-}
-
-/* Search Section */
-.search-section {
-  margin-bottom: 1.5rem;
-}
-
-.search-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-}
-
-.search-header {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  padding: 0.75rem 1.25rem;
-  background: var(--teal);
-}
-
-.search-header-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  color: white;
-}
-
-.search-header-title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: white;
-}
-
-.search-body {
-  padding: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.search-input-wrapper {
-  position: relative;
-}
-
-.search-input-icon {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 1rem;
-  height: 1rem;
-  color: var(--ink-soft);
-}
-
-.search-input {
-  width: 100%;
-  padding: 0.625rem 0.875rem 0.625rem 2.5rem;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 0.875rem;
-  transition: all 0.2s ease;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--teal);
-  box-shadow: 0 0 0 3px var(--teal-soft);
-}
-
-.search-input::placeholder {
-  color: var(--ink-soft);
-  opacity: 0.6;
-}
-
-.search-actions {
-  display: flex;
-  gap: 0.625rem;
-  justify-content: flex-end;
-}
-
-.btn-clear {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink-soft);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-clear:hover {
-  background: var(--mist);
-}
-
-.btn-search {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 1.25rem;
-  border-radius: 6px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  background: var(--teal);
-  color: white;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-search:hover:not(:disabled) {
-  background: var(--teal-dark);
-}
-
-.btn-search:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Error Banner */
-.error-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  background: var(--alert-soft);
-  color: var(--alert);
-  font-size: 0.875rem;
-  margin-bottom: 1.5rem;
-}
-
-/* Loading State */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  gap: 1rem;
-}
-
-.loading-spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Table Card */
-.table-card {
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
-}
-
-.table-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1.25rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.table-header-left {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.table-title {
-  font-size: 0.875rem;
-  font-weight: 600;
   color: var(--ink);
 }
-
-.table-count {
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-  background: var(--mist);
-  padding: 0.125rem 0.5rem;
-  border-radius: 12px;
-}
-
-/* Table Footer / Pagination */
-.table-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1.25rem;
-  border-top: 1px solid var(--line);
-  flex-wrap: wrap;
-}
-
-.pagination-info {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-.pagination-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.pagination-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.4375rem 0.875rem;
-  border-radius: 6px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.pagination-btn:hover:not(:disabled) {
-  background: var(--mist);
-}
-
-.pagination-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.table-responsive {
-  overflow-x: auto;
-}
-
-.pacientes-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.pacientes-table thead {
-  background: var(--mist);
-}
-
-.pacientes-table th {
-  padding: 0.75rem 1rem;
-  text-align: left;
-  font-weight: 600;
-  color: var(--ink-soft);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--line);
-}
-
-.th-content {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.pacientes-table td {
-  padding: 0.875rem 1rem;
-  border-bottom: 1px solid var(--line);
-  vertical-align: middle;
-}
-
-.table-row {
-  transition: background 0.15s ease;
-}
-
-.table-row:hover {
-  background: var(--mist);
-}
-
-.col-dni { width: 12%; }
-.col-record { width: 12%; }
-.col-name { width: 28%; }
-.col-age { width: 10%; }
-.col-insurance { width: 18%; }
-.col-actions { width: 20%; text-align: right; }
-
-/* DNI */
-.dni-text {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink-soft);
-}
-
-/* Record */
-.record-text {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-/* Name Cell */
-.name-cell {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-}
-
-.patient-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: var(--ink);
-  flex-shrink: 0;
-}
-
-.name-text {
-  font-weight: 500;
-  color: var(--ink);
-}
-
-/* Age Badge */
-.age-badge {
-  display: inline-block;
-  padding: 0.1875rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  background: var(--mist);
-  color: var(--ink-soft);
-}
-
-/* Insurance */
-.insurance-text {
-  color: var(--ink-soft);
-}
-
-/* Action Buttons */
-.action-buttons {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
-.action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink-soft);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-decoration: none;
-}
-
-.action-btn:hover {
-  background: var(--mist);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-}
-
-.action-view {
-  color: var(--teal);
-  border-color: var(--teal-soft);
-  background: var(--teal-soft);
-}
-
-.action-view:hover {
-  background: var(--teal);
-  border-color: var(--teal);
-  color: white;
-}
-
-.action-edit {
-  color: var(--amber);
-  border-color: var(--amber-soft);
-  background: var(--amber-soft);
-}
-
-.action-edit:hover {
-  background: var(--amber);
-  border-color: var(--amber);
-  color: white;
-}
-
-/* Empty State */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  gap: 1rem;
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-}
-
-.empty-icon {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.empty-state h3 {
-  font-size: 1.125rem;
-  margin: 0;
-}
-
-.empty-state p {
-  margin: 0;
-}
-
-/* Responsive */
-@media (max-width: 1024px) {
-  .pacientes-container {
-    padding: 1rem 1.5rem;
-  }
-}
-
-@media (max-width: 768px) {
-  .pacientes-container {
-    padding: 1rem;
-  }
-
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .page-header .btn-primary {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .search-actions {
-    flex-direction: column;
-  }
-
-  .btn-clear,
-  .btn-search {
-    justify-content: center;
-  }
-
-  .col-actions {
-    min-width: 80px;
-  }
-
-  .col-name {
-    min-width: 150px;
-  }
-
-  .table-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-}
-
-@media (max-width: 480px) {
-  .col-dni {
-    min-width: 80px;
-  }
-  
-  .col-record {
-    min-width: 90px;
-  }
-  
-  .col-actions {
-    min-width: 70px;
-  }
-
-  .action-btn {
-    width: 28px;
-    height: 28px;
-  }
-
-  .action-buttons {
-    gap: 0.125rem;
-  }
-
-  .search-body {
-    padding: 0.75rem;
-  }
-}
+.page-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+.header-left { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.header-icon { width: 46px; height: 46px; display: grid; place-items: center; flex-shrink: 0; border-radius: 12px; color: var(--teal); background: var(--teal-soft); }
+.page-title { margin: 0; font-size: 1.5rem; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }
+.page-subtitle { margin: 5px 0 0; font-size: .875rem; color: var(--ink-soft); }
+.btn-primary, .btn-secondary, .btn-clear, .btn-search, .pagination-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 8px 16px; border-radius: 8px; font-size: .8125rem; font-weight: 500; border: 1px solid #e1e8ef; background: white; color: var(--ink); cursor: pointer; text-decoration: none; transition: background .15s, border-color .15s; white-space: nowrap; }
+.btn-primary, .btn-search { background: var(--teal); border-color: var(--teal); color: white; }.btn-primary:hover, .btn-search:hover:not(:disabled) { background: var(--teal-dark); border-color: var(--teal-dark); }.btn-secondary:hover, .btn-clear:hover, .pagination-btn:hover:not(:disabled) { background: var(--teal-soft); border-color: var(--teal); }
+button:disabled { opacity: .55; cursor: wait; }.pagination-btn:disabled { cursor: default; }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
+.search-section { margin-bottom: 18px; }.search-card { padding: 16px 18px; background: white; border: 1px solid #e1e8ef; border-radius: 14px; box-shadow: 0 2px 6px #243d5904; }
+.search-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--ink-soft); }.search-header-icon { width: 17px; height: 17px; }.search-header-title { font-size: .8125rem; font-weight: 500; }
+.search-body { display: flex; align-items: center; gap: 12px; }.search-input-wrapper { position: relative; flex: 1; min-width: 0; }.search-input-icon { position: absolute; top: 50%; left: 13px; transform: translateY(-50%); width: 18px; height: 18px; color: var(--ink-soft); pointer-events: none; }
+.search-input { width: 100%; height: 42px; border: 1px solid #dce6ef; border-radius: 8px; background: var(--mist); padding: 8px 14px 8px 40px; font-size: .8125rem; color: var(--ink); outline: none; }.search-input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-soft); }.search-input::placeholder { color: var(--ink-soft); }
+.search-actions { display: flex; gap: 8px; }.search-actions button { height: 42px; }
+.table-card { background: white; border: 1px solid #e1e8ef; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 6px #243d5904; }
+.table-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid #e7edf3; }.table-header-left { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }.table-title { font-size: 1rem; font-weight: 600; }.table-count { padding: 4px 9px; border-radius: 6px; color: var(--ink-soft); background: var(--mist); font-size: .75rem; }
+.table-responsive { overflow-x: auto; }.pacientes-table { width: 100%; border-collapse: collapse; font-size: .8125rem; }.pacientes-table th { text-align: left; background: var(--mist); color: var(--ink-soft); font-size: .6875rem; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; padding: 11px 16px; border-bottom: 1px solid #e1e8ef; }.pacientes-table td { padding: 10px 16px; border-bottom: 1px solid #edf1f6; vertical-align: middle; }.table-row:last-child td { border-bottom: 0; }.table-row:hover { background: var(--teal-soft); }
+.col-dni { width: 12%; }.col-record { width: 17%; }.col-name { width: 34%; }.col-age { width: 8%; }.col-insurance { width: 17%; }.col-actions { width: 12%; }.pacientes-table th.col-actions { text-align: right; }
+.dni-text, .record-text { font-family: inherit; font-size: .8125rem; font-variant-numeric: tabular-nums; color: var(--ink-soft); white-space: nowrap; }
+.name-cell { display: flex; align-items: center; gap: 10px; }.patient-avatar { width: 30px; height: 30px; flex-shrink: 0; border-radius: 9px; display: grid; place-items: center; font-size: .625rem; font-weight: 500; color: var(--ink); background: var(--teal-soft); }.name-text { font-size: .8125rem; font-weight: 400; overflow-wrap: anywhere; }
+.age-badge { color: var(--ink-soft); font-size: .8125rem; }.insurance-text { display: inline-block; padding: 4px 8px; border-radius: 6px; background: var(--mist); color: var(--ink-soft); font-size: .6875rem; }
+.action-buttons { display: flex; justify-content: flex-end; gap: 6px; }.action-btn { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 7px; border: 1px solid #e2eaf4; color: var(--ink-soft); background: white; transition: background .15s; }.action-btn:hover { color: var(--teal); background: var(--teal-soft); }.action-btn .iconify { width: 16px; height: 16px; }
+.table-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; padding: 14px 18px; border-top: 1px solid #e7edf3; }.pagination-info { font-size: .75rem; color: var(--ink-soft); }.pagination-controls { display: flex; gap: 8px; }.pagination-btn { min-height: 34px; padding: 6px 12px; font-size: .75rem; }
+.error-banner { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 16px; border: 1px solid #f3d3d8; border-radius: 10px; color: #ad2b40; background: #fff3f5; font-size: .8125rem; }
+.loading-state, .empty-state { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 48px 20px; text-align: center; background: white; border: 1px solid #e1e8ef; border-radius: 14px; font-size: .875rem; }.empty-icon { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; }.empty-state h3 { font-size: 1rem; font-weight: 500; }
+@media(max-width: 1100px) { .pacientes-table td, .pacientes-table th { padding-left: 10px; padding-right: 10px; }.col-record { width: auto; }.search-body { flex-wrap: wrap; }.search-input-wrapper { flex-basis: 100%; }.search-actions { margin-left: auto; } }
+@media(max-width: 767px) { .pacientes-container { padding: 16px; }.page-header { align-items: flex-start; flex-direction: column; gap: 14px; }.search-card { padding: 14px; }.search-actions { width: 100%; }.search-actions button { flex: 1; min-width: 0; padding: 8px; }.table-header { padding: 14px; }.table-responsive { overflow: visible; }.pacientes-table, .pacientes-table tbody { display: block; }.pacientes-table thead { display: none; }.table-row { display: flex; flex-direction: column; padding: 14px; gap: 9px; border-bottom: 1px solid #e7edf3; }.pacientes-table td { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 0; border: 0; }.pacientes-table td[data-label]::before { content: attr(data-label); color: #60758a; font-size: .75rem; }.pacientes-table .col-name { order: -1; margin-bottom: 4px; }.pacientes-table .col-actions { justify-content: flex-end; }.action-btn { width: 38px; height: 38px; }.table-footer { padding: 14px; }.pagination-controls { width: 100%; justify-content: space-between; }.record-text { white-space: normal; overflow-wrap: anywhere; }.name-cell { min-width: 0; } }
 </style>

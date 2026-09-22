@@ -1,0 +1,43 @@
+/* ============================================================
+   Identidad visual del PANEL HOSPITALARIO (/app/*)
+   ============================================================
+   Fuente única de verdad para colores y tipografía de todo el panel
+   hospitalario: sidebar, topbar y cada página bajo /app/* (Dashboard, Panel
+   de Camas, Citados, Pacientes, y los que falten). Antes cada página
+   redefinía el mismo bloque de variables en su propio <style scoped>
+   (duplicado en Dashboard, sidebar, Panel de Camas, Citados y Pacientes x3);
+   quedó centralizado acá para que un cambio de paleta futuro se haga una
+   sola vez, en un solo archivo.
+
+   Alcance: todo vive bajo el selector ".app-shell" (el div raíz de
+   layouts/app.vue). Como son custom properties de CSS, heredan hacia
+   cualquier página/componente renderizado adentro, SIN tocar la paleta
+   global (assets/css/main.css) que usan los paneles Admin y SIGARH.
+
+   Convenciones para páginas nuevas del panel hospitalario:
+   - Nunca hardcodear colores: usar var(--ink), var(--teal), var(--mist), etc.
+     (así un cambio acá se propaga solo, sin ir página por página).
+   - Tipografía: Poppins (cargada acá abajo), heredada automáticamente --
+     no hace falta useHead() ni font-family por página.
+   - Íconos: heroicons delineados (`i-heroicons-*`), nunca la variante
+     "-solid". Es el set ya usado en todo el panel.
+   - Mayúsculas (text-transform:uppercase) NO se usan en navegación/menús
+     (ver layouts/app.vue .nav-group-label) -- sí es una convención válida y
+     ya establecida para encabezados de columna de tablas (`th`), que es un
+     contexto distinto.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+
+.app-shell {
+  --ink: #081b3d;
+  --ink-soft: #58697d;
+  --navy: #081b3d;
+  --navy-hover: #06162f;
+  --navy-soft: #eaeef5;
+  --teal: #009eb2;
+  --teal-dark: #007e91;
+  --teal-soft: #e9f7f9;
+  --mist: #f5f7fa;
+  font-family: 'Poppins', 'Inter', sans-serif;
+}

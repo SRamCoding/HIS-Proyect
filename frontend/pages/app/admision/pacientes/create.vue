@@ -762,15 +762,15 @@ const getInitials = (name: string) => {
 }
 
 const getPatientColor = (name: string) => {
+  // --pink-soft y --blue-soft no existen en el sistema de variables (ver
+  // assets/css/main.css) -- mismo bug corregido en pacientes/index.vue.
   const colors = [
     'var(--teal-soft)',
     'var(--purple-soft)',
     'var(--navy-soft)',
     'var(--amber-soft)',
     'var(--green-soft)',
-    'var(--pink-soft)',
-    'var(--blue-soft)',
-    'var(--orange-soft)'
+    'var(--orange-soft)',
   ]
   let hash = 0
   for (let i = 0; i < name.length; i++) {
@@ -914,6 +914,7 @@ async function guardar() {
 </script>
 
 <style scoped>
+/* Colores y tipografía: heredados de .app-shell (assets/css/hospital-theme.css). */
 .paciente-create-container {
   max-width: 1400px;
   margin: 0 auto;
