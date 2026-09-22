@@ -40,14 +40,23 @@ def create_refresh_token(data: dict, jti: str | None = None) -> str:
 
 
 def create_mfa_pending_token(sub: str, purpose: str) -> str:
-    """Token corto (5 min) que prueba "ya pasaste la contraseña, falta el
-    codigo TOTP" -- separado de access/refresh a proposito: nunca debe
-    servir para acceder a ningun endpoint protegido por get_current_user,
-    solo para /auth/mfa/verify. `purpose` es "setup" (primera vez, todavia
-    sin confirmar un codigo) o "verify" (login normal con MFA ya activo).
+    """Token corto que prueba "ya pasaste la contraseña, falta el codigo
+    TOTP" -- separado de access/refresh a proposito: nunca debe servir para
+    acceder a ningun endpoint protegido por get_current_user, solo para
+    /auth/mfa/verify. `purpose` es "setup" (primera vez, todavia sin
+    confirmar un codigo) o "verify" (login normal con MFA ya activo).
+
+    Duracion distinta por proposito: "setup" exige instalar una app de
+    autenticacion (si el usuario no la tiene) y escanear el QR antes de
+    poder generar el primer codigo -- 5 min resultaba insuficiente para
+    eso y dejaba al usuario sin poder entrar ("token vencido") en su
+    primer login con MFA. "verify" (ya tiene la app lista, solo lee y
+    escribe el codigo) se mantiene corto por seguridad: limita la ventana
+    util de una contraseña robada.
     """
+    minutos = 15 if purpose == "setup" else 5
     payload = {"sub": sub, "type": "mfa_pending", "purpose": purpose}
-    payload["exp"] = datetime.now(timezone.utc) + timedelta(minutes=5)
+    payload["exp"] = datetime.now(timezone.utc) + timedelta(minutes=minutos)
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 

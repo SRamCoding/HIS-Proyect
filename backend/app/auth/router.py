@@ -68,14 +68,26 @@ def _set_csrf_cookie(response: Response) -> None:
 def _set_auth_cookies(response: Response, panel: str, access_token: str, refresh_token: str) -> None:
     response.set_cookie(f"access_token_{panel}", access_token, httponly=True, secure=True, samesite="none",
                          max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, path="/")
+    # path="/" -- NO path="/auth". En este servidor el frontend llama a la
+    # API bajo el prefijo "/api" (NUXT_PUBLIC_API_URL=/api), que Apache
+    # reescribe/quita antes de reenviar al backend (que internamente monta
+    # este router en "/auth", ver main.py). Pero el navegador decide a que
+    # peticiones adjuntar una cookie mirando la URL que EL VE (".../api/
+    # auth/refresh"), no la ruta interna del backend -- una cookie con
+    # path="/auth" nunca calza como prefijo de "/api/auth/...", asi que el
+    # navegador simplemente la descartaba y jamas la reenviaba. Esto rompia
+    # tanto /auth/refresh (sesion "expiraba" sola tras 60 min) como, con el
+    # mismo bug en mfa_pending mas abajo, CADA intento de verificar el
+    # codigo MFA (por eso "login expirado" en absolutamente todos los
+    # intentos, sin importar la duracion del token).
     response.set_cookie(f"refresh_token_{panel}", refresh_token, httponly=True, secure=True, samesite="none",
-                         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400, path="/auth")
+                         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400, path="/")
     _set_csrf_cookie(response)
 
 
 def _clear_auth_cookies(response: Response, panel: str) -> None:
     response.delete_cookie(f"access_token_{panel}", path="/")
-    response.delete_cookie(f"refresh_token_{panel}", path="/auth")
+    response.delete_cookie(f"refresh_token_{panel}", path="/")
 
 
 def _json_con_cookies(modelo, response: Response) -> JSONResponse:
@@ -214,8 +226,20 @@ async def login(
                 await db.commit()
             uri = uri_otpauth(secreto_plano, user.email)
             response.set_cookie(
+                # max_age debe coincidir con la duracion real del JWT que
+                # create_mfa_pending_token emite para "setup" (15 min, ver
+                # security.py) -- si la cookie expira antes que el token, el
+                # navegador la descarta y el usuario ve "sesion vencida"
+                # aunque el token en si todavia fuera valido.
+                # path="/" -- NO path="/auth": ver la nota larga en
+                # _set_auth_cookies() mas arriba. Con path="/auth" el
+                # navegador NUNCA reenviaba esta cookie (el frontend llama
+                # a "/api/auth/mfa/verify", que no matchea el prefijo
+                # "/auth"), asi que /auth/mfa/verify fallaba con "sesion
+                # expirada" en el 100% de los intentos, sin importar cuanto
+                # tardara el usuario en escribir el codigo.
                 "mfa_pending", create_mfa_pending_token(str(user.id), "setup"),
-                httponly=True, secure=True, samesite="none", max_age=5 * 60, path="/auth",
+                httponly=True, secure=True, samesite="none", max_age=15 * 60, path="/",
             )
             _set_csrf_cookie(response)
             return _json_con_cookies(MfaRequiredResponse(
@@ -224,7 +248,7 @@ async def login(
 
         response.set_cookie(
             "mfa_pending", create_mfa_pending_token(str(user.id), "verify"),
-            httponly=True, secure=True, samesite="none", max_age=5 * 60, path="/auth",
+            httponly=True, secure=True, samesite="none", max_age=5 * 60, path="/",
         )
         _set_csrf_cookie(response)
         return _json_con_cookies(MfaRequiredResponse(mfa_setup=False), response)
@@ -359,7 +383,11 @@ async def mfa_verify(
     # Set-Cookie ya presentes en `response` -- borrar mfa_pending despues
     # mutaba un objeto que la respuesta ya devuelta no referenciaba para
     # nada, asi que la cookie nunca se borraba de verdad.
-    response.delete_cookie("mfa_pending", path="/auth")
+    # path debe coincidir EXACTAMENTE con el path usado al crearla (path="/"
+    # mas arriba) -- name+path identifican la cookie; borrar con un path
+    # distinto no la borra, crea logicamente "otra" instruccion que el
+    # navegador ignora porque no encuentra una cookie con ese path.
+    response.delete_cookie("mfa_pending", path="/")
     return _emitir_tokens(token_data, response)
 
 
