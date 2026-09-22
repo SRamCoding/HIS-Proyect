@@ -1,5 +1,8 @@
 export function hospitalPermiso(path: string): string | null {
   if (path === '/app' || path === '/app/' || path === '/app/login') return null
+  // Personal preferences and account details require an authenticated hospital
+  // session, but do not require a licensed clinical/administrative module.
+  if (['/app/ajustes', '/app/ajustes/', '/app/perfil', '/app/perfil/'].includes(path)) return null
   if (path.startsWith('/app/admision/programacion-medica')) return 'consulta_externa.programacion'
   if (path.startsWith('/app/consulta-externa/atenciones-medicas')) return 'consulta_externa.atenciones'
   if (path.startsWith('/app/consulta-externa/citas-por-confirmar')) return 'consulta_externa.confirmacion'
