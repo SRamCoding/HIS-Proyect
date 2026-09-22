@@ -55,6 +55,14 @@ async function finalizarLogin() {
     if (rememberEmail.value) localStorage.setItem(storageKey, email.value)
     else localStorage.removeItem(storageKey)
   } catch { /* No impedir el inicio de sesión por almacenamiento local. */ }
+  // Punto único de "login realmente completo": lo llaman tanto signIn() (sin
+  // MFA) como verificarMfa() (segundo factor ya validado) -- el toast va acá
+  // para no disparar antes de tiempo cuando todavía falta el código TOTP.
+  useToast().add({
+    title: 'Login exitoso',
+    description: `${roleLabel(authStore.user?.role)} — bienvenido, ${authStore.user?.name}`,
+    color: 'success',
+  })
   await navigateTo(authStore.panelRoute)
 }
 

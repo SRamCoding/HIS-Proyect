@@ -1054,6 +1054,33 @@ async def generar_comprobante_cita_pdf(
     from app.core.tenant_db import get_tenant_by_id
     hospital = await get_tenant_by_id(tenant_id)
 
+    # Misma identidad de color que el dashboard y el resto del panel
+    # hospitalario nuevo (ver frontend/components/DashboardGeneral.vue):
+    # navy #081b3d + turquesa #009eb2. Reportlab no puede tomar la fuente
+    # Poppins del navegador (necesitaría el .ttf embebido, que no está en el
+    # repo); se usa Helvetica -- la familia sans-serif "neutra" estándar de
+    # PDF, sin necesidad de registrar nada -- como la aproximación más
+    # cercana disponible sin agregar un binario nuevo al repo.
+    NAVY = colors.HexColor("#081b3d")
+    TEAL = colors.HexColor("#009eb2")
+    TEAL_SOFT = colors.HexColor("#e9f7f9")
+    INK_SOFT = colors.HexColor("#58697d")
+    LINE = colors.HexColor("#e4eaf0")
+    ESTADO_COLOR = {
+        "separada": colors.HexColor("#b8862b"),
+        "confirmada": colors.HexColor("#123a52"),
+        "atendida": colors.HexColor("#1e7d4f"),
+        "cancelada": colors.HexColor("#c13f2c"),
+        "no_asistio": INK_SOFT,
+    }
+    ESTADO_LABEL = {
+        "separada": "Separada",
+        "confirmada": "Confirmada",
+        "atendida": "Atendida",
+        "cancelada": "Cancelada",
+        "no_asistio": "No asistió",
+    }
+
     codigo = f"CITA-{str(cita_id).split('-')[0].upper()}"
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -1071,28 +1098,40 @@ async def generar_comprobante_cita_pdf(
         "CitaTitle",
         parent=styles["Title"],
         fontName="Helvetica-Bold",
-        fontSize=17,
-        leading=21,
+        fontSize=16,
+        leading=19,
         alignment=TA_CENTER,
-        textColor=colors.HexColor("#123F59"),
-        spaceAfter=4 * mm,
+        textColor=NAVY,
+        spaceAfter=1 * mm,
+    )
+    subtitle = ParagraphStyle(
+        "CitaSubtitle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=10.5,
+        leading=13,
+        alignment=TA_CENTER,
+        textColor=TEAL,
+        spaceAfter=3 * mm,
     )
     center = ParagraphStyle(
         "CitaCenter",
         parent=styles["Normal"],
         alignment=TA_CENTER,
-        fontSize=9,
-        textColor=colors.HexColor("#4B6472"),
+        fontSize=8.5,
+        textColor=INK_SOFT,
         leading=12,
     )
     normal = ParagraphStyle(
-        "CitaNormal", parent=styles["Normal"], fontSize=9, leading=12
+        "CitaNormal", parent=styles["Normal"], fontSize=9.5, leading=13, textColor=NAVY
     )
     label = ParagraphStyle(
         "CitaLabel",
         parent=normal,
         fontName="Helvetica-Bold",
-        textColor=colors.HexColor("#425968"),
+        fontSize=7,
+        leading=9,
+        textColor=INK_SOFT,
     )
 
     def p(value, style=normal):
@@ -1101,105 +1140,82 @@ async def generar_comprobante_cita_pdf(
     fecha = cita.get("fecha")
     fecha_texto = fecha.strftime("%d/%m/%Y") if fecha else "—"
     medico = cita.get("medico_nombre") or "—"
-    cmp = ""
+    estado_raw = cita.get("estado") or ""
+    estado_style = ParagraphStyle(
+        "CitaEstado",
+        parent=normal,
+        fontName="Helvetica-Bold",
+        textColor=ESTADO_COLOR.get(estado_raw, NAVY),
+    )
+
     body = [
         p((hospital.name if hospital else "ESTABLECIMIENTO DE SALUD").upper(), title),
+        p("Constancia de cita médica", subtitle),
+        # Barra delgada turquesa a modo de separador -- sin equivalente
+        # directo a un <hr>, se simula con una tabla de una celda coloreada.
+        Table([[""]], colWidths=[174 * mm], rowHeights=[0.6 * mm],
+              style=TableStyle([("BACKGROUND", (0, 0), (-1, -1), TEAL)])),
+        Spacer(1, 3 * mm),
+        # "Chip" con el código de cita, mismo tratamiento que las etiquetas
+        # turquesa-suave del panel web (badge/estado-badge).
+        Table([[p(f"Código de cita: {codigo}", ParagraphStyle(
+            "CitaCodigo", parent=center, fontName="Helvetica-Bold", textColor=TEAL, alignment=TA_CENTER,
+        ))]], colWidths=[60 * mm], hAlign="CENTER",
+              style=TableStyle([
+                  ("BACKGROUND", (0, 0), (-1, -1), TEAL_SOFT),
+                  ("TOPPADDING", (0, 0), (-1, -1), 3),
+                  ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+              ])),
+        Spacer(1, 3 * mm),
         p(
-            "CONSTANCIA DE CITA MÉDICA",
-            ParagraphStyle(
-                "DocTitle", parent=title, fontSize=14, textColor=colors.black
-            ),
+            f"{hospital.name if hospital else '—'} · RUC {hospital.ruc if hospital and hospital.ruc else '—'} · "
+            f"{hospital.address if hospital and hospital.address else '—'} · Tel {hospital.phone if hospital and hospital.phone else '—'}",
+            center,
         ),
-        p(f"Código de cita: {codigo}", center),
-        Spacer(1, 5 * mm),
-    ]
-    header_data = [
-        [
-            p("ESTABLECIMIENTO", label),
-            p(hospital.name if hospital else "—"),
-            p("RUC", label),
-            p(hospital.ruc if hospital else "—"),
-        ],
-        [
-            p("DIRECCIÓN", label),
-            p(hospital.address if hospital else "—"),
-            p("TELÉFONO", label),
-            p(hospital.phone if hospital else "—"),
-        ],
+        Spacer(1, 6 * mm),
     ]
     detail_data = [
-        [
-            p("PACIENTE", label),
-            p(cita["paciente_nombre"]),
-            p("DNI / DOCUMENTO", label),
-            p(cita.get("paciente_dni")),
-        ],
-        [
-            p("HISTORIA CLÍNICA", label),
-            p(cita.get("paciente_record")),
-            p("N.° CUENTA", label),
-            p(cita.get("numero_cuenta")),
-        ],
-        [
-            p("FECHA", label),
-            p(fecha_texto),
-            p("HORA", label),
-            p(f"{cita['hora_inicio']} - {cita['hora_fin']}"),
-        ],
-        [
-            p("ESPECIALIDAD", label),
-            p(cita.get("especialidad_nombre")),
-            p("SERVICIO", label),
-            p(cita.get("servicio_nombre")),
-        ],
-        [p("MÉDICO", label), p(medico + cmp), p("TURNO", label), p(cita.get("turno"))],
-        [
-            p("TIPO DE CONSULTA", label),
-            p(cita.get("tipo_consulta")),
-            p("ESTADO", label),
-            p(str(cita.get("estado", "")).upper()),
-        ],
-        [
-            p("FINANCIAMIENTO", label),
-            p(cita.get("fuente_financiamiento")),
-            p("PRODUCTO / PLAN", label),
-            p(cita.get("producto_plan")),
-        ],
+        [p("PACIENTE", label), p(cita["paciente_nombre"]), p("DNI / DOCUMENTO", label), p(cita.get("paciente_dni"))],
+        [p("HISTORIA CLÍNICA", label), p(cita.get("paciente_record")), p("N.° CUENTA", label), p(cita.get("numero_cuenta"))],
+        [p("FECHA", label), p(fecha_texto), p("HORA", label), p(f"{cita['hora_inicio']} - {cita['hora_fin']}")],
+        [p("ESPECIALIDAD", label), p(cita.get("especialidad_nombre")), p("SERVICIO", label), p(cita.get("servicio_nombre"))],
+        [p("MÉDICO", label), p(medico), p("TURNO", label), p(cita.get("turno"))],
+        [p("TIPO DE CONSULTA", label), p(cita.get("tipo_consulta")), p("ESTADO", label),
+         p(ESTADO_LABEL.get(estado_raw, estado_raw or "—"), estado_style)],
+        [p("FINANCIAMIENTO", label), p(cita.get("fuente_financiamiento")), p("PRODUCTO / PLAN", label), p(cita.get("producto_plan"))],
         [p("OBSERVACIONES", label), p(cita.get("observacion")), "", ""],
     ]
-    for data in (header_data, detail_data):
-        table = Table(
-            data, colWidths=[35 * mm, 58 * mm, 35 * mm, 48 * mm], hAlign="CENTER"
+    table = Table(detail_data, colWidths=[32 * mm, 61 * mm, 32 * mm, 49 * mm], hAlign="CENTER")
+    table.setStyle(
+        TableStyle(
+            [
+                # Sin grid completo ni columnas de etiqueta rellenas (look de
+                # planilla antigua) -- solo una línea suave debajo de cada
+                # fila, igual que .detalle-grid en el panel web.
+                ("LINEBELOW", (0, 0), (-1, -2), 0.5, LINE),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("SPAN", (1, -1), (3, -1)),
+            ]
         )
-        table.setStyle(
-            TableStyle(
-                [
-                    ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#B8C9D2")),
-                    ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#EAF4F5")),
-                    ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#EAF4F5")),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                    ("TOPPADDING", (0, 0), (-1, -1), 7),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-                    ("SPAN", (1, -1), (3, -1))
-                    if data is detail_data
-                    else ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ]
-            )
-        )
-        body.extend([table, Spacer(1, 5 * mm)])
+    )
+    body.extend([table, Spacer(1, 6 * mm)])
     body.extend(
         [
             p(
                 "Indicaciones",
                 ParagraphStyle(
-                    "Instructions", parent=label, fontSize=10, spaceAfter=2 * mm
+                    "Instructions", parent=label, fontName="Helvetica-Bold", fontSize=9.5,
+                    leading=12, textColor=NAVY, spaceAfter=2 * mm,
                 ),
             ),
             p(
                 "Presentarse 30 minutos antes de la hora indicada con su documento de identidad y esta constancia. "
-                "En caso de no poder asistir, comuníquese con el establecimiento para reprogramar."
+                "En caso de no poder asistir, comuníquese con el establecimiento para reprogramar.",
+                ParagraphStyle("Indicaciones", parent=normal, textColor=INK_SOFT),
             ),
             Spacer(1, 14 * mm),
             Table(
@@ -1216,7 +1232,10 @@ async def generar_comprobante_cita_pdf(
                 colWidths=[88 * mm, 88 * mm],
                 style=TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER")]),
             ),
-            Spacer(1, 8 * mm),
+            Spacer(1, 6 * mm),
+            Table([[""]], colWidths=[174 * mm], rowHeights=[0.4 * mm],
+                  style=TableStyle([("BACKGROUND", (0, 0), (-1, -1), LINE)])),
+            Spacer(1, 3 * mm),
             p(
                 f"Generado el {datetime.now().strftime('%d/%m/%Y %H:%M')} · {codigo}",
                 center,

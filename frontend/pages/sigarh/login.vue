@@ -43,6 +43,12 @@ const handleLogin = async () => {
     // guardar en el store aparte de los datos del usuario.
     authStore.user = response.user
 
+    useToast().add({
+      title: 'Login exitoso',
+      description: `${roleLabel(response.user?.role)} — bienvenido, ${response.user?.name}`,
+      color: 'success',
+    })
+
     const resolvedTenant = tenantId.value || response.user?.tenant_id || ''
     router.push(resolvedTenant ? `/sigarh?tenant=${resolvedTenant}` : '/sigarh')
   } catch (e: any) {

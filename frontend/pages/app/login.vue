@@ -33,6 +33,12 @@ const handleLogin = async () => {
     // guardar en el store aparte de los datos del usuario.
     authStore.user = response.user
 
+    useToast().add({
+      title: 'Login exitoso',
+      description: `${roleLabel(response.user?.role)} — bienvenido, ${response.user?.name}`,
+      color: 'success',
+    })
+
     router.push(`/app?tenant=${tenantId.value}`)
   } catch (e: any) {
     error.value = apiErr(e, 'Credenciales incorrectas')
