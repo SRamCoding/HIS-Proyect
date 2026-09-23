@@ -26,6 +26,7 @@ logs/
 
 # Fallback de auditoria y estado de Celery beat (datos de runtime, no codigo)
 var/
+/tmp/hc-*
 celerybeat-schedule*
 
 # VS Code
@@ -47,4 +48,4 @@ node_modules/
 Thumbs.db
 desktop.ini
 
-blade.and build navasof, 
+blade.and build navasof,
