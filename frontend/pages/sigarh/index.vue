@@ -139,13 +139,36 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
 
 <template>
   <div class="dash">
+      <!-- Accesos rapidos -->
+      <section class="sigarh-launcher">
+        <h1>&iquest;Qu&eacute; deseas <span>realizar hoy?</span></h1><p>Gestiona las personas y la actividad de tu hospital.</p>
+        <div class="accesos-grid">
+          <NuxtLink
+            v-for="a in [
+              { label: 'Empleados', icon: 'i-heroicons-users', path: '/sigarh/rrhh/empleados' },
+              { label: 'Asistencia', icon: 'i-heroicons-clipboard-document-check', path: '/sigarh/rrhh/asistencia' },
+              { label: 'Vacaciones', icon: 'i-heroicons-sun', path: '/sigarh/movimientos/vacaciones' },
+              { label: 'Licencias', icon: 'i-heroicons-paper-airplane', path: '/sigarh/movimientos/licencias' },
+              { label: 'Papeletas', icon: 'i-heroicons-document-duplicate', path: '/sigarh/movimientos/papeletas/estado' },
+              { label: 'Camas', icon: 'i-heroicons-home-modern', path: '/sigarh/infraestructura-hosp/camas' },
+            ]"
+            :key="a.path"
+            :to="`${a.path}?tenant=${tenant}`"
+            class="acceso-item"
+          >
+            <div class="acceso-icon"><UIcon :name="a.icon" class="w-4 h-4" style="color: var(--navy)" /></div>
+            <span>{{ a.label }}</span>
+          </NuxtLink>
+        </div>
+      </section>
+
     <div class="dash-header">
       <div class="dash-header-left">
         <div class="dash-header-icon">
           <UIcon name="i-heroicons-chart-bar" class="w-5 h-5" style="color: var(--navy)" />
         </div>
         <div>
-          <h1 class="page-title">Escritorio SIGARH</h1>
+          <h2 class="page-title">Resumen SIGARH</h2>
           <p class="page-subtitle" style="text-transform: capitalize">{{ hoyLabel }}</p>
         </div>
       </div>
@@ -367,28 +390,6 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
         </div>
       </div>
 
-      <!-- Accesos rapidos -->
-      <div class="card">
-        <div class="card-head"><h3 class="card-title">Accesos rapidos</h3></div>
-        <div class="accesos-grid">
-          <NuxtLink
-            v-for="a in [
-              { label: 'Empleados', icon: 'i-heroicons-users', path: '/sigarh/rrhh/empleados' },
-              { label: 'Asistencia', icon: 'i-heroicons-clipboard-document-check', path: '/sigarh/rrhh/asistencia' },
-              { label: 'Vacaciones', icon: 'i-heroicons-sun', path: '/sigarh/movimientos/vacaciones' },
-              { label: 'Licencias', icon: 'i-heroicons-paper-airplane', path: '/sigarh/movimientos/licencias' },
-              { label: 'Papeletas', icon: 'i-heroicons-document-duplicate', path: '/sigarh/movimientos/papeletas/estado' },
-              { label: 'Camas', icon: 'i-heroicons-home-modern', path: '/sigarh/infraestructura-hosp/camas' },
-            ]"
-            :key="a.path"
-            :to="`${a.path}?tenant=${tenant}`"
-            class="acceso-item"
-          >
-            <div class="acceso-icon"><UIcon :name="a.icon" class="w-4 h-4" style="color: var(--navy)" /></div>
-            <span>{{ a.label }}</span>
-          </NuxtLink>
-        </div>
-      </div>
     </template>
   </div>
 </template>
@@ -488,4 +489,16 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
   .kpi-grid, .dash-skeleton-grid, .mov-grid { grid-template-columns: 1fr; }
   .accesos-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+.sigarh-launcher { text-align:center; padding:12px 0 20px; }
+.sigarh-launcher h1 { font-size:clamp(26px,2.7vw,36px); line-height:1.3; font-weight:600; margin-bottom:12px; }
+.sigarh-launcher h1 span { color:var(--teal); }
+.sigarh-launcher>p { color:var(--ink-soft); font-size:14px; margin-bottom:24px; }
+.sigarh-launcher .accesos-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.sigarh-launcher .acceso-item { background:white; min-height:132px; padding:20px; border:1px solid transparent; border-radius:20px; font-size:16px; font-weight:400; justify-content:center; gap:12px; box-shadow:var(--shadow-card); }
+.sigarh-launcher .acceso-item:hover { border-color:var(--teal); }
+.sigarh-launcher .acceso-icon { background:transparent; width:40px; height:40px; }
+.sigarh-launcher .acceso-icon :deep(span) { width:38px; height:38px; }
+@media(max-width:800px) { .sigarh-launcher .accesos-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:480px) { .sigarh-launcher .accesos-grid { grid-template-columns:1fr; } }
 </style>

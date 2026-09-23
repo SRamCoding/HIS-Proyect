@@ -1,0 +1,47 @@
+/* Admin Central only. Body scope also reaches dialogs teleported outside the layout.
+   Managed by the admin layout head so other panels retain their own theme. */
+body.admin-central-theme {
+  --ink:#201b3c;
+  --ink-soft:#69647c;
+  --navy:#6351ad;
+  --navy-hover:#50408f;
+  --navy-soft:#f0ecfa;
+  --teal:#7356b8;
+  --teal-dark:#594095;
+  --teal-soft:#f0ecfa;
+  --mist:#f7f7fb;
+  --paper:#fff;
+  --line:#e6e3ef;
+  --radius:10px;
+  --radius-lg:18px;
+  --shadow-card:0 8px 24px rgba(42,30,78,.055);
+  --shadow-md:0 12px 28px rgba(42,30,78,.08);
+  --ui-primary:#7356b8;
+  font-family:'Poppins','Inter',sans-serif;
+  color:var(--ink);
+}
+.admin-central-theme :is(button,input,select,textarea) { font-family:inherit; }
+.admin-central-theme :is(h1,h2,h3) { letter-spacing:-.025em; font-weight:500; }
+.admin-central-theme h1 { font-size:26px; line-height:1.35; }
+.admin-central-theme :is(.font-bold,.font-extrabold) { font-weight:600; }
+.admin-central-theme :is(.nav-group-label,thead th) { text-transform:none; letter-spacing:0; font-weight:500; }
+.admin-central-theme aside { background:#fff !important; color:var(--ink) !important; border-right:1px solid var(--line); }
+.admin-central-theme aside .border-b,
+.admin-central-theme aside .border-t { border-color:var(--line) !important; }
+.admin-central-theme aside .nav-link { color:var(--ink-soft); font-weight:400; border-radius:10px; }
+.admin-central-theme aside .nav-link:hover { background:var(--navy-soft); color:var(--navy); }
+.admin-central-theme aside .nav-active { background:var(--navy-soft) !important; color:var(--navy) !important; box-shadow:inset 3px 0 var(--navy); font-weight:500; }
+.admin-central-theme aside .nav-icon,
+.admin-central-theme aside .nav-active .nav-icon { color:var(--navy); opacity:1; }
+.admin-central-theme aside .nav-group-label { color:var(--ink-soft); font-size:11px; font-weight:400; }
+.admin-central-theme aside :is(.text-white,.text-white\/70,.text-white\/60) { color:var(--ink-soft); }
+.admin-central-theme header { font-family:'Poppins','Inter',sans-serif; border-bottom-color:var(--line); }
+.admin-central-theme :is(.stat-card,.card,.panel) { border-color:var(--line); border-radius:var(--radius-lg); box-shadow:var(--shadow-card); }
+.admin-central-theme :is(.btn-primary,.btn-secondary) { border-radius:10px; font-weight:500; }
+.admin-central-theme :is(.input-clinical,input:not([type=checkbox]):not([type=radio]),select,textarea) { border-color:var(--line); }
+.admin-central-theme :is(input,select,textarea):focus-visible { outline-color:var(--teal); }
+.admin-central-theme :is(a,button):focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
+.admin-central-theme table { font-size:13px; }
+.admin-central-theme thead { background:var(--mist); color:var(--ink-soft); }
+.admin-central-theme tbody tr:hover { background:#faf9fd; }
+.admin-central-theme :is(.modal-content,[role=dialog]) { font-family:'Poppins','Inter',sans-serif; border-radius:18px; }

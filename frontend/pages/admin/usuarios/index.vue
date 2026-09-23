@@ -107,8 +107,8 @@
       <div v-else-if="pageUsers.length === 0" class="sigarh-table-state">
         <UIcon name="i-heroicons-users" class="w-12 h-12" style="color: var(--ink-soft); opacity: 0.4" />
         <div>
-          <p style="font-weight: 600; color: var(--ink); margin: 0">No hay usuarios registrados</p>
-          <p style="color: var(--ink-soft); font-size: 0.875rem; margin: 0.25rem 0 0 0">Comienza creando tu primer usuario</p>
+          <p style="font-weight: 600; color: var(--ink); margin: 0">{{ searchQuery || activeFilter !== 'all' || hospitalFilter ? 'No hay coincidencias con los filtros' : isAdminView ? 'No hay administradores adicionales' : 'No hay usuarios registrados' }}</p>
+          <p style="color: var(--ink-soft); font-size: 0.875rem; margin: 0.25rem 0 0 0">{{ searchQuery || activeFilter !== 'all' || hospitalFilter ? 'Prueba con otros filtros.' : isAdminView ? 'La cuenta principal protegida no se incluye en este listado.' : 'Comienza creando tu primer usuario' }}</p>
         </div>
         <NuxtLink :to="createPath" class="btn-primary">
           <UIcon name="i-heroicons-plus" class="w-4 h-4" />
@@ -381,7 +381,9 @@ const deleteUser = async () => {
 
 const vista = computed(() => isAdminView.value ? 'admin' : 'hospital')
 
+let listRequest = 0
 const loadData = async () => {
+  const request = ++listRequest
   loading.value = true
   error.value = ''
   partialWarning.value = ''
@@ -397,6 +399,7 @@ const loadData = async () => {
     else if (activeFilter.value === 'inactive') params.set('is_active', 'false')
 
     const usuariosResp = await api<UsuariosConHospitalResponse>(`/admin/usuarios/con-hospital?${params}`)
+    if (request !== listRequest) return
     pageUsers.value = usuariosResp.items
     total.value = usuariosResp.total
     if (usuariosResp.es_parcial) {
@@ -405,7 +408,7 @@ const loadData = async () => {
   } catch (e: any) {
     error.value = apiErr(e, 'Error de conexión')
   } finally {
-    loading.value = false
+    if (request === listRequest) loading.value = false
   }
 }
 
@@ -413,7 +416,9 @@ const loadResumen = async () => {
   try {
     const params = new URLSearchParams({ vista: vista.value })
     if (hospitalFilter.value) params.set('tenant_id', hospitalFilter.value)
-    resumen.value = await api<Resumen>(`/admin/usuarios/resumen?${params}`)
+    const requestedView = vista.value
+    const result = await api<Resumen>(`/admin/usuarios/resumen?${params}`)
+    if (requestedView === vista.value) resumen.value = result
   } catch {
     // los widgets no son criticos: si fallan, se quedan en sus valores por defecto
   }
@@ -431,6 +436,17 @@ watch(searchQuery, () => {
 })
 watch([activeFilter, hospitalFilter], () => { currentPage.value = 1; loadData(); loadResumen() })
 watch(currentPage, loadData)
+
+watch(isAdminView, () => {
+  if (searchDebounce) clearTimeout(searchDebounce)
+  searchQuery.value = ''
+  activeFilter.value = 'all'
+  hospitalFilter.value = ''
+  currentPage.value = 1
+  loadData()
+  loadResumen()
+  if (!isAdminView.value) loadHospitales()
+})
 
 onMounted(() => {
   loadData()
