@@ -43,6 +43,18 @@ async def crear_solicitud(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.U
         requested_by=solicitante,
     )
     db.add(sol)
+    # flush ANTES de leer sol.id: el default=uuid.uuid4 de la PK recien se
+    # aplica al flushear, no al construir el objeto -- referenciar sol.id
+    # antes de esto insertaria un link con "None".
+    await db.flush()
+    from app.sigarh.notificaciones.service import crear_notificacion_sigarh
+    await crear_notificacion_sigarh(
+        db,
+        f"Solicitud de modificación de rol: {emp.nombre_completo}",
+        f"{rol.categoria_personal}/{rol.tipo_rol} {rol.mes}/{rol.anio} — solicitado por {solicitante or 'un usuario'}",
+        nivel="info",
+        link=f"/sigarh/roles-pendientes/solicitudes/{sol.id}",
+    )
     await db.commit()
     await db.refresh(sol)
     return {

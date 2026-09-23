@@ -763,8 +763,12 @@ const irA = (path: string) => {
   const destino = path === '/sigarh' ? '/sigarh/login' : path === '/app' ? '/app/login' : path
   // Mismo criterio que pages/admin/hospitales/index.vue::irA -- ".local" es
   // el TLD reservado (RFC 6762) de los hospitales aun sin dominio publico
-  // real (placeholder), nunca resuelve fuera de esta red.
-  const tieneDominioReal = dominioCompleto.value && !dominioCompleto.value.toLowerCase().endsWith('.local')
+  // real (placeholder), nunca resuelve fuera de esta red. Ademas, en
+  // localhost (desarrollo) NINGUN dominio real del hospital resuelve a esta
+  // maquina -- abrir esa URL absoluta cargaba el sitio de PRODUCCION real
+  // en vez de este entorno local.
+  const enLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+  const tieneDominioReal = !enLocalhost && dominioCompleto.value && !dominioCompleto.value.toLowerCase().endsWith('.local')
   if (tieneDominioReal) {
     window.open(`https://${dominioCompleto.value}${destino}`, '_blank')
     return

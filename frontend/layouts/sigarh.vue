@@ -111,10 +111,20 @@
 
         <!-- Footer usuario -->
         <div class="p-2 border-t shrink-0" style="border-color: rgba(255,255,255,0.08)">
-          <div v-if="!collapsed" class="px-3 py-2 rounded-lg mb-1" style="background: rgba(255,255,255,0.05)">
-            <p class="text-sm font-medium truncate">{{ authStore.user?.name }}</p>
-            <p class="text-xs truncate" style="color: #7fa1b3">{{ authStore.user?.email }}</p>
-          </div>
+          <NuxtLink
+            :to="link('/sigarh/perfil')"
+            class="flex items-center gap-2.5 rounded-lg mb-1 px-2.5 py-2 hover:bg-white/10 transition-colors"
+            :class="{ 'justify-center': collapsed }"
+            style="background: rgba(255,255,255,0.05)"
+          >
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0" style="background: var(--teal)">
+              {{ inicialesUsuario }}
+            </div>
+            <div v-if="!collapsed" class="min-w-0">
+              <p class="text-sm font-medium truncate">{{ authStore.user?.name }}</p>
+              <p class="text-xs truncate" style="color: #7fa1b3">{{ authStore.user?.email }}</p>
+            </div>
+          </NuxtLink>
           <button @click="handleLogout"
             class="nav-link w-full justify-center gap-2"
             :class="collapsed ? 'px-0' : ''">
@@ -165,31 +175,92 @@
 
           <!-- Acciones derecha -->
           <div class="ml-auto flex items-center gap-1 shrink-0">
-            <button class="p-2 rounded-lg hover:bg-black/5 transition-colors" title="Ayuda">
+            <a
+              href="https://atencionalcliente.techquk.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="p-2 rounded-lg hover:bg-black/5 transition-colors"
+              title="Ayuda"
+            >
               <UIcon name="i-heroicons-question-mark-circle" class="w-5 h-5" style="color: #7a8894" />
-            </button>
+            </a>
 
-            <button class="relative p-2 rounded-lg hover:bg-black/5 transition-colors" title="Notificaciones">
-              <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: #7a8894" />
-              <span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style="background: var(--teal)" />
-            </button>
-
-            <button class="p-2 rounded-lg hover:bg-black/5 transition-colors" title="Configuración">
-              <UIcon name="i-heroicons-cog-6-tooth" class="w-5 h-5" style="color: #7a8894" />
-            </button>
+            <div class="notif-wrapper relative">
+              <button
+                class="relative p-2 rounded-lg hover:bg-black/5 transition-colors"
+                :aria-label="notifUnread > 0 ? `Notificaciones, ${notifUnread} sin leer` : 'Notificaciones'"
+                aria-haspopup="true"
+                :aria-expanded="notifOpen"
+                @click="toggleNotifs"
+              >
+                <UIcon name="i-heroicons-bell" class="w-5 h-5" style="color: #7a8894" aria-hidden="true" />
+                <span v-if="notifUnread > 0" class="notif-badge" aria-hidden="true">{{ notifUnread > 9 ? '9+' : notifUnread }}</span>
+              </button>
+              <div v-if="notifOpen" class="notif-panel">
+                <div class="notif-panel-header">
+                  <span>Notificaciones</span>
+                  <button v-if="notifUnread > 0" class="notif-mark-all" @click="marcarTodasLeidas">Marcar todas leídas</button>
+                </div>
+                <div v-if="notifLoading" class="notif-empty">Cargando...</div>
+                <div v-else-if="notifError" class="notif-empty" style="color: var(--alert)">
+                  No se pudieron cargar las notificaciones.
+                  <button class="notif-mark-all" style="display: block; margin: 0.35rem auto 0" @click="cargarNotificaciones">Reintentar</button>
+                </div>
+                <div v-else-if="!notificaciones.length" class="notif-empty">Sin notificaciones</div>
+                <ul v-else class="notif-list">
+                  <li
+                    v-for="n in notificaciones"
+                    :key="n.id"
+                    class="notif-item"
+                    :class="{ unread: !n.is_read }"
+                    @click="abrirNotif(n)"
+                  >
+                    <span class="notif-dot" :class="`notif-dot--${n.nivel}`" />
+                    <div class="notif-item-body">
+                      <p class="notif-title">{{ n.titulo }}</p>
+                      <p v-if="n.cuerpo" class="notif-desc">{{ n.cuerpo }}</p>
+                      <p class="notif-time">{{ formatRelativo(n.created_at) }}</p>
+                    </div>
+                  </li>
+                </ul>
+                <button v-if="!notifLoading && notificaciones.length < notifTotal" class="notif-cargar-mas" @click="cargarMasNotificaciones">
+                  <UIcon v-if="notifLoadingMas" name="i-heroicons-arrow-path" class="w-3.5 h-3.5 animate-spin" />
+                  <span>Cargar más</span>
+                </button>
+              </div>
+            </div>
 
             <div class="w-px h-6 mx-1" style="background: #e6ebef" />
 
-            <!-- Usuario -->
-            <button class="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full hover:bg-black/5 transition-colors">
-              <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0" style="background: var(--teal)">
-                {{ inicialesUsuario }}
+            <!-- Usuario: mismo menu (Configuracion + Cerrar sesion) accesible
+                 desde el engranaje o desde el nombre -- antes ninguno de los
+                 dos hacia nada, ni siquiera dejaba cerrar sesion desde aca. -->
+            <div class="settings-wrapper relative">
+              <button
+                class="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full hover:bg-black/5 transition-colors"
+                aria-haspopup="true"
+                :aria-expanded="settingsOpen"
+                @click="settingsOpen = !settingsOpen"
+              >
+                <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0" style="background: var(--teal)">
+                  {{ inicialesUsuario }}
+                </div>
+                <span class="hidden lg:block text-sm font-medium" style="color: var(--navy)">
+                  {{ authStore.user?.name || 'Usuario' }}
+                </span>
+                <UIcon name="i-heroicons-chevron-down" class="hidden lg:block w-3.5 h-3.5" style="color: #9aa7b1" />
+              </button>
+              <div v-if="settingsOpen" class="settings-menu">
+                <NuxtLink :to="link('/sigarh/perfil')" class="settings-item" @click="settingsOpen = false">
+                  <UIcon name="i-heroicons-user-circle" class="w-4 h-4" />
+                  Mi Perfil
+                </NuxtLink>
+                <button class="settings-item settings-item--danger" @click="handleLogout">
+                  <UIcon name="i-heroicons-arrow-right-on-rectangle" class="w-4 h-4" />
+                  Cerrar Sesión
+                </button>
               </div>
-              <span class="hidden lg:block text-sm font-medium" style="color: var(--navy)">
-                {{ authStore.user?.name || 'Usuario' }}
-              </span>
-              <UIcon name="i-heroicons-chevron-down" class="hidden lg:block w-3.5 h-3.5" style="color: #9aa7b1" />
-            </button>
+            </div>
           </div>
         </header>
 
@@ -206,6 +277,8 @@ import '~/assets/css/sigarh-theme.css'
 useHead({ bodyAttrs: { class: 'sigarh-theme' }, link: [{ rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap' }] })
 
   const authStore = useAuthStore()
+  const { api } = useApi()
+  const router = useRouter()
   const { link, activo, gruposVisibles, rutaMenuActual } = useSigarhNav()
   const route = useRoute()
   const navRef = ref<HTMLElement | null>(null)
@@ -241,6 +314,132 @@ useHead({ bodyAttrs: { class: 'sigarh-theme' }, link: [{ rel: 'stylesheet', href
       .slice(0, 2)
       .map((p: string) => p[0]?.toUpperCase())
       .join('') || 'U'
+  })
+
+  // Notificaciones (campana del header) -- mismo patron que layouts/admin.vue,
+  // pero contra /sigarh/notificaciones (bandeja compartida en la BD FISICA
+  // de este hospital, no la central).
+  interface NotificacionSigarh {
+    id: string
+    titulo: string
+    cuerpo: string | null
+    nivel: string
+    link: string | null
+    is_read: boolean
+    created_at: string
+  }
+  const notifOpen = ref(false)
+  const notifLoading = ref(false)
+  const notifLoadingMas = ref(false)
+  const notifError = ref(false)
+  const notifUnread = ref(0)
+  const notifTotal = ref(0)
+  const notificaciones = ref<NotificacionSigarh[]>([])
+  const NOTIF_PAGE_SIZE = 20
+  let notifTimer: ReturnType<typeof setInterval> | null = null
+
+  const cargarContadorNotif = async () => {
+    try {
+      const r = await api<{ count: number }>('/sigarh/notificaciones/no-leidas')
+      notifUnread.value = r.count
+    } catch {
+      // silencioso: el contador no debe interrumpir el resto del panel
+    }
+  }
+
+  const cargarNotificaciones = async () => {
+    notifLoading.value = true
+    notifError.value = false
+    try {
+      const r = await api<{ items: NotificacionSigarh[]; total: number }>(`/sigarh/notificaciones?limit=${NOTIF_PAGE_SIZE}`)
+      notificaciones.value = r.items
+      notifTotal.value = r.total
+    } catch {
+      notificaciones.value = []
+      notifTotal.value = 0
+      notifError.value = true
+    } finally {
+      notifLoading.value = false
+    }
+  }
+
+  const cargarMasNotificaciones = async () => {
+    notifLoadingMas.value = true
+    try {
+      const r = await api<{ items: NotificacionSigarh[]; total: number }>(
+        `/sigarh/notificaciones?limit=${NOTIF_PAGE_SIZE}&offset=${notificaciones.value.length}`
+      )
+      notificaciones.value.push(...r.items)
+      notifTotal.value = r.total
+    } catch {
+      // si falla, el boton "Cargar mas" simplemente sigue disponible para reintentar
+    } finally {
+      notifLoadingMas.value = false
+    }
+  }
+
+  const toggleNotifs = async () => {
+    notifOpen.value = !notifOpen.value
+    if (notifOpen.value) await cargarNotificaciones()
+  }
+
+  const marcarTodasLeidas = async () => {
+    try {
+      await api('/sigarh/notificaciones/leer-todas', { method: 'PATCH' })
+      notificaciones.value.forEach(n => { n.is_read = true })
+      notifUnread.value = 0
+    } catch {
+      // si falla, se queda como estaba -- no hay nada que revertir
+    }
+  }
+
+  const abrirNotif = async (n: NotificacionSigarh) => {
+    if (!n.is_read) {
+      try {
+        await api(`/sigarh/notificaciones/${n.id}/leer`, { method: 'PATCH' })
+        n.is_read = true
+        notifUnread.value = Math.max(0, notifUnread.value - 1)
+      } catch {
+        // no bloquea la navegacion si falla marcar como leida
+      }
+    }
+    notifOpen.value = false
+    if (n.link) router.push(n.link)
+  }
+
+  const formatRelativo = (fecha: string) => {
+    const minutos = Math.floor((Date.now() - new Date(fecha).getTime()) / 60000)
+    if (minutos < 1) return 'hace un momento'
+    if (minutos < 60) return `hace ${minutos} min`
+    const horas = Math.floor(minutos / 60)
+    if (horas < 24) return `hace ${horas} h`
+    return `hace ${Math.floor(horas / 24)} d`
+  }
+
+  const settingsOpen = ref(false)
+
+  const cerrarMenusSiFuera = (e: MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (notifOpen.value && !target.closest('.notif-wrapper')) notifOpen.value = false
+    if (settingsOpen.value && !target.closest('.settings-wrapper')) settingsOpen.value = false
+  }
+
+  const cerrarMenusConEscape = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return
+    notifOpen.value = false
+    settingsOpen.value = false
+  }
+
+  onMounted(() => {
+    cargarContadorNotif()
+    notifTimer = setInterval(cargarContadorNotif, 45000)
+    document.addEventListener('click', cerrarMenusSiFuera)
+    document.addEventListener('keydown', cerrarMenusConEscape)
+  })
+  onUnmounted(() => {
+    if (notifTimer) clearInterval(notifTimer)
+    document.removeEventListener('click', cerrarMenusSiFuera)
+    document.removeEventListener('keydown', cerrarMenusConEscape)
   })
 
   // Sidebar colapsado
@@ -376,5 +575,169 @@ useHead({ bodyAttrs: { class: 'sigarh-theme' }, link: [{ rel: 'stylesheet', href
   .nav-sub-deep {
     padding-left: 1.75rem;
     font-size: 0.78rem;
+  }
+
+  /* Notificaciones y menu de usuario (mismo patron visual que layouts/admin.vue) */
+  .notif-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 3px;
+    border-radius: 8px;
+    background: var(--alert, #dc2626);
+    color: white;
+    font-size: 0.625rem;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+  }
+  .notif-panel {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    width: 340px;
+    max-width: calc(100vw - 2rem);
+    max-height: 420px;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    z-index: 50;
+  }
+  .notif-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e6ebef;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--navy);
+  }
+  .notif-mark-all {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--teal);
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+  .notif-empty {
+    padding: 2rem 1rem;
+    text-align: center;
+    font-size: 0.8125rem;
+    color: #7a8894;
+  }
+  .notif-list {
+    overflow-y: auto;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .notif-cargar-mas {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    width: 100%;
+    padding: 0.625rem;
+    border: none;
+    border-top: 1px solid #e6ebef;
+    background: none;
+    color: var(--teal);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .notif-cargar-mas:hover {
+    background: #f3f4f6;
+  }
+  .notif-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    border-bottom: 1px solid #e6ebef;
+    transition: background 0.15s ease;
+  }
+  .notif-item:last-child {
+    border-bottom: none;
+  }
+  .notif-item:hover {
+    background: #f3f4f6;
+  }
+  .notif-item.unread {
+    background: #ecfeff;
+  }
+  .notif-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 0.375rem;
+    flex-shrink: 0;
+    background: #9ca3af;
+  }
+  .notif-dot--exito { background: #16a34a; }
+  .notif-dot--error { background: #dc2626; }
+  .notif-dot--alerta { background: #d97706; }
+  .notif-dot--info { background: var(--teal); }
+  .notif-item-body {
+    min-width: 0;
+  }
+  .notif-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--navy);
+    margin: 0;
+  }
+  .notif-desc {
+    font-size: 0.75rem;
+    color: #7a8894;
+    margin: 0.125rem 0 0 0;
+  }
+  .notif-time {
+    font-size: 0.6875rem;
+    color: #9aa7b1;
+    margin: 0.25rem 0 0 0;
+  }
+  .settings-menu {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    width: 180px;
+    display: flex;
+    flex-direction: column;
+    padding: 0.375rem;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    z-index: 50;
+  }
+  .settings-item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 0.625rem;
+    border-radius: 8px;
+    border: none;
+    background: none;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--navy);
+    text-decoration: none;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+  }
+  .settings-item:hover {
+    background: #f3f4f6;
+  }
+  .settings-item--danger {
+    color: #dc2626;
   }
   </style>

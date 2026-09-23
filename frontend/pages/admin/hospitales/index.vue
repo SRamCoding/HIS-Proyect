@@ -273,7 +273,14 @@ const irA = (hospital: Hospital, path: string) => {
   // middleware global (tenant-domain.global.ts) y el fallback por Host en
   // el backend (auth/router.py) ya resuelven el hospital por el propio
   // subdominio, igual que si alguien entrara a mano a esa URL.
-  const tieneDominioReal = hospital.domain && !hospital.domain.toLowerCase().endsWith('.local')
+  // En localhost (desarrollo) el dominio del hospital (ej.
+  // hospital-cerro.techquk.com) no resuelve a esta maquina -- no hay DNS
+  // local para eso, asi que abrir esa URL absoluta intenta cargar el sitio
+  // de PRODUCCION real en vez de este entorno local. Solo se usa el
+  // dominio real cuando el panel admin mismo esta siendo servido desde
+  // fuera de localhost (ahi si aplica el middleware de subdominio).
+  const enLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+  const tieneDominioReal = !enLocalhost && hospital.domain && !hospital.domain.toLowerCase().endsWith('.local')
   if (tieneDominioReal) {
     window.open(`https://${hospital.domain}${destino}`, '_blank')
     return

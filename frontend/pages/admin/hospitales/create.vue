@@ -206,6 +206,60 @@
                 <span>{{ nivelSeleccionado?.name || 'Ninguno seleccionado' }}</span>
               </div>
             </div>
+
+            <div class="form-group">
+              <label class="form-label">Teléfono</label>
+              <div class="input-wrapper">
+                <UIcon name="i-heroicons-phone" class="input-icon" />
+                <input v-model="form.phone" class="input-clinical" placeholder="(01) 234-5678" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Email de contacto</label>
+              <div class="input-wrapper">
+                <UIcon name="i-heroicons-envelope" class="input-icon" />
+                <input v-model="form.email" type="email" class="input-clinical" placeholder="contacto@hospital.pe" />
+              </div>
+            </div>
+
+            <div class="form-group full-width">
+              <label class="form-label">Dirección</label>
+              <div class="input-wrapper">
+                <UIcon name="i-heroicons-map-pin" class="input-icon" />
+                <input v-model="form.address" class="input-clinical" placeholder="Av. Principal 123, Lima" />
+              </div>
+            </div>
+
+            <!-- Estos 3 campos (junto con Email de arriba) alimentan la pagina
+                 publica de aterrizaje del hospital (pages/index.vue) -- antes
+                 solo se podian completar editando el hospital DESPUES de
+                 creado, asi que todo hospital nuevo mostraba el texto
+                 generico de respaldo en su landing hasta que alguien se
+                 acordara de editarlo. -->
+            <div class="form-group full-width">
+              <label class="form-label">Misión</label>
+              <div class="input-wrapper">
+                <UIcon name="i-heroicons-target" class="input-icon" style="top: 0.75rem; transform: none;" />
+                <textarea v-model="form.mission" class="input-clinical" rows="3" placeholder="Describir la misión del hospital..." />
+              </div>
+            </div>
+
+            <div class="form-group full-width">
+              <label class="form-label">Visión</label>
+              <div class="input-wrapper">
+                <UIcon name="i-heroicons-eye" class="input-icon" style="top: 0.75rem; transform: none;" />
+                <textarea v-model="form.vision" class="input-clinical" rows="3" placeholder="Describir la visión del hospital..." />
+              </div>
+            </div>
+
+            <div class="form-group full-width">
+              <label class="form-label">Valores</label>
+              <div class="input-wrapper">
+                <UIcon name="i-heroicons-heart" class="input-icon" style="top: 0.75rem; transform: none;" />
+                <textarea v-model="form.values" class="input-clinical" rows="3" placeholder="Listar los valores del hospital..." />
+              </div>
+            </div>
           </div>
         </section>
 
@@ -700,6 +754,12 @@ const form = reactive({
   name: '',
   subdomain: '',
   ruc: '',
+  phone: '',
+  email: '',
+  address: '',
+  mission: '',
+  vision: '',
+  values: '',
   admin_name: '',
   admin_email: '',
   admin_password: '',
@@ -947,6 +1007,12 @@ const handleCreate = async () => {
         logo_url: form.logo_url,
         domain,
         ruc: form.ruc || null,
+        phone: form.phone || null,
+        email: form.email || null,
+        address: form.address || null,
+        mission: form.mission || null,
+        vision: form.vision || null,
+        values: form.values || null,
         hospital_level: form.nivel_code,
         active_modules: activeModules,
         admin_name: form.admin_name,

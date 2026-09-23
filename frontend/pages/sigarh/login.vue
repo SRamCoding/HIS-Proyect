@@ -17,6 +17,9 @@ const notices = computed(() => {
       text: 'Se cerró la sesión en este navegador, pero el servidor no pudo confirmar la revocación. Si usaste un equipo compartido, cambia tu contraseña por seguridad.',
     }]
   }
+  if (route.query.aviso === 'password_cambiada') {
+    return [{ type: 'success' as const, text: 'Tu contraseña se actualizó correctamente. Vuelve a iniciar sesión con tu nueva contraseña.' }]
+  }
   return []
 })
 

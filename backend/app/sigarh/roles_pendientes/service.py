@@ -47,6 +47,14 @@ async def aprobar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID,
     try:
         await db.flush()
         await sincronizar_programacion_sigarh(db, tenant_id, rol.mes, rol.anio, commit=False)
+        from app.sigarh.notificaciones.service import crear_notificacion_sigarh
+        await crear_notificacion_sigarh(
+            db,
+            f"Rol de turno aprobado: {rol.mes}/{rol.anio}",
+            f"{rol.categoria_personal}/{rol.tipo_rol}, revisado por {revisor}",
+            nivel="exito",
+            link=f"/sigarh/creacion-roles/{rol.categoria_personal}/{rol.tipo_rol}/{rol.id}",
+        )
         await db.commit()
     except Exception:
         await db.rollback()
@@ -66,6 +74,14 @@ async def rechazar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID
     rol.rejection_reason = motivo
     rol.reviewed_by = current_user.get("name") or current_user.get("email")
     rol.reviewed_at = datetime.utcnow()
+    from app.sigarh.notificaciones.service import crear_notificacion_sigarh
+    await crear_notificacion_sigarh(
+        db,
+        f"Rol de turno rechazado: {rol.mes}/{rol.anio}",
+        f"{rol.categoria_personal}/{rol.tipo_rol} — motivo: {motivo}",
+        nivel="alerta",
+        link=f"/sigarh/creacion-roles/{rol.categoria_personal}/{rol.tipo_rol}/{rol.id}",
+    )
     await db.commit()
     return await serializar_uno(db, tenant_id, await obtener_rol_orm(db, rol_id, tenant_id))
 
@@ -196,6 +212,14 @@ async def aprobar_solicitud(db: AsyncSession, tenant_id: uuid.UUID, sol_id: uuid
     try:
         await db.flush()
         await sincronizar_programacion_sigarh(db, tenant_id, rol.mes, rol.anio, commit=False)
+        from app.sigarh.notificaciones.service import crear_notificacion_sigarh
+        await crear_notificacion_sigarh(
+            db,
+            f"Solicitud de modificación aprobada: {rol.mes}/{rol.anio}",
+            f"{rol.categoria_personal}/{rol.tipo_rol}, revisado por {revisor}",
+            nivel="exito",
+            link=f"/sigarh/roles-pendientes/solicitudes/{sol.id}",
+        )
         await db.commit()
     except Exception:
         await db.rollback()
@@ -216,5 +240,13 @@ async def rechazar_solicitud(db: AsyncSession, tenant_id: uuid.UUID, sol_id: uui
     sol.motivo = f"{sol.motivo}\n\n[Rechazo] {motivo}" if motivo else sol.motivo
     sol.reviewed_by = current_user.get("name") or current_user.get("email")
     sol.reviewed_at = datetime.utcnow()
+    from app.sigarh.notificaciones.service import crear_notificacion_sigarh
+    await crear_notificacion_sigarh(
+        db,
+        "Solicitud de modificación rechazada",
+        f"{rol.categoria_personal}/{rol.tipo_rol} — motivo: {motivo}" if rol else motivo,
+        nivel="alerta",
+        link=f"/sigarh/roles-pendientes/solicitudes/{sol.id}",
+    )
     await db.commit()
     return await _serializa_solicitud(db, tenant_id, await _sol_orm(db, tenant_id, sol_id))

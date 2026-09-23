@@ -603,6 +603,14 @@ async def enviar_rol(db: AsyncSession, tenant_id: uuid.UUID, rol_id: uuid.UUID) 
     rol.status = "pending"
     rol.submitted_at = datetime.utcnow()
     rol.rejection_reason = None
+    from app.sigarh.notificaciones.service import crear_notificacion_sigarh
+    await crear_notificacion_sigarh(
+        db,
+        f"Rol de turno enviado a revisión: {rol.mes}/{rol.anio}",
+        f"{rol.categoria_personal}/{rol.tipo_rol}, enviado por {rol.created_by or 'un usuario'}",
+        nivel="info",
+        link=f"/sigarh/roles-pendientes/{rol.id}",
+    )
     await db.commit()
     return await serializar_uno(db, tenant_id, await obtener_rol_orm(db, rol_id, tenant_id))
 
