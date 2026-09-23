@@ -8,6 +8,7 @@ const props = withDefaults(defineProps<{
   email: string
   password: string
   loading?: boolean
+  disabled?: boolean
   error?: string
   title?: string
   intro?: string
@@ -17,6 +18,7 @@ const props = withDefaults(defineProps<{
   variant?: 'default' | 'sigarh' | 'hospital'
 }>(), {
   loading: false,
+  disabled: false,
   error: '',
   title: 'Iniciar sesión',
   intro: 'Ingresa tus credenciales para acceder al sistema.',
@@ -38,7 +40,7 @@ const soporteEsMailto = computed(() => props.soporteTo.startsWith('mailto:'))
 </script>
 
 <template>
-  <form class="login-card" :class="{ 'login-card--sigarh': variant !== 'default', 'login-card--hospital': variant === 'hospital' }" :aria-busy="loading" @submit.prevent="!loading && emit('submit')">
+  <form class="login-card" :class="{ 'login-card--sigarh': variant !== 'default', 'login-card--hospital': variant === 'hospital' }" :aria-busy="loading" @submit.prevent="!loading && !disabled && emit('submit')">
     <h2>{{ title }}</h2>
     <p class="intro">{{ intro }}</p>
 
@@ -102,7 +104,7 @@ const soporteEsMailto = computed(() => props.soporteTo.startsWith('mailto:'))
       </p>
     </Transition>
 
-    <button class="submit" type="submit" :disabled="loading">
+    <button class="submit" type="submit" :disabled="loading || disabled">
       <UIcon aria-hidden="true" v-if="loading" name="i-heroicons-arrow-path" class="w-4 h-4 spin" />
       <span>{{ loading ? 'Ingresando…' : variant === 'sigarh' ? 'Ingresar a SIGARH' : variant === 'hospital' ? 'Ingresar al sistema' : 'Ingresar' }}</span>
       <UIcon aria-hidden="true" v-if="!loading" name="i-heroicons-arrow-right" class="w-4 h-4" />

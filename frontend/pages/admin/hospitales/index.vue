@@ -257,11 +257,22 @@ const sinBaseFisica = (hospital: Hospital) =>
   hospital.provisioning_status === 'pendiente' || hospital.provisioning_status === 'error'
 
 const irA = (hospital: Hospital, path: string) => {
-  const baseUrl = window.location.origin
-  if (path === '') window.open(`${baseUrl}?tenant=${hospital.id}`, '_blank')
-  else if (path === '/sigarh') window.open(`${baseUrl}/sigarh/login?tenant=${hospital.id}`, '_blank')
-  else if (path === '/app') window.open(`${baseUrl}/app/login?tenant=${hospital.id}`, '_blank')
-  else window.open(`${baseUrl}${path}?tenant=${hospital.id}`, '_blank')
+  const destino = path === '/sigarh' ? '/sigarh/login' : path === '/app' ? '/app/login' : path
+  // ".local" es el TLD reservado (RFC 6762) que usan los hospitales sin
+  // dominio publico real todavia (aprovisionados como placeholder, ej.
+  // hospital-lima.erp.local) -- nunca resuelve fuera de esta red, asi que
+  // para esos casos la unica forma de entrar sigue siendo por query en el
+  // dominio central. Un hospital con dominio real (ej.
+  // hospital-reque.techquk.com) se abre directo ahi, SIN "?tenant=": el
+  // middleware global (tenant-domain.global.ts) y el fallback por Host en
+  // el backend (auth/router.py) ya resuelven el hospital por el propio
+  // subdominio, igual que si alguien entrara a mano a esa URL.
+  const tieneDominioReal = hospital.domain && !hospital.domain.toLowerCase().endsWith('.local')
+  if (tieneDominioReal) {
+    window.open(`https://${hospital.domain}${destino}`, '_blank')
+    return
+  }
+  window.open(`${window.location.origin}${destino}?tenant=${hospital.id}`, '_blank')
 }
 
 const hayPendientes = computed(() => hospitales.value.some(h => h.provisioning_status === 'pendiente'))

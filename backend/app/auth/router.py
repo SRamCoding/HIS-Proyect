@@ -119,6 +119,23 @@ MODULOS_SERVICIO_PUBLICO = {
 }
 
 
+@router.get("/resolver-dominio", summary="Resuelve si un dominio pertenece a un hospital registrado")
+async def resolver_dominio(domain: str, db: AsyncSession = Depends(get_db)):
+    """Sin autenticacion, a proposito: se llama ANTES de saber que hospital
+    es, desde el middleware global del frontend (frontend/middleware/
+    tenant-domain.global.ts) apenas se carga "/" o "/login" -- resuelve si
+    el Host actual (ej. hospital-reque.techquk.com) es el dominio propio de
+    un hospital, para redirigir a su login/landing en vez de mostrar
+    siempre el portal admin central (que es lo unico que Nuxt sirve por
+    defecto en esas rutas, porque enruta por PATH de archivo, no por
+    dominio). Solo expone el id -- nada del hospital todavia, eso lo trae
+    /tenant-publico/{id} despues, ya con el id resuelto."""
+    from app.tenants.hospitales.service import get_tenant_by_domain
+
+    tenant = await get_tenant_by_domain(db, domain)
+    return {"tenant_id": str(tenant.id) if tenant and tenant.is_active else None}
+
+
 @router.get("/tenant-publico/{tenant_id}", summary="Datos públicos de un hospital para su landing")
 async def tenant_publico(tenant_id: uuid_lib.UUID, db: AsyncSession = Depends(get_db)):
     """Sin autenticacion, a proposito: la landing de un hospital
@@ -160,6 +177,7 @@ async def tenant_publico(tenant_id: uuid_lib.UUID, db: AsyncSession = Depends(ge
     return {
         "id": str(tenant.id),
         "name": tenant.name,
+        "logo_url": tenant.logo_url,
         "is_active": tenant.is_active,
         "hospital_level": tenant.hospital_level,
         "mission": tenant.mission,

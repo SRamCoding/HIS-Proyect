@@ -7,7 +7,8 @@ const authStore = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
-const tenantId = computed(() => (route.query.tenant as string) || '')
+const { tenantId, hospital, pending, brandingError } = useHospitalBranding()
+const loginDisabled = computed(() => pending.value || !!brandingError.value || hospital.value?.is_active === false)
 
 const notices = computed(() => {
   if (route.query.aviso === 'logout_sin_confirmar') {
@@ -25,6 +26,7 @@ const loading = ref(false)
 const error = ref('')
 
 const handleLogin = async () => {
+  if (loading.value || loginDisabled.value) return
   loading.value = true
   error.value = ''
   try {
@@ -67,9 +69,10 @@ const handleLogin = async () => {
     v-model:email="email"
     v-model:password="password"
     :loading="loading"
+    :disabled="loginDisabled"
     :error="error"
     :notices="notices"
-    recuperar-to="/sigarh/recuperar"
+    :recuperar-to="tenantId ? `/sigarh/recuperar?tenant=${tenantId}` : '/sigarh/recuperar'"
     @submit="handleLogin"
   />
 </template>
