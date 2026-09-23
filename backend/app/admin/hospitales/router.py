@@ -137,6 +137,7 @@ async def obtener_hospital(
     return {
         "id": str(tenant.id),
         "name": tenant.name,
+        "logo_url": tenant.logo_url,
         "domain": tenant.domain,
         "hospital_level": tenant.hospital_level,
         "ruc": tenant.ruc,

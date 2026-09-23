@@ -146,6 +146,7 @@
             </div>
           </div>
 
+          <HospitalLogoInput v-model="form.logo_url" :disabled="creating" @busy="logoLoading = $event" />
           <div class="form-grid">
             <div class="form-group full-width">
               <label class="form-label">Nombre del Hospital <span class="required">*</span></label>
@@ -468,7 +469,7 @@
           </button>
 
           <div v-else class="action-group">
-            <button class="btn-primary" :disabled="creating" @click="handleCreate">
+            <button class="btn-primary" :disabled="creating || logoLoading" @click="handleCreate">
               <UIcon v-if="creating" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
               <UIcon v-else name="i-heroicons-check" class="w-4 h-4" />
               {{ creating ? 'Creando...' : 'Crear Hospital' }}
@@ -676,6 +677,7 @@ const loadingNiveles = ref(true)
 const loadingModulos = ref(false)
 const modulosNivel = ref<{ app: string[]; sigarh: string[] } | null>(null)
 const creating = ref(false)
+const logoLoading = ref(false)
 const createError = ref('')
 const hospitalesRecientes = ref<HospitalResumen[]>([])
 
@@ -693,6 +695,7 @@ const errors = reactive({
 })
 
 const form = reactive({
+  logo_url: null as string | null,
   nivel_code: '',
   name: '',
   subdomain: '',
@@ -922,6 +925,7 @@ const seleccionarNivel = async (nivel: Nivel) => {
 }
 
 const handleCreate = async () => {
+  if (creating.value || logoLoading.value) return
   if (!validateStep(2)) {
     currentStep.value = 2
     return
@@ -940,6 +944,7 @@ const handleCreate = async () => {
       method: 'POST',
       body: {
         name: form.name,
+        logo_url: form.logo_url,
         domain,
         ruc: form.ruc || null,
         hospital_level: form.nivel_code,

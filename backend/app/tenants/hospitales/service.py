@@ -72,6 +72,7 @@ async def crear_tenant_rapido(db: AsyncSession, data: TenantCreate) -> Tenant:
         name=data.name, domain=data.domain,
         schema_name=generate_schema_name(data.domain), database_name=database_name,
         ruc=data.ruc, address=data.address, phone=data.phone, email=data.email,
+        logo_url=data.logo_url,
         hospital_level=data.hospital_level, mission=data.mission, vision=data.vision,
         values=data.values, schedule=data.schedule, social_media=data.social_media,
         provisioning_status="pendiente",
