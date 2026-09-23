@@ -5,6 +5,16 @@ Documentan el contrato que consume el frontend (pages/sigarh/index.vue).
 from pydantic import BaseModel
 
 
+class AccesoDashboard(BaseModel):
+    """Que secciones del payload tienen datos reales segun el perfil de
+    quien pidio el dashboard -- antes cualquier cuenta SIGARH veia KPIs de
+    RRHH/movimientos/camas del hospital completo sin importar que modulos
+    tuviera su perfil realmente habilitados."""
+    rrhh: bool
+    movimientos: bool
+    camas: bool
+
+
 class KpisResumen(BaseModel):
     total_empleados: int
     empleados_activos: int
@@ -88,6 +98,7 @@ class UltimaLicencia(BaseModel):
 
 class DashboardResponse(BaseModel):
     fecha: str
+    acceso: AccesoDashboard
     kpis: KpisResumen
     movimientos_mes: ConteoMovimientos
     pendientes: ConteoMovimientos

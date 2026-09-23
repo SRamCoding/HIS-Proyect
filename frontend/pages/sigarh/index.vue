@@ -12,6 +12,7 @@ interface UltimaVac { id: string; empleado_nombre: string; tipo: string; fecha_i
 interface UltimaLic { id: string; empleado_nombre: string; fecha_tramite: string; fecha_inicio: string; fecha_fin: string; estado: string }
 interface Dashboard {
   fecha: string
+  acceso: { rrhh: boolean; movimientos: boolean; camas: boolean }
   kpis: {
     total_empleados: number; empleados_activos: number; empleados_inactivos: number
     asistencia_hoy: number; ausentes_hoy: number; porcentaje_asistencia: number
@@ -172,7 +173,7 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
           <p class="page-subtitle" style="text-transform: capitalize">{{ hoyLabel }}</p>
         </div>
       </div>
-      <div v-if="data && data.kpis.solicitudes_pendientes > 0" class="dash-alert">
+      <div v-if="data && data.acceso.movimientos && data.kpis.solicitudes_pendientes > 0" class="dash-alert">
         <UIcon name="i-heroicons-bell-alert" class="w-4 h-4" />
         {{ data.kpis.solicitudes_pendientes }} solicitudes pendientes
       </div>
@@ -191,7 +192,7 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
     <template v-else-if="data">
       <!-- KPIs -->
       <div class="kpi-grid">
-        <div class="kpi-card" style="border-left-color: var(--navy)">
+        <div v-if="data.acceso.rrhh" class="kpi-card" style="border-left-color: var(--navy)">
           <div>
             <span class="kpi-label">Total Empleados</span>
             <span class="kpi-value">{{ data.kpis.total_empleados }}</span>
@@ -200,7 +201,7 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
           <div class="kpi-icon" style="background: var(--navy-soft)"><UIcon name="i-heroicons-users" class="w-5 h-5" style="color: var(--navy)" /></div>
         </div>
 
-        <div class="kpi-card" style="border-left-color: var(--green)">
+        <div v-if="data.acceso.rrhh" class="kpi-card" style="border-left-color: var(--green)">
           <div>
             <span class="kpi-label" title="Incluye presentes, tardanzas y ausencias justificadas">Asistencia Hoy</span>
             <span class="kpi-value">{{ data.kpis.asistencia_hoy }}</span>
@@ -213,7 +214,7 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
           <div class="kpi-icon" style="background: var(--green-soft)"><UIcon name="i-heroicons-clipboard-document-check" class="w-5 h-5" style="color: var(--green)" /></div>
         </div>
 
-        <div class="kpi-card" style="border-left-color: var(--amber)">
+        <div v-if="data.acceso.movimientos" class="kpi-card" style="border-left-color: var(--amber)">
           <div>
             <span class="kpi-label">Solicitudes Pendientes</span>
             <span class="kpi-value">{{ data.kpis.solicitudes_pendientes }}</span>
@@ -227,7 +228,7 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
           <div class="kpi-icon" style="background: var(--amber-soft)"><UIcon name="i-heroicons-clock" class="w-5 h-5" style="color: var(--amber)" /></div>
         </div>
 
-        <div class="kpi-card" style="border-left-color: var(--purple)">
+        <div v-if="data.acceso.rrhh" class="kpi-card" style="border-left-color: var(--purple)">
           <div>
             <span class="kpi-label">Justificaciones Pend.</span>
             <span class="kpi-value">{{ data.kpis.justificaciones_pendientes }}</span>
@@ -237,9 +238,14 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
         </div>
       </div>
 
+      <div v-if="!data.acceso.rrhh && !data.acceso.movimientos && !data.acceso.camas" class="dash-error" style="background: var(--mist); color: var(--ink-soft)">
+        <UIcon name="i-heroicons-information-circle" class="w-4 h-4 shrink-0" />
+        Tu perfil no tiene módulos habilitados para mostrar aquí. Pide a un administrador que revise tus permisos.
+      </div>
+
       <!-- Tendencias + estado -->
-      <div class="grid-2-1">
-        <div class="card">
+      <div v-if="data.acceso.movimientos || data.acceso.rrhh" class="grid-2-1">
+        <div v-if="data.acceso.movimientos" class="card">
           <div class="card-head">
             <h3 class="card-title">Tendencia de solicitudes</h3>
             <span class="card-badge">Ultimos 6 meses</span>
@@ -248,7 +254,7 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
             <ApexChart type="area" height="260" :options="areaOptions" :series="tendenciaSeries" />
           </ClientOnly>
         </div>
-        <div class="card">
+        <div v-if="data.acceso.rrhh" class="card">
           <div class="card-head"><h3 class="card-title">Empleados por estado</h3></div>
           <ClientOnly>
             <ApexChart type="donut" height="240" :options="estadoOptions" :series="estadoSeries" />
@@ -257,8 +263,8 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
       </div>
 
       <!-- Asistencia semanal + movimientos del mes -->
-      <div class="grid-2">
-        <div class="card">
+      <div v-if="data.acceso.rrhh || data.acceso.movimientos" class="grid-2">
+        <div v-if="data.acceso.rrhh" class="card">
           <div class="card-head">
             <h3 class="card-title">Asistencia semanal</h3>
             <span class="card-badge">Ultimas 5 semanas</span>
@@ -278,7 +284,7 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
           </div>
         </div>
 
-        <div class="card">
+        <div v-if="data.acceso.movimientos" class="card">
           <div class="card-head"><h3 class="card-title">Movimientos del mes</h3></div>
           <div class="mov-grid">
             <NuxtLink :to="`/sigarh/movimientos/vacaciones?tenant=${tenant}`" class="mov-item">
@@ -302,22 +308,22 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
       </div>
 
       <!-- Altas por mes + genero + camas -->
-      <div class="grid-3">
-        <div class="card">
+      <div v-if="data.acceso.rrhh || data.acceso.camas" class="grid-3">
+        <div v-if="data.acceso.rrhh" class="card">
           <div class="card-head"><h3 class="card-title">Altas de empleados</h3><span class="card-badge">Por mes</span></div>
           <ClientOnly>
             <ApexChart type="bar" height="200" :options="altasOptions" :series="altasSeries" />
           </ClientOnly>
         </div>
 
-        <div class="card">
+        <div v-if="data.acceso.rrhh" class="card">
           <div class="card-head"><h3 class="card-title">Distribucion por genero</h3></div>
           <ClientOnly>
             <ApexChart type="donut" height="220" :options="generoOptions" :series="generoSeries" />
           </ClientOnly>
         </div>
 
-        <div class="card">
+        <div v-if="data.acceso.camas" class="card">
           <div class="card-head">
             <h3 class="card-title">Estado de camas</h3>
             <NuxtLink :to="`/sigarh/infraestructura-hosp/camas?tenant=${tenant}`" class="card-link">Ver todas</NuxtLink>
@@ -346,7 +352,7 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
       </div>
 
       <!-- Ultimas solicitudes -->
-      <div class="grid-2">
+      <div v-if="data.acceso.movimientos" class="grid-2">
         <div class="card">
           <div class="card-head">
             <h3 class="card-title">Ultimas vacaciones</h3>

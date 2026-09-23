@@ -33,4 +33,4 @@ async def dashboard(
     current_user: dict = Depends(get_current_user),
 ):
     """Escritorio SIGARH: KPIs, series de tendencia y actividad reciente del tenant."""
-    return await get_dashboard(db, get_tenant_id(current_user, request))
+    return await get_dashboard(db, get_tenant_id(current_user, request), current_user.get("active_modules"))
