@@ -2,8 +2,9 @@ import uuid
 from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, cast, String
 from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 
 from app.hospital.admision.models import Patient, ClinicalRecord, ClinicalRecordMovement, ListaEspera, Anuncio, Mensaje
 from app.hospital.admision.schemas import PatientCreate, PatientUpdate, ListaEsperaCreate, ListaEsperaUpdate, AnuncioCreate, AnuncioUpdate, MensajeCreate
@@ -14,6 +15,7 @@ from app.hospital.emergencia.models import AtencionEmergencia, AdmisionEmergenci
 from app.sigarh.mantenimiento.models import Servicio
 from app.sigarh.rrhh.models import Especialidad
 from app.auth.models import User
+from app.hospital.admision.numeracion import numero_historia, numero_dni
 
 
 def actor(user):
@@ -24,14 +26,17 @@ def columns(obj):
     return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
 
 
-def generate_record_number(sequence: int) -> str:
-    year = datetime.utcnow().year
-    return f"HC-{year}-{sequence:06d}"
-
-
-async def get_next_sequence(db: AsyncSession) -> int:
-    count = await db.scalar(select(func.count(ClinicalRecord.id)))
-    return (count or 0) + 1
+async def _persistir_identidad(db, *, commit=False):
+    try:
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        if getattr(exc.orig, "sqlstate", None) == "23505":
+            raise HTTPException(409, "El documento o número de HC ya está registrado") from exc
+        raise
 
 
 async def create_patient(db: AsyncSession, tenant_id: uuid.UUID, data: PatientCreate) -> Patient:
@@ -70,16 +75,15 @@ async def create_patient(db: AsyncSession, tenant_id: uuid.UUID, data: PatientCr
         insurance_number=data.insurance_number,
     )
     db.add(patient)
-    await db.flush()
+    await _persistir_identidad(db)
 
-    sequence = await get_next_sequence(db)
     record = ClinicalRecord(
         patient_id=patient.id,
-        record_number=generate_record_number(sequence),
+        record_number=numero_historia(patient.document_type, patient.dni, patient.is_nn),
         location="admision",
     )
     db.add(record)
-    await db.commit()
+    await _persistir_identidad(db, commit=True)
     return await get_patient_by_id(db, tenant_id, patient.id)
 
 
@@ -117,6 +121,7 @@ async def search_patients(db: AsyncSession, tenant_id: uuid.UUID, query: str | N
                 Patient.last_name_paterno.ilike(f"%{query}%"),
                 Patient.last_name_materno.ilike(f"%{query}%"),
                 ClinicalRecord.record_number.ilike(f"%{query}%"),
+                cast(ClinicalRecord.previous_record_numbers, String).icontains(query, autoescape=True),
             )
         )
     total = await db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
@@ -128,14 +133,31 @@ async def search_patients(db: AsyncSession, tenant_id: uuid.UUID, query: str | N
 
 
 async def update_patient(db: AsyncSession, tenant_id: uuid.UUID, patient_id: uuid.UUID, data: PatientUpdate) -> Patient | None:
+    # Serializar correcciones de identidad para no perder números anteriores.
+    await db.execute(select(Patient.id).where(Patient.id == patient_id,
+        Patient.tenant_id == tenant_id).with_for_update())
     patient = await get_patient_by_id(db, tenant_id, patient_id)
     if not patient:
         return None
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(patient, field, value)
-    await db.commit()
+    if patient.clinical_record:
+        record = patient.clinical_record
+        new_number = numero_dni(patient)
+        if not new_number and record.record_number.isdigit():
+            new_number = numero_historia(None, None)
+        if new_number and new_number != record.record_number:
+            with db.no_autoflush:
+                existing = await db.scalar(select(ClinicalRecord.id).where(
+                    ClinicalRecord.record_number == new_number, ClinicalRecord.id != record.id))
+            if existing:
+                raise HTTPException(409, "El número de HC ya pertenece a otro paciente")
+            record.previous_record_numbers = list(dict.fromkeys([
+                *(record.previous_record_numbers or []), record.record_number]))
+            record.record_number = new_number
+    await _persistir_identidad(db, commit=True)
     await db.refresh(patient)
-    return patient
+    return await get_patient_by_id(db, tenant_id, patient_id)
 
 
 async def move_clinical_record(
