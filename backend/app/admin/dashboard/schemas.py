@@ -1,6 +1,13 @@
 from pydantic import BaseModel
 
 
+class SaludSistema(BaseModel):
+    redis_ok: bool
+    celery_ok: bool
+    celery_workers_activos: int
+    verificado_en: str
+
+
 class DashboardStats(BaseModel):
     total_hospitals: int
     active_hospitals: int

@@ -584,6 +584,7 @@ async def reintentar_fallback_pendiente(limite: int = 200) -> dict:
 
     reintentados = 0
     recuperados = 0
+    errores = 0
     for _ in range(limite):
         async with AsyncSessionLocal() as db:
             fila = (await db.execute(
@@ -595,11 +596,17 @@ async def reintentar_fallback_pendiente(limite: int = 200) -> dict:
             resultado = await _recuperar_fila_fallback_bloqueada(db, fila)
         if resultado in ("recuperado", "ya_estaba"):
             recuperados += 1
+        else:
+            # "sigue_fallando": la fila queda en audit_log_fallback para el
+            # proximo reintento, pero hay que contarla aca -- si no, un
+            # evento con un error real (no una repeticion) queda invisible
+            # entre "reintentados" y "recuperados" sin ninguna cuenta propia.
+            errores += 1
 
     async with AsyncSessionLocal() as db:
         pendientes = await db.scalar(select(func.count()).select_from(AuditLogFallback))
 
     return {
-        "reintentados": reintentados, "recuperados": recuperados, "pendientes": pendientes,
-        "migrados_de_emergencia": migrados_de_emergencia,
+        "reintentados": reintentados, "recuperados": recuperados, "errores": errores,
+        "pendientes": pendientes, "migrados_de_emergencia": migrados_de_emergencia,
     }

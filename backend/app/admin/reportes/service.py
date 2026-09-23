@@ -111,11 +111,16 @@ async def get_monthly_report(
         1 if mes_solicitado.month == 12 else mes_solicitado.month + 1,
     )
 
-    # Hospitales activos (con sus modulos precargados)
+    # Se consultan TODOS los hospitales con base fisica propia (activos e
+    # inactivos), no solo los activos: pacientes_nuevos_total se calcula
+    # sobre este universo completo para que el numero de un mes pasado no
+    # cambie solo porque alguien desactivo un hospital despues (ver
+    # pacientes_nuevos_total mas abajo). Lo que SI sigue siendo estado
+    # ACTUAL (cobertura de modulos, total_hospitales_activos) se filtra por
+    # separado a partir de esta misma lista.
     tenants_query = (
         select(Tenant)
         .options(selectinload(Tenant.modules))
-        .where(Tenant.is_active == True)
         .order_by(Tenant.name)
     )
     if tenant_id:
@@ -135,10 +140,16 @@ async def get_monthly_report(
     hospitales_summary = []
     module_counter: Counter = Counter()
     hospitales_no_disponibles = 0
+    hospitales_activos = 0
     for t, (pacientes_nuevos, usuarios_count, disponible) in zip(tenants, resultados):
         active_codes = t.active_module_codes
-        for code in active_codes:
-            module_counter[code] += 1
+        if t.is_active:
+            hospitales_activos += 1
+            # La cobertura de modulos SI sigue siendo estado actual: un
+            # hospital inactivo no aporta a "cuantos hospitales activos
+            # tienen tal modulo hoy".
+            for code in active_codes:
+                module_counter[code] += 1
         if not disponible:
             hospitales_no_disponibles += 1
         hospitales_summary.append({
@@ -155,10 +166,11 @@ async def get_monthly_report(
 
     pacientes_nuevos_total = sum(h["pacientes_nuevos"] for h in hospitales_summary if h["disponible"])
 
-    # Cobertura de modulos (top 10 mas adoptados)
+    # Cobertura de modulos (top 10 mas adoptados) -- porcentaje sobre
+    # hospitales ACTIVOS unicamente, coherente con module_counter arriba.
     modules_catalog = await get_all_modules(db)
     name_by_code = {m.code: m.name for m in modules_catalog}
-    total_para_pct = len(hospitales_summary) or 1
+    total_para_pct = hospitales_activos or 1
     coverage = [
         {
             "code": code,
@@ -208,7 +220,7 @@ async def get_monthly_report(
 
     return {
         "month": month,
-        "total_hospitales_activos": len(hospitales_summary),
+        "total_hospitales_activos": hospitales_activos,
         "pacientes_nuevos_total": pacientes_nuevos_total,
         "modules_coverage": coverage,
         "hospitales": hospitales_summary,
@@ -217,17 +229,20 @@ async def get_monthly_report(
         "hospitales_consultados": len(tenants) - hospitales_no_disponibles,
         "hospitales_totales": len(tenants),
         "es_parcial": hospitales_no_disponibles > 0,
-        # El resto de metricas (hospitales activos, usuarios, modulos) es
+        # "Hospitales Activos" y la cobertura de modulos siguen siendo
         # estado ACTUAL del sistema, no una foto historica de `month` -- ver
-        # nota en el frontend (mensuales.vue) que lo aclara en pantalla.
+        # nota en el frontend (mensuales.vue) que lo aclara en pantalla. No
+        # se decidio construir un cierre historico reproducible (exigiria
+        # guardar snapshots mensuales, ver discusion en el codigo antes de
+        # este cambio): se opto por dejarlo como reporte de estado actual y
+        # corregir en cambio pacientes_nuevos_total (ver abajo).
         "es_estado_actual": True,
-        # pacientes_nuevos_total solo suma hospitales ACTUALMENTE activos
-        # (`tenants_query` arriba filtra Tenant.is_active == True): un
-        # hospital que tuvo pacientes reales en `month` pero fue desactivado
-        # DESPUES ya no aparece, y el total de un mes pasado puede cambiar
-        # segun el estado de hoy. Se decidio no ampliar el alcance (eso
-        # exigiria decidir si un hospital inactivo entra a "cobertura de
-        # modulos" tambien) y en cambio dejarlo explicito aca para que el
-        # frontend lo aclare en pantalla.
-        "pacientes_solo_hospitales_activos": True,
+        # pacientes_nuevos_total ahora suma TODOS los hospitales con base
+        # fisica propia, activos e inactivos (antes solo activos): un
+        # hospital que tuvo pacientes reales en `month` y se desactivo
+        # DESPUES seguia contando en ese momento, asi que ocultarlo hacia
+        # que el total de un mes pasado cambiara segun el estado de hoy.
+        # Se deja el campo en False (en vez de borrarlo) para no romper al
+        # frontend que ya lo consume condicionalmente.
+        "pacientes_solo_hospitales_activos": False,
     }

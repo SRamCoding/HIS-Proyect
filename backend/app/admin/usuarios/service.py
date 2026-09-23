@@ -90,6 +90,7 @@ async def create_user(db: AsyncSession, data, creador: dict) -> User:
         panel=data.panel,
         tenant_id=data.tenant_id,
         is_active=data.is_active,
+        admin_solo_lectura=data.admin_solo_lectura,
     )
     db.add(user)
     await db.commit()
@@ -270,6 +271,7 @@ def _serializar_user(user: User, tenant_id: str | None) -> dict:
         "tenant_id": tenant_id, "account_type": "user",
         "empleado_id": str(user.empleado_id) if user.empleado_id else None,
         "perfil_hospital_id": str(user.perfil_hospital_id) if user.perfil_hospital_id else None,
+        "admin_solo_lectura": user.admin_solo_lectura,
     }
 
 
@@ -316,6 +318,20 @@ async def update_user(db: AsyncSession, user_id: uuid.UUID, data, actor: dict, t
                 raise HTTPException(400, detail="El hospital indicado no existe")
 
         panel_final = cambios.get("panel", user.panel)
+        # create_user() exige un hospital activo con BD propia cuando
+        # panel != "admin" -- este UPDATE no tenia el equivalente para una
+        # cuenta que hoy vive en la BD CENTRAL (es_tenant False, tipicamente
+        # una cuenta admin) y se reconvierte a "app": el chequeo de arriba
+        # ("no se puede trasladar de hospital") solo corre si `es_tenant` ya
+        # era True, asi que este caso pasaba sin validar nada y dejaba una
+        # fila panel='app', tenant_id=NULL -- huerfana, imposible de usar
+        # (el login de panel app exige un hospital resuelto).
+        if not es_tenant and panel_final != "admin" and panel_final != user.panel:
+            raise HTTPException(
+                400,
+                detail="Una cuenta central no puede convertirse directamente a panel "
+                       f"'{panel_final}' -- créela desde el hospital correspondiente",
+            )
         await validar_empleado_usuario(work_db, None, cambios.get("empleado_id", user.empleado_id), panel_final)
         role_final = cambios.get("role", user.role)
         from app.auth.hospital_access import validar_perfil
@@ -335,6 +351,32 @@ async def update_user(db: AsyncSession, user_id: uuid.UUID, data, actor: dict, t
                 raise HTTPException(400, detail="La cuenta administradora fundacional no se puede desactivar")
             if panel_final != "admin" or role_final != "administrador":
                 raise HTTPException(400, detail="La cuenta administradora fundacional no puede cambiar de panel ni de rol")
+            if cambios.get("admin_solo_lectura"):
+                raise HTTPException(400, detail="La cuenta administradora fundacional no puede volverse de solo lectura")
+
+        # admin_solo_lectura solo tiene sentido en el ambito admin -- si el
+        # ambito se queda sin NINGUNA cuenta admin activa con permiso de
+        # escritura, nadie podria deshacer el cambio despues (todo endpoint
+        # de escritura exige get_admin_user_escritura). Mismo criterio de
+        # bloqueo de "ultimo administrador" de arriba, pero para "ultimo
+        # administrador CON escritura" en vez de "ultimo administrador
+        # activo".
+        solo_lectura_final = cambios.get("admin_solo_lectura", getattr(user, "admin_solo_lectura", False))
+        if (
+            panel_final == "admin" and role_final == "administrador" and activo_final
+            and solo_lectura_final and not getattr(user, "admin_solo_lectura", False)
+        ):
+            otros_escritores = (await work_db.execute(
+                select(User.id).where(
+                    User.panel == "admin", User.role == "administrador", User.is_active.is_(True),
+                    User.admin_solo_lectura.is_(False), User.id != user.id,
+                ).with_for_update()
+            )).scalars().all()
+            if not otros_escritores:
+                raise HTTPException(
+                    400,
+                    "No puedes volver de solo lectura al último administrador con permiso de escritura",
+                )
         # Cambiar de panel tambien saca a la cuenta de su ambito actual, aunque
         # el rol siga diciendo "administrador" -- sin este chequeo, mover el
         # unico admin de un hospital a panel "app" esquivaba la proteccion

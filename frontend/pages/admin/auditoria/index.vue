@@ -25,11 +25,19 @@
       </div>
     </div>
 
-    <div v-if="fallbackPendientes > 0" class="form-card" style="padding: 0.875rem 1.25rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem; background: var(--alert-soft); border-color: var(--alert);">
+    <div v-if="fallbackPendientes > 0 || fallbackPendientesEmergencia > 0" class="form-card" style="padding: 0.875rem 1.25rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem; background: var(--alert-soft); border-color: var(--alert);">
       <UIcon name="i-heroicons-exclamation-triangle" class="w-5 h-5 shrink-0" style="color: var(--alert)" />
-      <p style="color: var(--alert); font-size: 0.875rem; margin: 0; flex: 1">
-        {{ fallbackPendientes }} evento{{ fallbackPendientes === 1 ? '' : 's' }} de auditoría no se pudo{{ fallbackPendientes === 1 ? '' : 'ieron' }} registrar y espera{{ fallbackPendientes === 1 ? '' : 'n' }} reintento.
-      </p>
+      <div style="flex: 1">
+        <p v-if="fallbackPendientes > 0" style="color: var(--alert); font-size: 0.875rem; margin: 0">
+          {{ fallbackPendientes }} evento{{ fallbackPendientes === 1 ? '' : 's' }} de auditoría no se pudo{{ fallbackPendientes === 1 ? '' : 'ieron' }} registrar y espera{{ fallbackPendientes === 1 ? '' : 'n' }} reintento.
+        </p>
+        <p v-if="fallbackPendientesEmergencia > 0" style="color: var(--alert); font-size: 0.875rem; margin: 0; font-weight: 600">
+          {{ fallbackPendientesEmergencia }} evento{{ fallbackPendientesEmergencia === 1 ? '' : 's' }} atrapado{{ fallbackPendientesEmergencia === 1 ? '' : 's' }} en el archivo de emergencia (la BD central estuvo inalcanzable).
+        </p>
+        <p v-if="fallbackUltimoReintento" style="color: var(--ink-soft); font-size: 0.8125rem; margin: 0.25rem 0 0">
+          Último reintento: {{ fallbackUltimoReintento.recuperados }} recuperado{{ fallbackUltimoReintento.recuperados === 1 ? '' : 's' }}<span v-if="fallbackUltimoReintento.errores > 0">, {{ fallbackUltimoReintento.errores }} con error real (revisar logs del backend)</span>.
+        </p>
+      </div>
       <button class="btn-secondary" :disabled="reintentandoFallback" @click="reintentarFallback">
         <UIcon name="i-heroicons-arrow-path" class="w-4 h-4" :class="{ 'animate-spin': reintentandoFallback }" />
         Reintentar ahora
@@ -172,7 +180,12 @@
               v-for="log in logs"
               :key="log.id"
               class="table-row"
+              tabindex="0"
+              role="button"
+              :aria-label="`Ver detalle del evento: ${log.description || log.action}`"
               @click="openModal(log)"
+              @keydown.enter="openModal(log)"
+              @keydown.space.prevent="openModal(log)"
             >
               <td class="col-date">
                 <div class="date-cell">
@@ -243,21 +256,29 @@
     </div>
 
     <!-- Log Details Modal -->
-    <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
-      <div class="modal-content" style="background: var(--paper); border-radius: var(--radius-lg)">
+    <div v-if="showModal" class="modal-overlay" @click.self="closeModal" @keydown.esc="closeModal">
+      <div
+        ref="modalContentRef"
+        class="modal-content"
+        style="background: var(--paper); border-radius: var(--radius-lg)"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="audit-modal-title"
+        tabindex="-1"
+      >
         <div class="modal-header">
           <div class="modal-icon" :style="{ background: getTypeColor(selectedLog?.action || '') + '22' }">
-            <UIcon 
-              :name="getTypeIcon(selectedLog?.action || '')" 
-              class="w-6 h-6" 
-              :style="{ color: getTypeColor(selectedLog?.action || '') }" 
+            <UIcon
+              :name="getTypeIcon(selectedLog?.action || '')"
+              class="w-6 h-6"
+              :style="{ color: getTypeColor(selectedLog?.action || '') }"
             />
           </div>
           <div>
-            <h3 class="modal-title">Detalle del Evento</h3>
+            <h3 id="audit-modal-title" class="modal-title">Detalle del Evento</h3>
             <p class="modal-subtitle">{{ formatDateFull(selectedLog?.created_at || '') }}</p>
           </div>
-          <button class="modal-close" @click="showModal = false">
+          <button class="modal-close" @click="closeModal">
             <UIcon name="i-heroicons-x-mark" class="w-5 h-5" style="color: var(--ink-soft)" />
           </button>
         </div>
@@ -305,7 +326,7 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="showModal = false">Cerrar</button>
+          <button class="btn-secondary" @click="closeModal">Cerrar</button>
         </div>
       </div>
     </div>
@@ -357,6 +378,12 @@ const currentPage = ref(1)
 const perPage = 15
 const showModal = ref(false)
 const selectedLog = ref<AuditLog | null>(null)
+const modalContentRef = ref<HTMLElement | null>(null)
+// Guarda que fila/elemento tenia el foco antes de abrir el modal -- sin
+// esto, al cerrar con teclado (Escape o el boton Cerrar) el foco se pierde
+// y salta al inicio del documento en vez de volver a donde estaba el
+// usuario.
+let elementoAntesDelModal: HTMLElement | null = null
 
 const filters = computed(() => {
   const counts = resumen.value.por_accion || {}
@@ -465,8 +492,18 @@ const getTypeColor = (action: string) => {
 }
 
 const openModal = (log: AuditLog) => {
+  elementoAntesDelModal = document.activeElement as HTMLElement | null
   selectedLog.value = log
   showModal.value = true
+  // El modal recien se monta en el DOM despues de este tick -- sin
+  // nextTick, modalContentRef.value todavia apunta al render anterior (o
+  // null) y el foco no se mueve.
+  nextTick(() => modalContentRef.value?.focus())
+}
+
+const closeModal = () => {
+  showModal.value = false
+  elementoAntesDelModal?.focus()
 }
 
 const pretty = (val: Record<string, any> | null | undefined) => {
@@ -544,12 +581,23 @@ const loadResumen = async () => {
 }
 
 const fallbackPendientes = ref(0)
+// Eventos atrapados en el archivo de emergencia (ver
+// _FALLBACK_ARCHIVO_ULTIMO_RECURSO en backend/app/core/audit.py) -- solo
+// aparece si la BD central estuvo totalmente inalcanzable en algun
+// momento. Antes esta pantalla solo leia `pendientes` (la tabla), asi que
+// podia mostrar 0 pendientes aunque hubiera eventos atascados aca.
+const fallbackPendientesEmergencia = ref(0)
 const reintentandoFallback = ref(false)
+// Resultado del ultimo reintento manual: solo se conoce justo despues de
+// llamar a /fallback/reintentar (no hay un contador persistente de errores
+// en el backend), asi que se limpia en cada carga de estado nueva.
+const fallbackUltimoReintento = ref<{ recuperados: number; errores: number } | null>(null)
 
 const loadFallbackEstado = async () => {
   try {
-    const r = await api<{ pendientes: number }>('/admin/auditoria/fallback')
+    const r = await api<{ pendientes: number; pendientes_emergencia: number }>('/admin/auditoria/fallback')
     fallbackPendientes.value = r.pendientes
+    fallbackPendientesEmergencia.value = r.pendientes_emergencia
   } catch {
     // no bloquea el resto de la pantalla si falla esta consulta puntual
   }
@@ -557,8 +605,10 @@ const loadFallbackEstado = async () => {
 
 const reintentarFallback = async () => {
   reintentandoFallback.value = true
+  fallbackUltimoReintento.value = null
   try {
-    await api('/admin/auditoria/fallback/reintentar', { method: 'POST' })
+    const r = await api<{ recuperados: number; errores: number }>('/admin/auditoria/fallback/reintentar', { method: 'POST' })
+    fallbackUltimoReintento.value = { recuperados: r.recuperados, errores: r.errores }
     await Promise.all([loadFallbackEstado(), loadData(), loadResumen()])
   } catch {
     // si el reintento mismo falla, el contador se vuelve a pedir igual

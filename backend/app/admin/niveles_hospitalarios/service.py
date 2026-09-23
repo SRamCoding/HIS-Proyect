@@ -6,10 +6,11 @@ from sqlalchemy import select, func
 from app.admin.niveles_hospitalarios.models import HospitalLevel
 
 
-async def get_all_hospital_levels(db: AsyncSession) -> list[HospitalLevel]:
-    result = await db.execute(
-        select(HospitalLevel).order_by(HospitalLevel.sort_order)
-    )
+async def get_all_hospital_levels(db: AsyncSession, solo_activos: bool = False) -> list[HospitalLevel]:
+    query = select(HospitalLevel).order_by(HospitalLevel.sort_order)
+    if solo_activos:
+        query = query.where(HospitalLevel.is_active.is_(True))
+    result = await db.execute(query)
     return result.scalars().all()
 
 
@@ -53,6 +54,25 @@ async def update_hospital_level(db: AsyncSession, nivel_id: uuid.UUID, data, act
     if not nivel:
         return None
     cambios = data.model_dump(exclude_unset=True)
+    if cambios.get("is_active") is False and nivel.is_active:
+        # El propio mensaje de delete_hospital_level le dice al admin
+        # "desactivalo en su lugar" cuando un nivel esta en uso -- pero
+        # desactivar no tenia NINGUNA proteccion, a diferencia de eliminar.
+        # Efecto real: en cuanto se desactiva un nivel en uso, cualquier
+        # hospital que lo tenga queda bloqueado para guardar CUALQUIER
+        # edicion futura (el validador de Hospitales exige
+        # HospitalLevel.is_active al recibir hospital_level), sin ningun
+        # aviso visible en esta pantalla.
+        from app.tenants.hospitales.models import Tenant
+        en_uso = await db.scalar(
+            select(func.count()).select_from(Tenant).where(Tenant.hospital_level == nivel.code)
+        )
+        if en_uso:
+            raise HTTPException(
+                409,
+                f"No se puede desactivar: {en_uso} hospital(es) usan el nivel '{nivel.code}'. "
+                "Asígnales otro nivel activo primero.",
+            )
     if "code" in cambios and cambios["code"] != nivel.code:
         # Tenant.hospital_level guarda el CODIGO como texto libre, no una
         # FK -- cambiar el codigo de un nivel en uso deja a esos hospitales

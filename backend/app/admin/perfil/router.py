@@ -9,6 +9,11 @@ from app.admin.perfil.service import obtener_perfil, actualizar_perfil
 
 router = APIRouter()
 
+# Actualizar el PROPIO perfil (nombre, preferencias, contraseña propia) se
+# deja con get_admin_user: no es una operacion sobre el sistema ni sobre
+# otras cuentas, es autoservicio -- una cuenta de solo lectura sigue
+# necesitando poder cambiar su propia contraseña.
+
 
 @router.get("/perfil", response_model=PerfilResponse, summary="Mi perfil")
 async def mi_perfil(

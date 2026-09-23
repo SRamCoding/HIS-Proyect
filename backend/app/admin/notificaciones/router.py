@@ -12,6 +12,13 @@ from app.admin.notificaciones.service import (
 
 router = APIRouter()
 
+# Marcar notificaciones como leidas se deja con get_admin_user (no
+# get_admin_user_escritura) a proposito: es un ajuste de lectura personal
+# de la bandeja, no una operacion sobre el sistema (no crea/modifica/borra
+# ningun hospital, usuario, modulo, etc.) -- bloquearlo tambien a una
+# cuenta de solo lectura (ej. un Auditor monitoreando notificaciones)
+# seria una restriccion sin beneficio real de seguridad.
+
 
 @router.get("/notificaciones", summary="Listar notificaciones")
 async def listar(

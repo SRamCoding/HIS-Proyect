@@ -3,8 +3,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_admin_user
-from app.admin.dashboard.schemas import DashboardStats
-from app.admin.dashboard.service import get_dashboard_stats, get_hospitals_registered_by_day
+from app.admin.dashboard.schemas import DashboardStats, SaludSistema
+from app.admin.dashboard.service import (
+    get_dashboard_stats,
+    get_hospitals_registered_by_day,
+    obtener_salud_sistema,
+)
 
 router = APIRouter()
 
@@ -15,6 +19,13 @@ async def dashboard(
     current_user: dict = Depends(get_admin_user),
 ):
     return await get_dashboard_stats(db)
+
+
+@router.get("/dashboard/salud", response_model=SaludSistema, summary="Salud de Redis y Celery")
+async def salud(
+    current_user: dict = Depends(get_admin_user),
+):
+    return await obtener_salud_sistema()
 
 
 @router.get("/dashboard/hospitales-por-dia", summary="Hospitales registrados por día")

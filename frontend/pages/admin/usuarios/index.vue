@@ -154,13 +154,17 @@
                   />
                   {{ formatPanel(user.panel) }}
                 </span>
+                <span v-if="user.panel === 'admin' && user.admin_solo_lectura" class="badge badge--neutral" title="Puede consultar y exportar, pero no crear/editar/desactivar/eliminar nada" style="margin-left: 0.25rem">
+                  <UIcon name="i-heroicons-eye" class="w-3.5 h-3.5" />
+                  Solo lectura
+                </span>
               </td>
               <td>
                 <span class="badge" :class="user.is_active ? 'badge--ok' : 'badge--neutral'">
                   {{ user.is_active ? 'Activo' : 'Inactivo' }}
                 </span>
               </td>
-              <td style="font-size: 0.75rem; color: var(--ink-soft)">{{ formatDate(user.created_at) }}</td>
+              <td style="font-size: 0.75rem; color: var(--ink-soft)">{{ user.created_at }}</td>
               <td class="text-right">
                 <div class="sigarh-actions">
                   <button class="sigarh-action-btn" title="Editar usuario" @click="editUser(user)">
@@ -238,6 +242,7 @@ interface Usuario {
   role: string
   panel: string
   is_active: boolean
+  admin_solo_lectura?: boolean
   tenant_name?: string
   tenant_id?: string
   created_at: string
@@ -330,8 +335,6 @@ const getUserColor = (name: string) => {
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
   return colors[Math.abs(hash) % colors.length]
 }
-
-const formatDate = (date: string) => new Date(date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
 const clearFilters = () => {
   searchQuery.value = ''

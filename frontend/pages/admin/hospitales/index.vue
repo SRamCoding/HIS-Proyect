@@ -204,6 +204,11 @@ const error = ref('')
 const searchQuery = ref('')
 const activeFilter = ref('all')
 const togglingId = ref<string | null>(null)
+// Total real de modulos activos en el catalogo -- antes getModulePercentage
+// dividia por 20 fijo, asi que cualquier hospital con 20+ modulos activos
+// se mostraba al 100% aunque le faltara la mitad del catalogo real (41
+// modulos hoy) por activar.
+const totalModulosCatalogo = ref(0)
 
 const levelColors: Record<string, string> = {
   'I-1': '#6b7280', 'I-2': '#6b7280', 'I-3': '#6b7280',
@@ -250,7 +255,8 @@ const getContrastColor = (hex: string) => {
 
 const getModulePercentage = (hospital: Hospital) => {
   const total = hospital.active_modules?.length || 0
-  return Math.min((total / 20) * 100, 100)
+  if (!totalModulosCatalogo.value) return 0
+  return Math.min((total / totalModulosCatalogo.value) * 100, 100)
 }
 
 const sinBaseFisica = (hospital: Hospital) =>
@@ -307,6 +313,15 @@ const handleToggle = async (hospital: Hospital) => {
   finally { togglingId.value = null }
 }
 
-onMounted(loadHospitales)
+const cargarTotalModulos = async () => {
+  try {
+    const catalogo = await api<{ code: string }[]>('/admin/modulos/catalogo')
+    totalModulosCatalogo.value = catalogo.length
+  } catch {
+    // el listado sigue funcionando sin la barra de cobertura si esto falla
+  }
+}
+
+onMounted(() => { loadHospitales(); cargarTotalModulos() })
 onUnmounted(detenerPolling)
 </script>

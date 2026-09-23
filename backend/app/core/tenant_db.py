@@ -53,9 +53,21 @@ async def create_tenant_database(database_name: str) -> bool:
                 await conn.execute(text(f'CREATE DATABASE "{database_name}"'))
                 return True
             except Exception as exc:
-                if not isinstance(exc.__cause__, asyncpg.exceptions.DuplicateDatabaseError):
-                    raise
-                return False
+                # SQLAlchemy async + asyncpg envuelve la excepcion real en un
+                # par de wrappers (AsyncAdapt_asyncpg_dbapi.ProgrammingError,
+                # etc.) -- comparar solo contra exc.__cause__ nunca matcheaba
+                # (la DuplicateDatabaseError real queda uno o mas niveles mas
+                # abajo en la cadena), asi que este chequeo de idempotencia
+                # nunca se activaba de verdad: cualquier reintento sobre una
+                # BD ya creada por un intento anterior volvia a fallar aca
+                # mismo, en bucle, sin llegar nunca a revisar si los
+                # catalogos/usuarios ya estaban listos.
+                causa = exc.__cause__
+                while causa is not None:
+                    if isinstance(causa, asyncpg.exceptions.DuplicateDatabaseError):
+                        return False
+                    causa = causa.__cause__
+                raise
     finally:
         await admin_engine.dispose()
 

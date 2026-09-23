@@ -322,7 +322,17 @@ async def login(
 
         if user.panel == "app":
             from app.auth.hospital_access import contexto_hospital, validar_rol_hospital, limitar_por_rol
-            if user.perfil_usuario_id:
+            # perfil_usuario_id (SIGARH) y perfil_hospital_id (asignado desde
+            # Admin > Usuarios) son dos sistemas de perfiles distintos, pero
+            # contexto_hospital() ya sabe resolver ambos (ver sus ramas
+            # `if shared_id` / `elif usuario.perfil_hospital_id`). Antes,
+            # cualquier cuenta SIN perfil_usuario_id caia siempre en
+            # validar_rol_hospital() (el gate legado de SystemRole) sin
+            # importar si ya tenia un perfil_hospital_id valido -- con
+            # system_roles vacia (sin UI para poblarla todavia), NINGUNA
+            # cuenta creada desde Admin > Usuarios podia loguear, aunque su
+            # perfil estuviera perfectamente configurado.
+            if user.perfil_usuario_id or user.perfil_hospital_id or user.role == "administrador":
                 return _respuesta_sesion(await contexto_hospital(tdb, user, tenant, set(active_modules)), response)
             rol = await validar_rol_hospital(db, user.role)
             return _respuesta_sesion(limitar_por_rol(await contexto_hospital(tdb, user, tenant, set(active_modules)), rol), response)
@@ -377,6 +387,7 @@ async def mfa_verify(
         "sub": str(user.id), "email": user.email, "name": user.name,
         "role": user.role, "panel": user.panel, "tenant_id": None,
         "active_modules": [], "session_version": user.session_version,
+        "admin_solo_lectura": user.admin_solo_lectura,
     }
     # ANTES de _emitir_tokens, no despues: _emitir_tokens construye la
     # respuesta final (_json_con_cookies) copiando en ese momento los

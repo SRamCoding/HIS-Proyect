@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_admin_user
+from app.core.dependencies import get_admin_user, get_admin_user_escritura
 from app.admin.auditoria.schemas import AuditLogResponse
 from app.admin.auditoria.service import get_audit_logs, get_audit_summary, LIMIT_MAXIMO
 
@@ -74,6 +74,6 @@ async def auditoria_fallback_estado(
 
 
 @router.post("/auditoria/fallback/reintentar", summary="Reintentar eventos de auditoría pendientes")
-async def auditoria_fallback_reintentar(current_user: dict = Depends(get_admin_user)):
+async def auditoria_fallback_reintentar(current_user: dict = Depends(get_admin_user_escritura)):
     from app.core.audit import reintentar_fallback_pendiente
     return await reintentar_fallback_pendiente()

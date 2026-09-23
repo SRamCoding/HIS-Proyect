@@ -43,6 +43,7 @@ class UserListItem(BaseModel):
     empleado_id: uuid.UUID | None = None
     tenant_id: uuid.UUID | None
     is_active: bool
+    admin_solo_lectura: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -62,6 +63,7 @@ class UserCreate(BaseModel):
     empleado_id: uuid.UUID | None = None
     tenant_id: uuid.UUID | None = None
     is_active: bool = True
+    admin_solo_lectura: bool = False
 
     @field_validator("name")
     @classmethod
@@ -100,6 +102,8 @@ class UserCreate(BaseModel):
             raise ValueError("El empleado solo puede vincularse a una cuenta hospitalaria.")
         if self.panel == "admin" and self.role != "administrador":
             raise ValueError("Las cuentas del panel admin deben tener el rol 'administrador'")
+        if self.admin_solo_lectura and self.panel != "admin":
+            raise ValueError("admin_solo_lectura solo aplica a cuentas del panel admin")
         return self
 
 
@@ -113,6 +117,7 @@ class UserUpdate(BaseModel):
     empleado_id: uuid.UUID | None = None
     tenant_id: uuid.UUID | None = None
     is_active: bool | None = None
+    admin_solo_lectura: bool | None = None
 
     @field_validator("name")
     @classmethod

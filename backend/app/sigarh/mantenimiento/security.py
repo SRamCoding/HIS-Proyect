@@ -113,7 +113,8 @@ async def usuario_actual(db, payload):
         if payload.get("session_version", 0) != usuario.session_version:
             raise HTTPException(401, "La sesión fue revocada; vuelva a ingresar")
         result = dict(payload)
-        result.update(name=usuario.name, email=usuario.email, role=usuario.role, tenant_id=None)
+        result.update(name=usuario.name, email=usuario.email, role=usuario.role, tenant_id=None,
+                      admin_solo_lectura=usuario.admin_solo_lectura)
         return result
 
     # Resto de paneles (app, sigarh, portal): resolver el hospital y su BD propia.

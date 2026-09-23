@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
-from app.core.dependencies import get_admin_user
+from app.core.dependencies import get_admin_user, get_admin_user_escritura
 from app.core.concurrency import gather_limitado
 from app.admin.usuarios.schemas import UserListItem, UserCreate, UserUpdate
 from app.admin.usuarios.service import (
@@ -57,7 +57,7 @@ from app.admin.usuarios.schemas import PerfilHospitalInput
 @router.put("/usuarios/perfiles-hospital/{perfil_id}")
 async def guardar_perfil_hospital(data: PerfilHospitalInput, tenant_id: uuid.UUID,
     perfil_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user)):
+    current_user: dict = Depends(get_admin_user_escritura)):
     from app.auth.models import PerfilHospital, User
     from app.core.tenant_db import get_tenant_sessionmaker
     from app.admin.roles.models import SystemRole
@@ -233,6 +233,7 @@ async def _reunir_todas_las_cuentas(
             "role": u.role,
             "panel": u.panel,
             "is_active": u.is_active,
+            "admin_solo_lectura": u.admin_solo_lectura,
             "tenant_name": tenant_name or "—",
             "tenant_id": str(u.tenant_id) if u.tenant_id else None,
             "created_at": u.created_at.strftime("%d/%m/%Y"),
@@ -636,7 +637,7 @@ async def obtener_usuario(
 async def crear_usuario(
     data: UserCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     return await create_user(db, data, current_user)
 
@@ -647,7 +648,7 @@ async def actualizar_usuario(
     data: UserUpdate,
     tenant_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     user = await update_user(db, user_id, data, current_user, tenant_id)
     if not user:
@@ -661,7 +662,7 @@ async def toggle_usuario(
     is_active: bool,
     tenant_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     user = await toggle_user(db, user_id, is_active, current_user, tenant_id)
     if not user:
@@ -682,7 +683,7 @@ async def toggle_usuario(
 async def resetear_mfa(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     """Unico camino de recuperacion hoy si un admin pierde el dispositivo
     con su app de autenticacion: no hay recuperacion self-service (el
@@ -709,7 +710,7 @@ async def eliminar_usuario(
     user_id: uuid.UUID,
     tenant_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     ok = await delete_user(db, user_id, current_user, tenant_id)
     if not ok:

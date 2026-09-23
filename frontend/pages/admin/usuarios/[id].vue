@@ -144,6 +144,16 @@
             </div>
           </div>
 
+          <div v-if="isAdminView" class="form-group full-width">
+            <div class="status-toggle">
+              <span class="toggle-label">Acceso de solo lectura (Auditor)</span>
+              <button type="button" @click="form.admin_solo_lectura = !form.admin_solo_lectura" class="toggle-switch" :class="{ 'toggle-active': form.admin_solo_lectura }">
+                <span class="toggle-slider" />
+              </button>
+            </div>
+            <p class="field-hint">Puede consultar y exportar todo el panel, pero no crear, editar, desactivar ni eliminar nada.</p>
+          </div>
+
           <SUsuarioEmpleado v-if="!isAdminView && form.panel === 'app'" v-model="form.empleado_id" :tenant-id="form.tenant_id" />
 
         <template #actions>
@@ -255,6 +265,7 @@ const form = reactive({
   empleado_id: '',
   perfil_hospital_id: '',
   is_active: true,
+  admin_solo_lectura: false,
 })
 
 const errors = reactive({
@@ -314,6 +325,7 @@ const handleSave = async () => {
       perfil_hospital_id: form.panel === 'app' ? form.perfil_hospital_id || null : null,
       empleado_id: form.panel === 'app' ? form.empleado_id || null : null,
       is_active: form.is_active,
+      admin_solo_lectura: isAdminView.value ? form.admin_solo_lectura : false,
     }
     if (form.password) body.password = form.password
 
@@ -364,6 +376,7 @@ onMounted(async () => {
     form.empleado_id = user.empleado_id || ''
     form.perfil_hospital_id = user.perfil_hospital_id || ''
     form.is_active = user.is_active
+    form.admin_solo_lectura = user.admin_solo_lectura || false
     isSigarhAccount.value = user.account_type === 'sigarh'
     hospitales.value = hospitals
   } catch (e: any) {

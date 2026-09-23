@@ -118,6 +118,32 @@ async def get_admin_user(
     return current_user
 
 
+async def get_admin_user_escritura(
+    current_user: dict = Depends(get_admin_user),
+) -> dict:
+    """Primer corte de permisos administrativos por funcion: lectura vs
+    escritura. Antes CUALQUIER cuenta panel="admin" podia hacer cualquier
+    operacion (crear/editar/desactivar/eliminar hospitales, usuarios,
+    modulos, niveles...) -- no existia forma de dar acceso de solo
+    consulta (ej. un Auditor) sin dar tambien acceso total. Se revalida
+    en cada request (usuario_actual() relee `admin_solo_lectura` de la
+    BD), no solo al login -- si se le quita el flag a una cuenta, el
+    cambio aplica de inmediato sin esperar a que expire su token, igual
+    que ya pasa con `is_active`/`role`/`session_version`.
+
+    Deliberadamente NO es todavia el sistema de 4 roles funcionales
+    completo (Auditor/Operador/Responsable de usuarios/Administrador
+    principal) que se discutio -- ese exige un modelo de roles y
+    permisos propio. Este es el primer corte, mas grueso pero de mucho
+    menor riesgo: separa "puede ver todo" de "puede cambiar algo"."""
+    if current_user.get("admin_solo_lectura"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tu cuenta tiene acceso de solo lectura -- no puedes realizar esta acción",
+        )
+    return current_user
+
+
 async def get_hospital_user(
     current_user: dict = Depends(get_current_user),
 ) -> dict:

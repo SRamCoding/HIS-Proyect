@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_admin_user
+from app.core.dependencies import get_admin_user, get_admin_user_escritura
 from app.admin.roles.schemas import SystemRoleCreate, SystemRoleResponse
 from app.admin.roles.service import get_all_system_roles, create_system_role
 
@@ -21,6 +21,6 @@ async def listar_roles(
 async def crear_rol(
     data: SystemRoleCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     return await create_system_role(db, data)

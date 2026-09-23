@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_admin_user
+from app.core.dependencies import get_admin_user, get_admin_user_escritura
 from app.admin.modulos.schemas import ModuleDependencyCreate, ModuleDependencyResponse, ActiveToggle
 from app.admin.modulos.service import (
     get_module_dependencies, create_module_dependency, delete_module_dependency, toggle_module,
@@ -26,7 +26,7 @@ async def listar_dependencias(
 async def crear_dependencia(
     data: ModuleDependencyCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     return await create_module_dependency(db, data)
 
@@ -35,7 +35,7 @@ async def crear_dependencia(
 async def eliminar_dependencia(
     dep_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     ok = await delete_module_dependency(db, dep_id)
     if not ok:
@@ -60,7 +60,7 @@ async def toggle_modulo(
     module_id: uuid.UUID,
     data: ActiveToggle,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     module = await toggle_module(db, module_id, data.is_active)
     if not module:

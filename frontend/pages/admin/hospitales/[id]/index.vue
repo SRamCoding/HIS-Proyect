@@ -46,7 +46,7 @@
               <div>
                 <h1 class="page-title">{{ form.name || 'Editar Hospital' }}</h1>
                 <p class="page-subtitle">
-                  <span class="domain-display font-mono-data">{{ subdomain ? `${subdomain}.erp.local` : '—' }}</span>
+                  <span class="domain-display font-mono-data">{{ domainCompleto || '—' }}</span>
                   <span class="status-dot-mini" :class="form.is_active ? 'dot-active-mini' : 'dot-inactive-mini'" />
                   <span class="status-text-mini" :class="form.is_active ? 'text-active' : 'text-inactive'">
                     {{ form.is_active ? 'Activo' : 'Inactivo' }}
@@ -107,7 +107,7 @@
                 <div class="subdomain-display-field">
                   <UIcon name="i-heroicons-globe-alt" class="input-icon" />
                   <span class="subdomain-text font-mono-data">{{ subdomain || '—' }}</span>
-                  <span class="subdomain-suffix">.erp.local</span>
+                  <span class="subdomain-suffix">{{ domainCompleto ? `.${domainCompleto.split('.').slice(1).join('.')}` : '' }}</span>
                 </div>
                 <p class="field-hint">El subdominio no puede modificarse después de la creación</p>
               </div>
@@ -116,11 +116,22 @@
                 <label class="form-label">Nivel del Establecimiento</label>
                 <div class="input-wrapper">
                   <UIcon name="i-heroicons-building-library" class="input-icon" />
-                  <input 
-                    v-model="form.hospital_level" 
-                    class="input-clinical" 
-                    placeholder="Ej: III-1"
-                  />
+                  <select v-model="form.hospital_level" class="input-clinical">
+                    <option value="">— Sin nivel asignado —</option>
+                    <option v-for="nivel in nivelesActivos" :key="nivel.code" :value="nivel.code">
+                      {{ nivel.code }} — {{ nivel.name }}
+                    </option>
+                    <!-- Si el hospital ya tiene un codigo que ya no esta activo
+                         (o ya no existe), se conserva como opcion para no
+                         perder el valor actual al abrir el formulario --
+                         guardar sin tocarlo no lo cambia. -->
+                    <option
+                      v-if="form.hospital_level && !nivelesActivos.some(n => n.code === form.hospital_level)"
+                      :value="form.hospital_level"
+                    >
+                      {{ form.hospital_level }} (inactivo o inexistente)
+                    </option>
+                  </select>
                 </div>
               </div>
 
@@ -290,8 +301,8 @@
               >
                 <input
                   type="checkbox"
-                  :value="mod.code"
-                  v-model="modulosActivos"
+                  :checked="modulosActivos.includes(mod.code)"
+                  @change="toggleModulo(mod.code, ($event.target as HTMLInputElement).checked)"
                   class="module-check-input"
                 />
                 <span class="module-check-label">{{ mod.name }}</span>
@@ -343,8 +354,8 @@
               >
                 <input
                   type="checkbox"
-                  :value="mod.code"
-                  v-model="modulosActivos"
+                  :checked="modulosActivos.includes(mod.code)"
+                  @change="toggleModulo(mod.code, ($event.target as HTMLInputElement).checked)"
                   class="module-check-input"
                 />
                 <span class="module-check-label">{{ mod.name }}</span>
@@ -436,7 +447,7 @@
             </div>
             <div class="summary-item">
               <span class="summary-label">Dominio</span>
-              <span class="summary-value font-mono-data">{{ subdomain ? `${subdomain}.erp.local` : '—' }}</span>
+              <span class="summary-value font-mono-data">{{ domainCompleto || '—' }}</span>
             </div>
             <div class="summary-item">
               <span class="summary-label">Nivel</span>
@@ -589,8 +600,26 @@ const provisioningError = ref<string | null>(null)
 const searchModApp = ref('')
 const searchModSigarh = ref('')
 const modulosActivos = ref<string[]>([])
+// Dependencias entre modulos (ver backend/app/admin/modulos/service.py) --
+// antes esta pantalla no las conocia en absoluto: un admin marcaba
+// checkboxes libremente y solo se enteraba de una dependencia faltante
+// DESPUES de hacer click en "Guardar" (el backend rechaza todo el guardado
+// de modulos, no solo el que falta), sin ninguna pista visual previa.
+const dependencias = ref<{ module_code: string; depends_on_code: string; is_required: boolean }[]>([])
+// Antes "Nivel del Establecimiento" era un input de texto libre: el backend
+// SI valida el codigo contra HospitalLevel activos al guardar, pero la UI
+// no ayudaba en nada -- un admin podia escribir cualquier string, ver un
+// error generico ("no se pudo guardar") y no saber cuales son los codigos
+// validos. Con ?activos=true se trae solo los niveles usables hoy.
+const nivelesActivos = ref<{ code: string; name: string }[]>([])
 const todosModulos = ref<Modulo[]>([])
 const subdomain = ref('')
+// Dominio completo real del tenant (ej. "hospital-cerro.techquk.com") --
+// antes esta pantalla lo reconstruia a mano como `${subdomain}.erp.local`,
+// un sufijo hardcodeado que no coincide con el dominio configurado
+// (VITE_TENANT_DOMAIN / settings.TENANT_DOMAIN, ver create.vue). Mostraba
+// una URL que no existe.
+const domainCompleto = ref('')
 
 const errors = reactive({
   name: ''
@@ -662,10 +691,64 @@ const validateStep1 = (): boolean => {
 }
 
 const deseleccionarTodos = (category: 'app' | 'sigarh') => {
-  const codes = category === 'app' 
+  const codes = category === 'app'
     ? modulosApp.value.map(m => m.code)
     : modulosSigarh.value.map(m => m.code)
   modulosActivos.value = modulosActivos.value.filter(c => !codes.includes(c))
+}
+
+// Solo dependencias obligatorias (is_required) -- las opcionales no bloquean
+// el guardado en el backend (ver toggle_module/_validate_modules), asi que
+// tampoco se auto-marcan/cascadean aca.
+const requeridosDirectos = (code: string) =>
+  dependencias.value.filter(d => d.module_code === code && d.is_required).map(d => d.depends_on_code)
+
+const dependientesDirectos = (code: string) =>
+  dependencias.value.filter(d => d.depends_on_code === code && d.is_required).map(d => d.module_code)
+
+const expandirTransitivo = (code: string, siguiente: (c: string) => string[]): Set<string> => {
+  const resultado = new Set<string>()
+  const pendientes = [...siguiente(code)]
+  while (pendientes.length) {
+    const actual = pendientes.pop()!
+    if (resultado.has(actual)) continue
+    resultado.add(actual)
+    pendientes.push(...siguiente(actual))
+  }
+  return resultado
+}
+
+const toggleModulo = (code: string, marcado: boolean) => {
+  const set = new Set(modulosActivos.value)
+  if (marcado) {
+    set.add(code)
+    const requeridos = expandirTransitivo(code, requeridosDirectos)
+    const agregados: string[] = []
+    for (const req of requeridos) {
+      if (!set.has(req)) { set.add(req); agregados.push(req) }
+    }
+    if (agregados.length) {
+      const nombres = agregados.map(c => todosModulos.value.find(m => m.code === c)?.name || c)
+      useToast().add({
+        title: 'Dependencias activadas automáticamente',
+        description: `${nombres.join(', ')} — requeridos por el módulo que acabas de marcar.`,
+        color: 'info',
+      })
+    }
+  } else {
+    set.delete(code)
+    const dependientesActivos = [...expandirTransitivo(code, dependientesDirectos)].filter(c => set.has(c))
+    for (const dep of dependientesActivos) set.delete(dep)
+    if (dependientesActivos.length) {
+      const nombres = dependientesActivos.map(c => todosModulos.value.find(m => m.code === c)?.name || c)
+      useToast().add({
+        title: 'Módulos desactivados en cascada',
+        description: `${nombres.join(', ')} — dependían del módulo que acabas de desmarcar.`,
+        color: 'warning',
+      })
+    }
+  }
+  modulosActivos.value = [...set]
 }
 
 const irA = (path: string) => {
@@ -739,10 +822,14 @@ const handleSave = async () => {
 
 onMounted(async () => {
   try {
-    const [hospital, modulos] = await Promise.all([
+    const [hospital, modulos, deps, niveles] = await Promise.all([
       api<Hospital>(`/admin/hospitales/${id.value}`),
       api<Modulo[]>('/admin/modulos/catalogo'),
+      api<{ module_code: string; depends_on_code: string; is_required: boolean }[]>('/admin/modulos/dependencias'),
+      api<{ code: string; name: string }[]>('/admin/niveles-hospitalarios?activos=true'),
     ])
+    dependencias.value = deps
+    nivelesActivos.value = niveles
 
     form.name = hospital.name
     form.hospital_level = hospital.hospital_level || ''
@@ -755,6 +842,7 @@ onMounted(async () => {
     form.values = hospital.values || ''
     form.is_active = hospital.is_active
     subdomain.value = hospital.domain?.split('.')[0] || ''
+    domainCompleto.value = hospital.domain || ''
     modulosActivos.value = hospital.active_modules || []
     todosModulos.value = modulos
     provisioningStatus.value = hospital.provisioning_status || 'listo'

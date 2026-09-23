@@ -10,7 +10,7 @@ from redis.asyncio import Redis
 
 from app.core.database import get_db
 from app.core.redis import get_redis
-from app.core.dependencies import get_admin_user
+from app.core.dependencies import get_admin_user, get_admin_user_escritura
 from app.tenants.hospitales.models import Tenant, TenantModule
 from app.tenants.hospitales.schemas import TenantCreate, TenantUpdate, TenantResponse
 from app.tenants.hospitales.service import crear_tenant_rapido, get_tenant_by_domain, update_tenant_modules
@@ -96,7 +96,7 @@ async def listar_hospitales(
 async def crear_hospital(
     data: TenantCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     existing = await get_tenant_by_domain(db, data.domain)
     if existing:
@@ -163,7 +163,7 @@ async def actualizar_hospital(
     tenant_id: uuid.UUID,
     data: TenantUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
     tenant = result.scalar_one_or_none()
@@ -199,7 +199,7 @@ async def toggle_hospital(
     tenant_id: uuid.UUID,
     data: ActiveToggle,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     tenant = await toggle_tenant_active(db, tenant_id, data.is_active)
     if not tenant:
@@ -217,7 +217,7 @@ async def reintentar_aprovisionamiento(
     tenant_id: uuid.UUID,
     data: ReintentarAprovisionamiento,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     tenant = await db.get(Tenant, tenant_id)
     if not tenant:
@@ -271,7 +271,7 @@ async def actualizar_modulos(
     data: ModuleToggle,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
-    current_user: dict = Depends(get_admin_user),
+    current_user: dict = Depends(get_admin_user_escritura),
 ):
     tenant = await db.get(Tenant, data.tenant_id)
     await update_tenant_modules(db, redis, data.tenant_id, data.module_codes)

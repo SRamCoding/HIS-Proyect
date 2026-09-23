@@ -17,13 +17,21 @@
           </div>
         </div>
         <div class="flex items-center gap-5 mt-1.5 text-xs text-white/60">
-          <span v-if="sistemaSaludable" class="flex items-center gap-1.5">
+          <span v-if="estadoSistema === 'ok'" class="flex items-center gap-1.5">
             <UIcon name="i-heroicons-check-circle" class="w-3.5 h-3.5 text-emerald-400" />
             Sistema operativo
           </span>
-          <span v-else class="flex items-center gap-1.5" style="color: #fca5a5">
+          <span v-else-if="estadoSistema === 'alerta'" class="flex items-center gap-1.5" style="color: #fca5a5">
             <UIcon name="i-heroicons-exclamation-triangle" class="w-3.5 h-3.5" />
             Requiere atención
+          </span>
+          <span v-else-if="estadoSistema === 'desconocido'" class="flex items-center gap-1.5" style="color: #fcd34d" title="No se pudo confirmar el estado de Redis/Celery">
+            <UIcon name="i-heroicons-question-mark-circle" class="w-3.5 h-3.5" />
+            Estado no verificado
+          </span>
+          <span v-else class="flex items-center gap-1.5 text-white/50">
+            <UIcon name="i-heroicons-arrow-path" class="w-3.5 h-3.5" />
+            Verificando estado…
           </span>
           <span class="flex items-center gap-1.5">
             <UIcon name="i-heroicons-clock" class="w-3.5 h-3.5" />
@@ -90,7 +98,7 @@
     </div>
 
     <!-- Salud del sistema: solo asoma lo que necesita accion, con acceso directo -->
-    <div v-if="!loading && stats && !sistemaSaludable" class="dash-fade-in grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+    <div v-if="estadoSistema === 'alerta'" class="dash-fade-in grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
       <NuxtLink
         v-if="(stats?.hospitales_con_error ?? 0) > 0 || (stats?.hospitales_pendientes ?? 0) > 0"
         to="/admin/hospitales"
@@ -117,10 +125,40 @@
         </div>
         <UIcon name="i-heroicons-arrow-right" class="w-4 h-4 ml-auto shrink-0" />
       </NuxtLink>
+      <NuxtLink
+        v-if="stats?.usuarios_es_parcial"
+        to="/admin/usuarios"
+        class="salud-card salud-card--warn"
+      >
+        <UIcon name="i-heroicons-signal-slash" class="w-5 h-5 shrink-0" />
+        <div class="min-w-0">
+          <p class="text-sm font-semibold truncate">Conteo de usuarios incompleto</p>
+          <p class="text-xs opacity-80 truncate">
+            solo {{ stats?.usuarios_hospitales_consultados }}/{{ stats?.usuarios_hospitales_totales }} hospitales respondieron
+          </p>
+        </div>
+        <UIcon name="i-heroicons-arrow-right" class="w-4 h-4 ml-auto shrink-0" />
+      </NuxtLink>
+      <div v-if="salud && (!salud.redis_ok || !salud.celery_ok)" class="salud-card salud-card--alert">
+        <UIcon name="i-heroicons-cpu-chip" class="w-5 h-5 shrink-0" />
+        <div class="min-w-0">
+          <p class="text-sm font-semibold truncate">
+            {{ !salud.redis_ok && !salud.celery_ok ? 'Redis y Celery no responden' : !salud.redis_ok ? 'Redis no responde' : 'Sin workers de Celery activos' }}
+          </p>
+          <p class="text-xs opacity-80 truncate">
+            {{ salud.celery_ok ? `${salud.celery_workers_activos} worker(s) activos` : 'aprovisionamiento y tareas en segundo plano afectados' }}
+          </p>
+        </div>
+      </div>
     </div>
-    <div v-else-if="!loading && stats" class="dash-fade-in flex items-center gap-2 mb-6 text-xs font-medium px-3 py-2 rounded-lg w-fit" style="background: var(--ok-soft); color: var(--ok)">
+    <div v-else-if="estadoSistema === 'ok'" class="dash-fade-in flex items-center gap-2 mb-6 text-xs font-medium px-3 py-2 rounded-lg w-fit" style="background: var(--ok-soft); color: var(--ok)">
       <UIcon name="i-heroicons-check-circle" class="w-4 h-4" />
-      Todo en orden: sin hospitales con error, sin auditoría pendiente de escribir.
+      Todo en orden: sin hospitales con error, sin auditoría pendiente de escribir, Redis y Celery respondieron.
+      <span v-if="salud?.verificado_en" class="opacity-70">· verificado hace {{ minutosDesdeVerificacionSalud }} min</span>
+    </div>
+    <div v-else-if="estadoSistema === 'desconocido'" class="dash-fade-in flex items-center gap-2 mb-6 text-xs font-medium px-3 py-2 rounded-lg w-fit" style="background: var(--warn-soft, #fef3c7); color: #92400e">
+      <UIcon name="i-heroicons-question-mark-circle" class="w-4 h-4" />
+      Sin hospitales con error ni auditoría pendiente, pero no se pudo confirmar el estado de Redis/Celery en este momento.
     </div>
 
     <!-- KPI Cards mejorados -->
@@ -530,23 +568,17 @@
         <div>
           <p class="text-xs" style="color: var(--ink-soft)">Hospitales registrados</p>
           <p class="text-xl font-bold" style="color: var(--ink)">{{ stats?.total_hospitals ?? 0 }}</p>
-          <p class="text-xs flex items-center gap-0.5" style="color: var(--ok)">
-            <UIcon name="i-heroicons-arrow-trending-up" class="w-3 h-3" />
-            Total histórico
-          </p>
+          <p class="text-xs" style="color: var(--ink-soft)">Total histórico</p>
         </div>
       </div>
       <div class="flex items-center gap-4 p-4 rounded-lg" style="background: var(--paper); box-shadow: var(--shadow-card)">
         <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(99, 102, 241, 0.12)">
-          <UIcon name="i-heroicons-prescription" class="w-6 h-6" style="color: #6366f1" />
+          <UIcon name="i-heroicons-building-office-2" class="w-6 h-6" style="color: #6366f1" />
         </div>
         <div>
           <p class="text-xs" style="color: var(--ink-soft)">Hospitales activos</p>
           <p class="text-xl font-bold" style="color: var(--ink)">{{ stats?.active_hospitals ?? 0 }}</p>
-          <p class="text-xs flex items-center gap-0.5" style="color: var(--ok)">
-            <UIcon name="i-heroicons-arrow-trending-up" class="w-3 h-3" />
-            Disponibles
-          </p>
+          <p class="text-xs" style="color: var(--ink-soft)">Disponibles</p>
         </div>
       </div>
       <div class="flex items-center gap-4 p-4 rounded-lg" style="background: var(--paper); box-shadow: var(--shadow-card)">
@@ -556,10 +588,7 @@
         <div>
           <p class="text-xs" style="color: var(--ink-soft)">Usuarios activos</p>
           <p class="text-xl font-bold" style="color: var(--ink)">{{ stats?.active_users ?? 0 }}</p>
-          <p class="text-xs flex items-center gap-0.5" style="color: var(--alert)">
-            <UIcon name="i-heroicons-arrow-trending-up" class="w-3 h-3" />
-            Con acceso vigente
-          </p>
+          <p class="text-xs" style="color: var(--ink-soft)">Con acceso vigente</p>
         </div>
       </div>
       <div class="flex items-center gap-4 p-4 rounded-lg" style="background: var(--paper); box-shadow: var(--shadow-card)">
@@ -569,10 +598,7 @@
         <div>
           <p class="text-xs" style="color: var(--ink-soft)">Eventos hoy</p>
           <p class="text-xl font-bold" style="color: var(--ink)">{{ stats?.audit_events_24h ?? 0 }}</p>
-          <p class="text-xs flex items-center gap-0.5" style="color: var(--ok)">
-            <UIcon name="i-heroicons-arrow-trending-down" class="w-3 h-3" />
-            Últimas 24 horas
-          </p>
+          <p class="text-xs" style="color: var(--ink-soft)">Últimas 24 horas</p>
         </div>
       </div>
     </div>
@@ -700,6 +726,13 @@ interface Hospital {
   active_modules: string[]
 }
 
+interface SaludSistema {
+  redis_ok: boolean
+  celery_ok: boolean
+  celery_workers_activos: number
+  verificado_en: string
+}
+
 interface Notificacion {
   id: string
   titulo: string
@@ -723,12 +756,41 @@ const error = ref('')
 const notificacionesRecientes = ref<Notificacion[]>([])
 const notifNoLeidas = ref(0)
 const loadingNotifs = ref(true)
+// Salud de Redis/Celery: se pide aparte del dashboard y con su propio
+// try/catch -- si este chequeo falla o tarda, no debe tumbar el resto del
+// dashboard. null significa "todavia no se pudo verificar", no "esta mal".
+const salud = ref<SaludSistema | null>(null)
+const loadingSalud = ref(true)
+const saludError = ref(false)
 
-const sistemaSaludable = computed(() => {
-  if (!stats.value) return true
-  return stats.value.hospitales_con_error === 0
-    && stats.value.hospitales_pendientes === 0
-    && stats.value.auditoria_fallback_pendientes === 0
+// 'verificando': todavia no hay datos confiables (carga en curso o fallo la
+// peticion) -- antes se asumia "operativo" por defecto en ambos casos, lo
+// que mostraba "Sistema operativo" en el header incluso mientras el
+// dashboard seguia cargando o habia fallado la consulta.
+// usuarios_es_parcial cuenta como alerta porque significa que uno o mas
+// hospitales con BD fisica propia no respondieron -- no podemos afirmar que
+// el sistema esta sano si ni siquiera pudimos consultarlos todos.
+// 'desconocido': las estadisticas del dashboard cargaron bien y no reportan
+// ninguna alerta, pero el chequeo de Redis/Celery (/admin/dashboard/salud)
+// fallo o no ha terminado -- antes esto se trataba igual que "ok" (null se
+// interpretaba como "sin objeciones"), asi que el badge podia decir
+// "Sistema operativo" sin haber confirmado Redis/Celery de verdad.
+const estadoSistema = computed<'ok' | 'alerta' | 'verificando' | 'desconocido'>(() => {
+  if (loading.value || error.value || !stats.value) return 'verificando'
+  const s = stats.value
+  if (
+    s.hospitales_con_error > 0
+    || s.hospitales_pendientes > 0
+    || s.auditoria_fallback_pendientes > 0
+    || s.usuarios_es_parcial
+    || salud.value?.redis_ok === false
+    || salud.value?.celery_ok === false
+  ) {
+    return 'alerta'
+  }
+  if (loadingSalud.value) return 'verificando'
+  if (saludError.value || !salud.value) return 'desconocido'
+  return 'ok'
 })
 
 const accesosRapidos = [
@@ -787,6 +849,11 @@ const minutosDesdeActualizacion = computed(() => {
   const ms = Date.now() - new Date(stats.value.actualizado_en).getTime()
   return Math.max(0, Math.round(ms / 60000))
 })
+const minutosDesdeVerificacionSalud = computed(() => {
+  if (!salud.value?.verificado_en) return 0
+  const ms = Date.now() - new Date(salud.value.verificado_en).getTime()
+  return Math.max(0, Math.round(ms / 60000))
+})
 
 const nombreUsuario = computed(() => authStore.user?.name || 'bienvenido')
 
@@ -812,10 +879,17 @@ const porcentajeHospitalesActivos = computed(() => {
 const coberturaModulos = computed(() => Math.min(100, Math.round(
   ((stats.value?.active_module_assignments ?? 0) / Math.max((stats.value?.active_hospitals ?? 0) * Math.max(tiposDeModulo.value, 1), 1)) * 100,
 )))
-const usoModulos = computed(() => ({
-  app: stats.value?.total_users ? Math.round((usuariosPorPanel.value.app / stats.value.total_users) * 100) : 0,
-  sigarh: stats.value?.total_users ? Math.round((usuariosPorPanel.value.sigarh / stats.value.total_users) * 100) : 0,
-}))
+// Denominador: app + sigarh (no total_users) -- total_users tambien cuenta
+// cuentas admin/portal que no entran en este anillo, y dividir por ese
+// total hacia que los dos porcentajes nunca sumaran 100% (se veia un hueco
+// vacio en el radialBar sin motivo aparente).
+const usoModulos = computed(() => {
+  const total = usuariosPorPanel.value.app + usuariosPorPanel.value.sigarh
+  return {
+    app: total ? Math.round((usuariosPorPanel.value.app / total) * 100) : 0,
+    sigarh: total ? Math.round((usuariosPorPanel.value.sigarh / total) * 100) : 0,
+  }
+})
 const distribucionNiveles = computed(() => (stats.value?.hospitals_by_level ?? []).map((nivel, index) => ({
   code: nivel.code,
   cantidad: nivel.count,
@@ -948,7 +1022,11 @@ const barChartOptions = computed(() => ({
     toolbar: { show: false },
     fontFamily: 'IBM Plex Sans, sans-serif',
   },
-  colors: ['#0891b2', '#6366f1', '#f59e0b', '#ef4444'],
+  // 8 colores: accionesAuditoria puede traer mas de las 4 acciones "tipicas"
+  // (login/logout/created/updated/deleted, mas cualquier otra que audit_logs
+  // registre) -- con menos colores que barras, `distributed: true` los
+  // repite y dos acciones distintas terminan con el mismo color.
+  colors: ['#0891b2', '#6366f1', '#f59e0b', '#ef4444', '#16a34a', '#8b5cf6', '#0e7490', '#be123c'],
   plotOptions: {
     bar: {
       borderRadius: 6,
@@ -997,6 +1075,18 @@ onMounted(async () => {
     notificacionesRecientes.value = []
   } finally {
     loadingNotifs.value = false
+  }
+
+  try {
+    salud.value = await api<SaludSistema>('/admin/dashboard/salud')
+  } catch {
+    // Si el chequeo de salud falla, no se sabe el estado de Redis/Celery --
+    // antes esto simplemente dejaba `salud` en null y estadoSistema lo
+    // trataba como "sin objeciones" (ok) en vez de "no se pudo confirmar".
+    // saludError distingue ese caso explicitamente.
+    saludError.value = true
+  } finally {
+    loadingSalud.value = false
   }
 })
 </script>

@@ -1,3 +1,4 @@
+import asyncio
 import calendar
 import logging
 from collections import Counter
@@ -306,4 +307,46 @@ async def get_hospitals_registered_by_day(db: AsyncSession, month: str) -> dict:
         "month": month,
         "total": len(registrations),
         "days": days,
+    }
+
+
+async def _verificar_redis() -> bool:
+    from app.core.redis import redis_client
+    try:
+        return bool(await asyncio.wait_for(redis_client.ping(), timeout=2))
+    except Exception:
+        logger.exception("Redis no respondio al chequeo de salud del dashboard")
+        return False
+
+
+async def _verificar_celery() -> tuple[bool, int]:
+    """control.ping() es sincrono/bloqueante (usa kombu por debajo) -- se
+    corre en un thread aparte para no trabar el event loop mientras espera
+    la respuesta de los workers."""
+    from workers.celery_app import celery_app
+    try:
+        respuestas = await asyncio.wait_for(
+            asyncio.to_thread(celery_app.control.ping, timeout=1.5),
+            timeout=2.5,
+        )
+        return len(respuestas) > 0, len(respuestas)
+    except Exception:
+        logger.exception("Celery no respondio al chequeo de salud del dashboard")
+        return False, 0
+
+
+async def obtener_salud_sistema() -> dict:
+    """Chequeo real de Redis y de los workers de Celery, con timeout corto
+    para cada uno -- si alguno no responde a tiempo se reporta como caido
+    en vez de colgar la carga del dashboard (mismo criterio que
+    usuarios_es_parcial: mejor mostrar 'no se pudo verificar' que bloquear
+    toda la pagina)."""
+    redis_ok, (celery_ok, workers_activos) = await asyncio.gather(
+        _verificar_redis(), _verificar_celery()
+    )
+    return {
+        "redis_ok": redis_ok,
+        "celery_ok": celery_ok,
+        "celery_workers_activos": workers_activos,
+        "verificado_en": datetime.now(timezone.utc).isoformat(),
     }

@@ -34,6 +34,18 @@ class User(Base):
     # ("admin@erp.local") en el listado agregado -- si alguien renombraba
     # ese correo, la regla dejaba de aplicar en silencio.
     is_superadmin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Primer corte de permisos administrativos por funcion (ver
+    # backend/app/core/dependencies.py::get_admin_user_escritura): antes
+    # CUALQUIER cuenta panel="admin" podia hacer cualquier operacion de
+    # escritura, sin distincion. Este campo solo aplica a cuentas
+    # panel="admin" -- una cuenta admin de solo lectura puede consultar
+    # cualquier pantalla del panel pero ningun POST/PUT/PATCH/DELETE.
+    # Version inicial: un unico corte binario (lectura vs escritura), no
+    # los 4 roles funcionales completos (Auditor/Operador/Responsable de
+    # usuarios/Administrador principal) -- eso exigiria un modelo de roles
+    # y permisos propio, deliberadamente pospuesto para no arriesgar todo
+    # de una vez.
+    admin_solo_lectura: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # MFA (TOTP) solo aplica al panel admin -- obligatorio para toda cuenta
     # panel="admin" (ver auth/router.py::login). mfa_secret se genera en el
