@@ -41,17 +41,17 @@
       <!-- Cabecera grupo principal -->
       <button
         v-if="!collapsed"
-        class="w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-colors hover:bg-white/5"
+        class="w-full flex items-start justify-between gap-2 px-3 py-1.5 rounded-lg transition-colors hover:bg-white/5 text-left"
         style="color: #7fa1b3"
         @click="toggleGrupo(grupo.label)"
       >
-        <div class="flex items-center gap-2">
-          <UIcon :name="grupo.icon || 'i-heroicons-folder'" class="w-3.5 h-3.5" />
+        <div class="flex items-start gap-2 min-w-0">
+          <UIcon :name="grupo.icon || 'i-heroicons-folder'" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
           <span class="text-xs font-medium">{{ grupo.label }}</span>
         </div>
         <UIcon
           :name="grupoAbierto(grupo.label) ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'"
-          class="w-3 h-3"
+          class="w-3 h-3 shrink-0 mt-0.5"
         />
       </button>
       <div v-else class="mx-3 my-1 border-t" style="border-color: rgba(255,255,255,0.08)" />
@@ -64,17 +64,17 @@
           <template v-if="item.subgrupo">
             <button
               v-if="!collapsed"
-              class="w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-colors hover:bg-white/5 nav-sub"
+              class="w-full flex items-start justify-between gap-2 px-3 py-1.5 rounded-lg transition-colors hover:bg-white/5 nav-sub text-left"
               style="color: #5a8fa8"
               @click="toggleSubgrupo(grupo.label + item.label)"
             >
-              <div class="flex items-center gap-2">
-                <UIcon :name="item.icon || 'i-heroicons-folder'" class="w-3.5 h-3.5" />
+              <div class="flex items-start gap-2 min-w-0">
+                <UIcon :name="item.icon || 'i-heroicons-folder'" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span class="text-xs font-semibold">{{ item.label }}</span>
               </div>
               <UIcon
                 :name="subgrupoAbierto(grupo.label + item.label) ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'"
-                class="w-3 h-3"
+                class="w-3 h-3 shrink-0 mt-0.5"
               />
             </button>
 

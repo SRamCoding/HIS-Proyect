@@ -202,7 +202,7 @@ const generoOptions = computed(() => ({ ...donutBase, colors: ['#123a52', '#6b4f
 
         <div class="kpi-card" style="border-left-color: var(--green)">
           <div>
-            <span class="kpi-label">Asistencia Hoy</span>
+            <span class="kpi-label" title="Incluye presentes, tardanzas y ausencias justificadas">Asistencia Hoy</span>
             <span class="kpi-value">{{ data.kpis.asistencia_hoy }}</span>
             <span class="kpi-sub">
               <b :style="{ color: data.kpis.porcentaje_asistencia >= 80 ? 'var(--green)' : 'var(--amber)' }">{{ data.kpis.porcentaje_asistencia }}%</b>

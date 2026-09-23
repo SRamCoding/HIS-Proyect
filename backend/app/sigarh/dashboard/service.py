@@ -4,7 +4,7 @@ Un único punto de entrada -`get_dashboard`- que arma todo el payload que
 consume el escritorio (pages/sigarh/index.vue).
 """
 import uuid
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.sigarh.rrhh.models import Empleado, RegistroAsistencia, Justificacion
 from app.sigarh.movimientos.models import CambioTurno, Papeleta
 from app.sigarh.infraestructura_hosp.models import Cama
+
+# Mismo criterio que admin/auditoria y admin/reportes: el contenedor corre
+# en UTC puro, asi que date.today() "cambia de dia" entre las 19:00 y
+# medianoche hora de Lima -- "Asistencia Hoy" podia mostrar 0 durante esa
+# ventana aunque si hubiera asistencia marcada para el dia real en Lima, y
+# el corte de "mes actual" se adelantaba un dia en la ultima noche del mes.
+_ZONA_LIMA = timezone(timedelta(hours=-5))
 
 # Vacaciones y licencias no tienen tabla propia en uso: "Tramitar Licencia" y
 # "Justificación y Vacaciones" (movimientos) escriben en sigarh_justificaciones
@@ -62,7 +69,7 @@ def _rango_semanas(hoy: date, cantidad: int) -> list[tuple[date, date]]:
 
 
 async def get_dashboard(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
-    hoy = date.today()
+    hoy = datetime.now(_ZONA_LIMA).date()
     inicio_mes = hoy.replace(day=1)
 
     def emp(*extra):
@@ -87,7 +94,12 @@ async def get_dashboard(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
         RegistroAsistencia.fecha == hoy,
         RegistroAsistencia.estado == "ausente",
     ))
-    porcentaje_asistencia = round(asistencia_hoy / empleados_activos * 100, 1) if empleados_activos else 0.0
+    # min(...,100): sin registro unico tenant_id+empleado_id+fecha en
+    # RegistroAsistencia, un duplicado (o un empleado desactivado el mismo
+    # dia que ya tenia un registro "presente") puede inflar el numerador
+    # por encima de empleados_activos -- la barra visual del frontend ya
+    # se limitaba a 100%, pero el numero en texto no.
+    porcentaje_asistencia = min(round(asistencia_hoy / empleados_activos * 100, 1), 100.0) if empleados_activos else 0.0
 
     def justif(tipo, *extra):
         return select(func.count(Justificacion.id)).where(
