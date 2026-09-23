@@ -135,6 +135,14 @@
                 </td>
                 <td>
                   <div class="action-buttons">
+                    <button class="action-btn action-view" :disabled="busy" @click="downloadPdf(item, 'ficha')">
+                      <UIcon name="i-heroicons-document-arrow-down" class="w-4 h-4" />
+                      Ficha PDF
+                    </button>
+                    <button class="action-btn action-view" :disabled="busy" @click="downloadPdf(item, 'completa')">
+                      <UIcon name="i-heroicons-document-arrow-down" class="w-4 h-4" />
+                      HC completa
+                    </button>
                     <button class="action-btn action-view" :disabled="busy" @click="selectRecord(item)">
                       <UIcon name="i-heroicons-eye" class="w-4 h-4" />
                       Ver
@@ -366,6 +374,31 @@ function dateLabel(value: string) {
 }
 
 // API Methods
+async function downloadPdf(item: Historia, alcance: 'ficha' | 'completa') {
+  busy.value = true
+  error.value = ''
+  notice.value = 'Preparando el PDF…'
+  try {
+    const blob = await api<Blob>(`/app/archivo-clinico/historias/${item.id}/pdf`, {
+      query: { alcance }, responseType: 'blob',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `HC-${item.record_number.replace(/[^a-zA-Z0-9-]/g, '_')}-${alcance}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    notice.value = 'PDF descargado. Contiene información confidencial del paciente.'
+  } catch (e) {
+    notice.value = ''
+    error.value = message(e)
+  } finally {
+    busy.value = false
+  }
+}
+
 async function load(nextPage = page.value) {
   const request = ++listRequest
   loading.value = true

@@ -2,6 +2,9 @@
 .output
 .data
 .nuxt
+.nuxt-hc-validation
+.output-hc-validation
+.output-before-hc-*
 .nitro
 .cache
 dist

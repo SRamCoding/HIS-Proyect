@@ -16,7 +16,7 @@
       <!-- SIDEBAR -->
       <aside
         class="h-screen flex flex-col shrink-0 transition-all duration-300"
-        :style="{ width: collapsed ? '64px' : '240px', background: 'var(--navy)', color: 'white' }"
+        :style="{ width: collapsed ? '64px' : '240px', background: '#fff', color: 'var(--ink)' }"
       >
         <!-- Logo -->
         <div class="h-16 flex items-center gap-2 px-4 shrink-0 border-b" style="border-color: rgba(255,255,255,0.08)">
@@ -47,7 +47,7 @@
       >
         <div class="flex items-center gap-2">
           <UIcon :name="grupo.icon || 'i-heroicons-folder'" class="w-3.5 h-3.5" />
-          <span class="text-xs font-semibold uppercase tracking-widest">{{ grupo.label }}</span>
+          <span class="text-xs font-medium">{{ grupo.label }}</span>
         </div>
         <UIcon
           :name="grupoAbierto(grupo.label) ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'"
@@ -202,6 +202,9 @@
   </template>
 
   <script setup lang="ts">
+import '~/assets/css/sigarh-theme.css'
+useHead({ bodyAttrs: { class: 'sigarh-theme' }, link: [{ rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap' }] })
+
   const authStore = useAuthStore()
   const { link, activo, gruposVisibles, rutaMenuActual } = useSigarhNav()
   const route = useRoute()

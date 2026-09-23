@@ -1,0 +1,15 @@
+/* Shared SIGARH theme, including teleported dialogs. */
+body.sigarh-theme { --ink:#18372d; --ink-soft:#60766d; --navy:#287953; --navy-hover:#1e6041; --navy-soft:#eaf5ee; --teal:#287953; --teal-dark:#1e6041; --teal-soft:#eaf5ee; --mist:#f5f8f6; --paper:#fff; --line:#dfe9e2; --radius:10px; --radius-lg:18px; --shadow-card:0 10px 26px rgba(25,65,40,.055); --ui-primary:#287953; font-family:'Poppins','Inter',sans-serif; }
+.sigarh-theme :is(button,input,select,textarea) { font-family:inherit; }
+.sigarh-theme :is(h1,h2,h3) { font-weight:500; letter-spacing:-.02em; }
+.sigarh-theme aside { border-right:1px solid var(--line); }
+.sigarh-theme aside .nav-link { color:var(--ink-soft); }
+.sigarh-theme aside .nav-link:hover { background:var(--teal-soft); color:var(--teal); }
+.sigarh-theme aside .nav-active { background:var(--teal-soft) !important; color:var(--teal) !important; box-shadow:inset 3px 0 var(--teal); }
+.sigarh-theme aside .border-b,.sigarh-theme aside .border-t { border-color:var(--line) !important; }
+.sigarh-theme aside button { color:var(--ink-soft) !important; }
+.sigarh-theme :is(.font-bold,.font-extrabold) { font-weight:600; }
+.sigarh-theme :is(.card,.stat-card,.panel) { border-radius:18px; box-shadow:var(--shadow-card); }
+.sigarh-theme :is(a,button):focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
+.sigarh-theme thead th { text-transform:none; font-weight:500; letter-spacing:0; }
+.sigarh-theme .dash { min-width:0; } .sigarh-theme .sigarh-launcher { min-width:0; } .sigarh-theme .sigarh-launcher .acceso-item { min-width:0; overflow-wrap:anywhere; } @media(max-width:480px) { .sigarh-theme .dash { padding:12px 8px; } .sigarh-theme .sigarh-launcher .acceso-item { padding:14px 8px; font-size:13px; } }

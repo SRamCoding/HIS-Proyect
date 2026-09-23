@@ -36,8 +36,8 @@
         :class="collapsed ? 'gap-2.5 px-5 md:justify-center md:px-0' : 'gap-2.5 px-5'"
         style="border-color: rgba(255,255,255,0.08)"
       >
-        <img src="/logo.png" alt="ERP Hospitalario" class="w-8 h-8 rounded-md object-contain shrink-0" />
-        <span class="font-semibold text-sm tracking-tight truncate" :class="{ 'md:hidden': collapsed }">ERP Hospitalario</span>
+        <UIcon name="i-heroicons-building-library" class="w-8 h-8 shrink-0" aria-hidden="true" />
+        <span class="font-semibold text-sm tracking-tight truncate" :class="{ 'md:hidden': collapsed }">Admin Central</span>
         <button class="ml-auto p-1.5 rounded-lg hover:bg-white/10 md:hidden" aria-label="Cerrar menú" @click="mobileOpen = false">
           <UIcon name="i-heroicons-x-mark" class="w-5 h-5" style="color: rgba(255,255,255,0.7)" aria-hidden="true" />
         </button>
@@ -52,7 +52,7 @@
         </NuxtLink>
 
         <div>
-          <p class="nav-group-label" :class="{ 'md:hidden': collapsed }">Administracion Global</p>
+          <p class="nav-group-label" :class="{ 'md:hidden': collapsed }">Administración global</p>
           <div class="space-y-0.5">
             <NuxtLink to="/admin/hospitales" class="nav-link nav-sub" :class="{ 'nav-active': route.path.startsWith('/admin/hospitales'), 'nav-collapsed': collapsedDesktop }">
               <UIcon name="i-heroicons-building-office-2" class="nav-icon" />
@@ -64,35 +64,35 @@
             </NuxtLink>
             <NuxtLink to="/admin/usuarios" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/usuarios' && !route.query.tipo, 'nav-collapsed': collapsedDesktop }">
               <UIcon name="i-heroicons-users" class="nav-icon" />
-              <span :class="{ 'md:hidden': collapsed }">Usuarios por Hospital</span>
+              <span :class="{ 'md:hidden': collapsed }">Usuarios por hospital</span>
             </NuxtLink>
           </div>
         </div>
 
         <div>
-          <p class="nav-group-label" :class="{ 'md:hidden': collapsed }">Administracion de Modulos</p>
+          <p class="nav-group-label" :class="{ 'md:hidden': collapsed }">Administración de módulos</p>
           <div class="space-y-0.5">
             <NuxtLink to="/admin/modulos" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/modulos', 'nav-collapsed': collapsedDesktop }">
               <UIcon name="i-heroicons-squares-plus" class="nav-icon" />
-              <span :class="{ 'md:hidden': collapsed }">Catalogo de Modulos</span>
+              <span :class="{ 'md:hidden': collapsed }">Catálogo de módulos</span>
             </NuxtLink>
             <NuxtLink to="/admin/modulos/dependencias" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/modulos/dependencias', 'nav-collapsed': collapsedDesktop }">
               <UIcon name="i-heroicons-link" class="nav-icon" />
-              <span :class="{ 'md:hidden': collapsed }">Dependencias entre Modulos</span>
+              <span :class="{ 'md:hidden': collapsed }">Dependencias entre módulos</span>
             </NuxtLink>
             <NuxtLink to="/admin/niveles-hospitalarios" class="nav-link nav-sub" :class="{ 'nav-active': route.path.startsWith('/admin/niveles-hospitalarios'), 'nav-collapsed': collapsedDesktop }">
               <UIcon name="i-heroicons-building-library" class="nav-icon" />
-              <span :class="{ 'md:hidden': collapsed }">Niveles Hospitalarios</span>
+              <span :class="{ 'md:hidden': collapsed }">Niveles hospitalarios</span>
             </NuxtLink>
           </div>
         </div>
 
         <div>
-          <p class="nav-group-label" :class="{ 'md:hidden': collapsed }">Reportes del Sistema</p>
+          <p class="nav-group-label" :class="{ 'md:hidden': collapsed }">Reportes del sistema</p>
           <div class="space-y-0.5">
             <NuxtLink to="/admin/reportes/mensuales" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/reportes/mensuales', 'nav-collapsed': collapsedDesktop }">
               <UIcon name="i-heroicons-chart-bar" class="nav-icon" />
-              <span :class="{ 'md:hidden': collapsed }">Reportes Mensuales</span>
+              <span :class="{ 'md:hidden': collapsed }">Reportes mensuales</span>
             </NuxtLink>
               <NuxtLink to="/admin/reportes/hospitales-modulos" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/reportes/hospitales-modulos', 'nav-collapsed': collapsedDesktop }">
                 <UIcon name="i-heroicons-building-office-2" class="nav-icon" />
@@ -106,7 +106,7 @@
         </div>
 
         <div>
-          <p class="nav-group-label" :class="{ 'md:hidden': collapsed }">Auditorias</p>
+          <p class="nav-group-label" :class="{ 'md:hidden': collapsed }">Auditorías</p>
           <div class="space-y-0.5">
             <NuxtLink to="/admin/auditoria" class="nav-link nav-sub" :class="{ 'nav-active': route.path === '/admin/auditoria', 'nav-collapsed': collapsedDesktop }">
               <UIcon name="i-heroicons-magnifying-glass" class="nav-icon" />
@@ -301,6 +301,12 @@
 </template>
 
 <script setup lang="ts">
+import '~/assets/css/admin-theme.css'
+useHead({
+  bodyAttrs: { class: 'admin-central-theme' },
+  link: [{ rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap' }],
+})
+
 const authStore = useAuthStore()
 const { api } = useApi()
 const route = useRoute()

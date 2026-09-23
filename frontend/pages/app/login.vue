@@ -4,10 +4,10 @@ definePageMeta({ layout: 'hospital-auth' })
 
 const { api } = useApi()
 const authStore = useAuthStore()
-const route = useRoute()
 const router = useRouter()
 
-const tenantId = computed(() => (route.query.tenant as string) || '')
+const { tenantId, hospital, pending, brandingError } = useHospitalBranding()
+const loginDisabled = computed(() => pending.value || !!brandingError.value || hospital.value?.is_active === false)
 
 const email = ref('')
 const password = ref('')
@@ -15,6 +15,7 @@ const loading = ref(false)
 const error = ref('')
 
 const handleLogin = async () => {
+  if (loading.value || loginDisabled.value) return
   loading.value = true
   error.value = ''
   try {
@@ -39,7 +40,8 @@ const handleLogin = async () => {
       color: 'success',
     })
 
-    router.push(`/app?tenant=${tenantId.value}`)
+    const resolvedTenant = response.user?.tenant_id || tenantId.value
+    router.push(resolvedTenant ? `/app?tenant=${resolvedTenant}` : '/app')
   } catch (e: any) {
     error.value = apiErr(e, 'Credenciales incorrectas')
   } finally {
@@ -55,9 +57,10 @@ const handleLogin = async () => {
     v-model:email="email"
     v-model:password="password"
     :loading="loading"
+    :disabled="loginDisabled"
     :error="error"
     intro="Accede al sistema de gestión hospitalaria"
-    recuperar-to="/app/recuperar"
+    :recuperar-to="tenantId ? `/app/recuperar?tenant=${tenantId}` : '/app/recuperar'"
     @submit="handleLogin"
   />
 </template>

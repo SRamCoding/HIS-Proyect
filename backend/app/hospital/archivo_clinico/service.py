@@ -1,5 +1,5 @@
 ﻿import uuid
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.hospital.archivo_clinico.models import ClinicalRecord, ClinicalRecordMovement
 from app.hospital.admision.models import Patient
@@ -32,7 +32,7 @@ async def list_historias(db: AsyncSession, tenant_id: uuid.UUID, q: str | None,
     for term in (q or "").split():
         query = query.where(or_(*[
             column.icontains(term, autoescape=True) for column in (
-                ClinicalRecord.record_number, Patient.dni, Patient.first_name,
+                ClinicalRecord.record_number, cast(ClinicalRecord.previous_record_numbers, String), Patient.dni, Patient.first_name,
                 Patient.second_name, Patient.last_name_paterno, Patient.last_name_materno,
             )
         ]))

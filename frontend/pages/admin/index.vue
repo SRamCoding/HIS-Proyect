@@ -1,103 +1,23 @@
 <!-- pages/admin/index.vue -->
 <template>
-  <div>
-    <!-- Banner de bienvenida mejorado con SVG más elaborado -->
-    <div
-      class="relative overflow-hidden mb-6 flex items-stretch"
-      style="border-radius: var(--radius-lg); box-shadow: var(--shadow-card); height: 190px; background: linear-gradient(135deg, var(--navy) 0%, #1a3a5c 50%, #0f2840 100%)"
-    >
-      <div class="relative z-10 flex flex-col justify-center px-8 py-6 flex-1 min-w-0">
-        <div class="flex items-center gap-3 mb-1">
-          <div class="w-11 h-11 rounded-full flex items-center justify-center" style="background: rgba(255,255,255,0.08); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.06)">
-            <UIcon name="i-heroicons-user-circle" class="w-6 h-6 text-white/90" />
-          </div>
-          <div>
-            <h1 class="text-2xl font-bold text-white truncate">Hola, {{ nombreUsuario }}</h1>
-            <p class="text-sm text-white/70">{{ saludoHora }}</p>
-          </div>
-        </div>
-        <div class="flex items-center gap-5 mt-1.5 text-xs text-white/60">
-          <span v-if="estadoSistema === 'ok'" class="flex items-center gap-1.5">
-            <UIcon name="i-heroicons-check-circle" class="w-3.5 h-3.5 text-emerald-400" />
-            Sistema operativo
-          </span>
-          <span v-else-if="estadoSistema === 'alerta'" class="flex items-center gap-1.5" style="color: #fca5a5">
-            <UIcon name="i-heroicons-exclamation-triangle" class="w-3.5 h-3.5" />
-            Requiere atención
-          </span>
-          <span v-else-if="estadoSistema === 'desconocido'" class="flex items-center gap-1.5" style="color: #fcd34d" title="No se pudo confirmar el estado de Redis/Celery">
-            <UIcon name="i-heroicons-question-mark-circle" class="w-3.5 h-3.5" />
-            Estado no verificado
-          </span>
-          <span v-else class="flex items-center gap-1.5 text-white/50">
-            <UIcon name="i-heroicons-arrow-path" class="w-3.5 h-3.5" />
-            Verificando estado…
-          </span>
-          <span class="flex items-center gap-1.5">
-            <UIcon name="i-heroicons-clock" class="w-3.5 h-3.5" />
-            Última actualización: hace {{ minutosDesdeActualizacion }} min
-          </span>
-          <span v-if="notifNoLeidas" class="flex items-center gap-1.5">
-            <UIcon name="i-heroicons-bell-alert" class="w-3.5 h-3.5" />
-            {{ notifNoLeidas }} notificaciones sin leer
-          </span>
-        </div>
+  <div class="admin-dashboard">
+    <section class="admin-launcher" aria-labelledby="launcher-title">
+      <h1 id="launcher-title">&iquest;Qu&eacute; deseas <span>realizar hoy?</span></h1>
+      <p>Administra tu red hospitalaria desde un solo lugar.</p>
+      <div class="admin-launcher-grid">
+        <NuxtLink v-for="acceso in accesosRapidos" :key="acceso.to" :to="acceso.to" class="admin-launcher-card">
+          <UIcon :name="acceso.icono" class="launcher-icon" />
+          <span>{{ acceso.label }}</span>
+        </NuxtLink>
       </div>
-
-      <div class="relative hidden sm:block shrink-0" style="width: 44%; max-width: 440px">
-        <svg class="absolute inset-0 w-full h-full" viewBox="0 0 440 190" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-          <!-- Círculos decorativos -->
-          <circle class="banner-float banner-float--1" cx="370" cy="35" r="50" fill="rgba(255,255,255,0.04)" />
-          <circle class="banner-float banner-float--2" cx="290" cy="140" r="34" fill="rgba(255,255,255,0.035)" />
-          <circle class="banner-float banner-float--3" cx="405" cy="148" r="22" fill="rgba(255,255,255,0.06)" />
-          <circle class="banner-float banner-float--4" cx="330" cy="18" r="14" fill="rgba(94, 212, 198, 0.12)" />
-          <circle class="banner-float banner-float--5" cx="420" cy="75" r="8" fill="rgba(255,255,255,0.05)" />
-
-          <!-- Cruces médicas -->
-          <g class="banner-cross" transform="translate(340,50)" opacity="0.4">
-            <rect x="-3.5" y="-16" width="7" height="32" rx="2" fill="#e0f2fe" />
-            <rect x="-16" y="-3.5" width="32" height="7" rx="2" fill="#e0f2fe" />
-          </g>
-          <g class="banner-cross banner-cross--delay" transform="translate(400,95)" opacity="0.3">
-            <rect x="-2.5" y="-12" width="5" height="24" rx="2" fill="#e0f2fe" />
-            <rect x="-12" y="-2.5" width="24" height="5" rx="2" fill="#e0f2fe" />
-          </g>
-          <g class="banner-cross banner-cross--delay2" transform="translate(310,145)" opacity="0.25">
-            <rect x="-2" y="-9" width="4" height="18" rx="2" fill="#e0f2fe" />
-            <rect x="-9" y="-2" width="18" height="4" rx="2" fill="#e0f2fe" />
-          </g>
-
-          <!-- Línea de pulso -->
-          <path
-            class="banner-pulse"
-            d="M0,105 L75,105 L95,105 L112,55 L130,150 L150,100 L170,100 L188,72 L206,100 L410,100"
-            fill="none"
-            stroke="#5fd4c6"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            pathLength="1"
-          />
-
-          <!-- Icono de hospital SVG -->
-          <g transform="translate(60, 75)" opacity="0.25">
-            <rect x="0" y="6" width="28" height="22" rx="2" fill="none" stroke="#5fd4c6" stroke-width="1.5" />
-            <rect x="8" y="14" width="4" height="14" fill="#5fd4c6" opacity="0.4" />
-            <rect x="16" y="14" width="4" height="14" fill="#5fd4c6" opacity="0.4" />
-            <rect x="10" y="0" width="8" height="6" rx="1" fill="#5fd4c6" opacity="0.3" />
-            <line x1="14" y1="0" x2="14" y2="6" stroke="#5fd4c6" stroke-width="1" opacity="0.3" />
-          </g>
-
-          <!-- Partículas decorativas -->
-          <circle cx="150" cy="30" r="3" fill="rgba(94, 212, 198, 0.15)" class="banner-particle" />
-          <circle cx="220" cy="160" r="2.5" fill="rgba(255,255,255,0.08)" class="banner-particle banner-particle--delay" />
-          <circle cx="180" cy="170" r="2" fill="rgba(94, 212, 198, 0.1)" class="banner-particle banner-particle--delay2" />
-          <circle cx="130" cy="155" r="3.5" fill="rgba(255,255,255,0.06)" class="banner-particle banner-particle--delay3" />
-        </svg>
-      </div>
-    </div>
-
-    <!-- Salud del sistema: solo asoma lo que necesita accion, con acceso directo -->
+    </section>
+    <section class="admin-overview">
+      <div class="overview-heading"><h2>Tu red hospitalaria, <span>en cifras</span></h2><p>Resumen de la plataforma</p></div>
+    <!-- Salud del sistema: solo asoma lo que necesita accion, con acceso directo.
+         estadoSistema (no el viejo booleano sistemaSaludable) distingue
+         ok/alerta/verificando/desconocido -- ver el computed en el script,
+         antes esto asumia "operativo" tanto mientras cargaba como cuando
+         el chequeo de Redis/Celery fallaba sin poder confirmarse. -->
     <div v-if="estadoSistema === 'alerta'" class="dash-fade-in grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
       <NuxtLink
         v-if="(stats?.hospitales_con_error ?? 0) > 0 || (stats?.hospitales_pendientes ?? 0) > 0"
@@ -174,125 +94,16 @@
       No se pudo cargar el dashboard: {{ error }}
     </div>
 
-    <div v-else class="dash-fade-in grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      <!-- Tarjeta "hero": unica con fondo oscuro y anillo real, para que no
-           se pierda entre las demas -- es la metrica de mas alto nivel. -->
-      <div class="kpi-hero">
-        <div class="flex items-start justify-between">
-          <div>
-            <p class="text-xs font-medium uppercase tracking-wider text-white/60">Hospitales Activos</p>
-            <p class="text-3xl font-bold font-mono-data leading-tight text-white mt-1">
-              {{ stats?.active_hospitals ?? '—' }}
-              <span class="text-sm font-normal text-white/50">/ {{ stats?.total_hospitals ?? 0 }}</span>
-            </p>
-          </div>
-          <div class="w-16 h-16 shrink-0 -mr-1 -mt-1">
-            <ClientOnly>
-              <ApexChart type="radialBar" height="80" width="80" :options="heroRingOptions" :series="[porcentajeHospitalesActivos]" />
-            </ClientOnly>
-          </div>
-        </div>
-        <NuxtLink to="/admin/hospitales" class="kpi-hero-link">
-          Ver hospitales
-          <UIcon name="i-heroicons-arrow-right" class="w-3.5 h-3.5" />
-        </NuxtLink>
-      </div>
-
-      <div class="kpi-card" style="--kpi-tint: rgba(99,102,241,0.07)">
-        <div class="flex items-start justify-between mb-2">
-          <div class="flex items-center gap-3">
-            <div class="kpi-icon" style="background: linear-gradient(135deg, #6366f1, #4f46e5)">
-              <UIcon name="i-heroicons-users" class="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)" title="Incluye cuentas centrales y las de hospitales con base de datos física propia">Cuentas Totales</p>
-              <p class="text-2xl font-bold font-mono-data leading-tight" style="color: var(--ink)">
-                {{ stats?.total_users ?? '—' }}
-              </p>
-            </div>
-          </div>
-          <span class="text-xs font-medium flex items-center gap-0.5 px-2 py-1 rounded-full" style="background: var(--ok-soft); color: var(--ok)">
-            <UIcon name="i-heroicons-arrow-trending-up" class="w-3.5 h-3.5" />
-            {{ stats?.active_users ?? 0 }} activos
-          </span>
-        </div>
-        <div class="flex items-center gap-3 mt-1 text-xs" style="color: var(--ink-soft)">
-          <span class="flex items-center gap-1">
-            <UIcon name="i-heroicons-user-group" class="w-3.5 h-3.5" style="color: #6366f1" />
-            Panel APP: {{ usuariosPorPanel.app }}
-          </span>
-          <span class="flex items-center gap-1">
-            <UIcon name="i-heroicons-user" class="w-3.5 h-3.5" style="color: var(--teal)" />
-            SIGARH: {{ usuariosPorPanel.sigarh }}
-          </span>
-        </div>
-        <div v-if="stats?.usuarios_es_parcial" class="flex items-center gap-1 mt-2 text-xs" style="color: var(--alert)">
-          <UIcon name="i-heroicons-exclamation-triangle" class="w-3.5 h-3.5" />
-          Dato parcial: {{ stats.usuarios_hospitales_consultados }}/{{ stats.usuarios_hospitales_totales }} hospitales consultados
-        </div>
-      </div>
-
-      <div class="kpi-card" style="--kpi-tint: rgba(245,158,11,0.08)">
-        <div class="flex items-start justify-between mb-2">
-          <div class="flex items-center gap-3">
-            <div class="kpi-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706)">
-              <UIcon name="i-heroicons-squares-plus" class="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)">Módulos habilitados</p>
-              <p class="text-2xl font-bold font-mono-data leading-tight" style="color: var(--ink)">
-                {{ stats?.active_module_assignments ?? '—' }}
-              </p>
-            </div>
-          </div>
-          <span class="text-xs font-medium flex items-center gap-0.5 px-2 py-1 rounded-full" style="background: var(--mist); color: var(--ink-soft)">
-            <UIcon name="i-heroicons-minus" class="w-3.5 h-3.5" />
-            asignaciones
-          </span>
-        </div>
-        <div class="mt-2">
-          <p class="text-xs truncate" style="color: var(--ink-soft)">
-            {{ tiposDeModulo }} tipos en {{ stats?.active_hospitals ?? 0 }} hospitales
-          </p>
-          <div class="h-1.5 rounded-full overflow-hidden mt-2" style="background: var(--mist)">
-            <div class="h-full rounded-full kpi-bar" :style="{ width: `${coberturaModulos}%`, background: 'linear-gradient(90deg, #f59e0b, #d97706)' }" />
-          </div>
-        </div>
-      </div>
-
-      <div class="kpi-card" style="--kpi-tint: rgba(220,38,38,0.07)">
-        <div class="flex items-start justify-between mb-2">
-          <div class="flex items-center gap-3">
-            <div class="kpi-icon" style="background: linear-gradient(135deg, var(--alert), #b91c1c)">
-              <UIcon name="i-heroicons-shield-exclamation" class="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p class="text-xs font-medium uppercase tracking-wider" style="color: var(--ink-soft)">Eventos Auditoría</p>
-              <p class="text-2xl font-bold font-mono-data leading-tight" style="color: var(--ink)">
-                {{ stats?.audit_events_24h ?? 0 }}
-              </p>
-            </div>
-          </div>
-          <span class="text-xs font-medium flex items-center gap-0.5 px-2 py-1 rounded-full" style="background: var(--alert-soft); color: var(--alert)">
-            <UIcon name="i-heroicons-arrow-trending-down" class="w-3.5 h-3.5" />
-            últimas 24 h
-          </span>
-        </div>
-        <div class="mt-1 flex items-center gap-3 text-xs" style="color: var(--ink-soft)">
-          <span class="flex items-center gap-1">
-            <span class="w-1.5 h-1.5 rounded-full" style="background: var(--ok)"></span>
-            Eventos reales
-          </span>
-          <span class="flex items-center gap-1">
-            <span class="w-1.5 h-1.5 rounded-full" style="background: var(--warn)"></span>
-            Registrados
-          </span>
-        </div>
-      </div>
+    <div v-else class="admin-metrics">
+      <NuxtLink to="/admin/hospitales" class="admin-metric"><UIcon name="i-heroicons-building-office-2" /><span>Hospitales activos</span><strong>{{ stats?.active_hospitals ?? 0 }}</strong><small>De {{ stats?.total_hospitals ?? 0 }} registrados</small></NuxtLink>
+      <NuxtLink to="/admin/usuarios" class="admin-metric"><UIcon name="i-heroicons-users" /><span>Cuentas totales</span><strong>{{ stats?.total_users ?? 0 }}</strong><small>{{ stats?.active_users ?? 0 }} activas</small><small v-if="stats?.usuarios_es_parcial" class="partial-data">Datos parciales: {{ stats.usuarios_hospitales_consultados }}/{{ stats.usuarios_hospitales_totales }} hospitales consultados</small></NuxtLink>
+      <NuxtLink to="/admin/modulos" class="admin-metric"><UIcon name="i-heroicons-squares-plus" /><span>M&oacute;dulos habilitados</span><strong>{{ stats?.active_module_assignments ?? 0 }}</strong><small>{{ tiposDeModulo }} tipos de m&oacute;dulo</small></NuxtLink>
+      <NuxtLink to="/admin/auditoria" class="admin-metric"><UIcon name="i-heroicons-shield-check" /><span>Eventos de auditor&iacute;a</span><strong>{{ stats?.audit_events_24h ?? 0 }}</strong><small>&Uacute;ltimas 24 horas</small></NuxtLink>
     </div>
+    </section>
 
     <!-- Fila: Notificaciones (timeline) + Usuarios recientes (avatares) + Accesos rápidos -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+    <div class="admin-activity-grid grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
       <div class="dash-card" style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px">
         <div class="flex items-center justify-between mb-3">
           <p class="text-sm font-semibold flex items-center gap-1.5" style="color: var(--ink)">
@@ -354,17 +165,6 @@
         </ul>
       </div>
 
-      <div class="dash-card" style="background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 20px">
-        <p class="text-sm font-semibold mb-3" style="color: var(--ink)">Accesos rápidos</p>
-        <div class="grid grid-cols-2 gap-2.5">
-          <NuxtLink v-for="acceso in accesosRapidos" :key="acceso.to" :to="acceso.to" class="acceso-rapido">
-            <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" :style="{ background: acceso.fondo }">
-              <UIcon :name="acceso.icono" class="w-4 h-4 text-white" />
-            </div>
-            <span class="text-xs font-medium truncate" style="color: var(--ink)">{{ acceso.label }}</span>
-          </NuxtLink>
-        </div>
-      </div>
     </div>
 
     <!-- Fila: gráficos principales -->
@@ -744,7 +544,6 @@ interface Notificacion {
 }
 
 const { api } = useApi()
-const authStore = useAuthStore()
 const router = useRouter()
 
 const stats = ref<DashboardStats | null>(null)
@@ -802,7 +601,6 @@ const accesosRapidos = [
   { to: '/admin/auditoria', label: 'Auditoría', icono: 'i-heroicons-shield-check', fondo: 'linear-gradient(135deg, var(--alert), #b91c1c)' },
   { to: '/admin/reportes/mensuales', label: 'Reporte mensual', icono: 'i-heroicons-chart-bar', fondo: 'linear-gradient(135deg, #0891b2, #0e7490)' },
   { to: '/admin/reportes/hospitales-modulos', label: 'Hosp. × módulos', icono: 'i-heroicons-table-cells', fondo: 'linear-gradient(135deg, #f59e0b, #d97706)' },
-  { to: '/admin/reportes/exportar', label: 'Exportar datos', icono: 'i-heroicons-arrow-down-tray', fondo: 'linear-gradient(135deg, #16a34a, #15803d)' },
 ]
 
 const usuariosRecientes = computed(() => stats.value?.usuarios_recientes ?? [])
@@ -844,24 +642,10 @@ const abrirNotificacion = async (n: Notificacion) => {
   }
   if (n.link) router.push(n.link)
 }
-const minutosDesdeActualizacion = computed(() => {
-  if (!stats.value?.actualizado_en) return 0
-  const ms = Date.now() - new Date(stats.value.actualizado_en).getTime()
-  return Math.max(0, Math.round(ms / 60000))
-})
 const minutosDesdeVerificacionSalud = computed(() => {
   if (!salud.value?.verificado_en) return 0
   const ms = Date.now() - new Date(salud.value.verificado_en).getTime()
   return Math.max(0, Math.round(ms / 60000))
-})
-
-const nombreUsuario = computed(() => authStore.user?.name || 'bienvenido')
-
-const saludoHora = computed(() => {
-  const hora = new Date().getHours()
-  if (hora < 12) return 'Buenos días, aquí tienes el panorama completo de la plataforma.'
-  if (hora < 19) return 'Buenas tardes, aquí tienes el panorama completo de la plataforma.'
-  return 'Buenas noches, aquí tienes el panorama completo de la plataforma.'
 })
 
 const registrosPorMes = computed(() => stats.value?.hospitals_by_month.map(item => ({ label: item.label, valor: item.value })) ?? [])
@@ -1315,4 +1099,28 @@ onMounted(async () => {
   .dash-fade-in, .dash-card { animation: none; }
   .salud-card, .acceso-rapido, .kpi-card { transition: none; }
 }
+
+.admin-launcher { max-width:none; margin:0 auto; padding:16px 0 28px; text-align:center; }
+.admin-launcher h1 { font-size:clamp(26px,2.8vw,38px); font-weight:600; line-height:1.3; margin:0 0 14px; color:var(--ink); }
+.admin-launcher h1 span,.overview-heading h2 span { color:var(--teal); }
+.admin-launcher>p { color:var(--ink-soft); font-size:14px; margin-bottom:24px; }
+.admin-launcher-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
+.admin-launcher-card { flex:0 1 calc((100% - 72px)/4); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:132px; padding:20px 16px; background:white; border:1px solid transparent; border-radius:20px; box-shadow:0 16px 30px rgba(40,30,70,.07); color:var(--ink); font-size:16px; text-decoration:none; }
+.admin-launcher-card:hover { border-color:var(--teal); }
+.launcher-icon { width:38px; height:38px; color:var(--teal); }
+.admin-overview { background:#f0ecfa; border-radius:20px; padding:24px; margin-bottom:24px; }
+.overview-heading { text-align:center; margin-bottom:18px; }
+.overview-heading h2 { font-size:26px; margin:0 0 8px; }
+.overview-heading p { color:var(--ink-soft); font-size:14px; }
+.admin-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:20px; }
+.admin-metric { display:flex; flex-direction:column; align-items:flex-start; gap:8px; background:white; border-radius:16px; padding:18px; color:var(--ink); text-decoration:none; }
+.admin-metric>span:first-child { width:28px; height:28px; color:var(--teal); }
+.admin-metric strong { font-size:32px; font-weight:500; }
+.admin-metric small { font-size:12px; color:var(--ink-soft); }
+.admin-metric .partial-data { color:var(--alert); }
+.admin-dashboard .avatar-chip { background:var(--teal-soft) !important; color:var(--teal); }
+.admin-dashboard .dash-card { min-height:0; }
+.admin-activity-grid { align-items:start; }
+@media(max-width:1000px) { .admin-launcher-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .admin-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:540px) { .admin-launcher { padding:20px 0 32px; } .admin-launcher-grid { grid-template-columns:1fr; } .admin-launcher-card { min-height:110px; } .admin-overview { padding:20px; } .admin-metrics { grid-template-columns:1fr; } }
 </style>

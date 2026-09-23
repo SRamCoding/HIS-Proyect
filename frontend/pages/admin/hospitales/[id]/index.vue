@@ -46,7 +46,7 @@
               <div>
                 <h1 class="page-title">{{ form.name || 'Editar Hospital' }}</h1>
                 <p class="page-subtitle">
-                  <span class="domain-display font-mono-data">{{ domainCompleto || '—' }}</span>
+                  <span class="domain-display font-mono-data">{{ dominioCompleto || '—' }}</span>
                   <span class="status-dot-mini" :class="form.is_active ? 'dot-active-mini' : 'dot-inactive-mini'" />
                   <span class="status-text-mini" :class="form.is_active ? 'text-active' : 'text-inactive'">
                     {{ form.is_active ? 'Activo' : 'Inactivo' }}
@@ -89,6 +89,9 @@
 
             <div class="form-grid">
               <div class="form-group full-width">
+                <HospitalLogoInput v-model="form.logo_url" :disabled="saving" @busy="logoLoading = $event" />
+              </div>
+              <div class="form-group full-width">
                 <label class="form-label">Nombre Oficial <span class="required">*</span></label>
                 <div class="input-wrapper">
                   <UIcon name="i-heroicons-building-office-2" class="input-icon" />
@@ -107,7 +110,7 @@
                 <div class="subdomain-display-field">
                   <UIcon name="i-heroicons-globe-alt" class="input-icon" />
                   <span class="subdomain-text font-mono-data">{{ subdomain || '—' }}</span>
-                  <span class="subdomain-suffix">{{ domainCompleto ? `.${domainCompleto.split('.').slice(1).join('.')}` : '' }}</span>
+                  <span class="subdomain-suffix">{{ dominioCompleto ? `.${dominioCompleto.split('.').slice(1).join('.')}` : '' }}</span>
                 </div>
                 <p class="field-hint">El subdominio no puede modificarse después de la creación</p>
               </div>
@@ -405,7 +408,7 @@
             </button>
 
             <div v-else class="action-group">
-              <button class="btn-primary" :disabled="saving" @click="handleSave">
+              <button class="btn-primary" :disabled="saving || logoLoading" @click="handleSave">
                 <UIcon v-if="saving" name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
                 <UIcon v-else name="i-heroicons-check" class="w-4 h-4" />
                 {{ saving ? 'Guardando...' : 'Guardar Cambios' }}
@@ -447,7 +450,7 @@
             </div>
             <div class="summary-item">
               <span class="summary-label">Dominio</span>
-              <span class="summary-value font-mono-data">{{ domainCompleto || '—' }}</span>
+              <span class="summary-value font-mono-data">{{ dominioCompleto || '—' }}</span>
             </div>
             <div class="summary-item">
               <span class="summary-label">Nivel</span>
@@ -566,6 +569,7 @@ interface Modulo {
 }
 
 interface Hospital {
+  logo_url: string | null
   id: string
   name: string
   domain: string
@@ -593,6 +597,7 @@ const steps = ['Identidad', 'Misión y Visión', 'Módulos App', 'Módulos SIGAR
 const currentStep = ref(0)
 const loading = ref(true)
 const saving = ref(false)
+const logoLoading = ref(false)
 const saveError = ref('')
 const provisioningStatus = ref('listo')
 const provisioningError = ref<string | null>(null)
@@ -614,18 +619,20 @@ const dependencias = ref<{ module_code: string; depends_on_code: string; is_requ
 const nivelesActivos = ref<{ code: string; name: string }[]>([])
 const todosModulos = ref<Modulo[]>([])
 const subdomain = ref('')
-// Dominio completo real del tenant (ej. "hospital-cerro.techquk.com") --
-// antes esta pantalla lo reconstruia a mano como `${subdomain}.erp.local`,
-// un sufijo hardcodeado que no coincide con el dominio configurado
-// (VITE_TENANT_DOMAIN / settings.TENANT_DOMAIN, ver create.vue). Mostraba
-// una URL que no existe.
-const domainCompleto = ref('')
+// Dominio real completo (Tenant.domain), distinto de `subdomain` (que solo
+// guarda la primera etiqueta para el campo de edicion) -- lo necesita irA()
+// para abrir el hospital directo en su propio subdominio real en vez del
+// dominio central, y tambien reemplaza el sufijo ".erp.local" hardcodeado
+// que antes se mostraba en el header/resumen (no coincidia con el dominio
+// configurado real).
+const dominioCompleto = ref('')
 
 const errors = reactive({
   name: ''
 })
 
 const form = reactive({
+  logo_url: null as string | null,
   name: '',
   hospital_level: '',
   ruc: '',
@@ -752,20 +759,21 @@ const toggleModulo = (code: string, marcado: boolean) => {
 }
 
 const irA = (path: string) => {
-  const baseUrl = window.location.origin
   const tenantId = id.value
-  if (path === '') {
-    window.open(`${baseUrl}?tenant=${tenantId}`, '_blank')
-  } else if (path === '/sigarh') {
-    window.open(`${baseUrl}/sigarh/login?tenant=${tenantId}`, '_blank')
-  } else if (path === '/app') {
-    window.open(`${baseUrl}/app/login?tenant=${tenantId}`, '_blank')
-  } else {
-    window.open(`${baseUrl}${path}?tenant=${tenantId}`, '_blank')
+  const destino = path === '/sigarh' ? '/sigarh/login' : path === '/app' ? '/app/login' : path
+  // Mismo criterio que pages/admin/hospitales/index.vue::irA -- ".local" es
+  // el TLD reservado (RFC 6762) de los hospitales aun sin dominio publico
+  // real (placeholder), nunca resuelve fuera de esta red.
+  const tieneDominioReal = dominioCompleto.value && !dominioCompleto.value.toLowerCase().endsWith('.local')
+  if (tieneDominioReal) {
+    window.open(`https://${dominioCompleto.value}${destino}`, '_blank')
+    return
   }
+  window.open(`${window.location.origin}${destino}?tenant=${tenantId}`, '_blank')
 }
 
 const handleSave = async () => {
+  if (saving.value || logoLoading.value) return
   if (!validateStep1()) {
     currentStep.value = 0
     return
@@ -785,6 +793,7 @@ const handleSave = async () => {
       method: 'PATCH',
       body: {
         name: form.name,
+        logo_url: form.logo_url,
         hospital_level: form.hospital_level || null,
         ruc: form.ruc || null,
         phone: form.phone || null,
@@ -832,6 +841,7 @@ onMounted(async () => {
     nivelesActivos.value = niveles
 
     form.name = hospital.name
+    form.logo_url = hospital.logo_url || null
     form.hospital_level = hospital.hospital_level || ''
     form.ruc = hospital.ruc || ''
     form.phone = hospital.phone || ''
@@ -842,7 +852,7 @@ onMounted(async () => {
     form.values = hospital.values || ''
     form.is_active = hospital.is_active
     subdomain.value = hospital.domain?.split('.')[0] || ''
-    domainCompleto.value = hospital.domain || ''
+    dominioCompleto.value = hospital.domain || ''
     modulosActivos.value = hospital.active_modules || []
     todosModulos.value = modulos
     provisioningStatus.value = hospital.provisioning_status || 'listo'

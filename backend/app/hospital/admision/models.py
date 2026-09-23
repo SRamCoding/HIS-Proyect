@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from sqlalchemy import String, Boolean, DateTime, Date, Text, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Boolean, DateTime, Date, Text, ForeignKey, UniqueConstraint, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -100,7 +100,8 @@ class ClinicalRecord(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     patient_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"))
-    record_number: Mapped[str] = mapped_column(String(20), unique=True)
+    record_number: Mapped[str] = mapped_column(String(64), unique=True)
+    previous_record_numbers: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     location: Mapped[str] = mapped_column(String(50), default="admision")
     is_digitized: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

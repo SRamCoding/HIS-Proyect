@@ -4,12 +4,14 @@ import re
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.sigarh.mantenimiento.schemas import validar_password
+from app.tenants.hospitales.branding import normalizar_logo
 
 
 class TenantBase(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     name: str = Field(min_length=3, max_length=255)
+    logo_url: str | None = None
     domain: str = Field(min_length=4, max_length=255)
     ruc: str | None = Field(default=None, pattern=r"^\d{11}$")
     address: str | None = None
@@ -38,6 +40,7 @@ class TenantBase(BaseModel):
 
 
 class TenantCreate(TenantBase):
+    _logo = field_validator("logo_url")(normalizar_logo)
     active_modules: list[str] = Field(default_factory=list)
     admin_name: str | None = None
     admin_email: str | None = None
@@ -88,6 +91,7 @@ class TenantCreate(TenantBase):
 
 
 class TenantUpdate(TenantBase):
+    _logo = field_validator("logo_url")(normalizar_logo)
     name: str | None = None
     domain: str | None = None
     active_modules: list[str] | None = None

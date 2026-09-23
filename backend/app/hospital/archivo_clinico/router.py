@@ -1,8 +1,10 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from typing import Literal
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import get_db, get_db_central
 from app.tenants.entitlements import require_any_module_jwt
 from app.hospital.archivo_clinico.schemas import (
     DigitalizarRequest, HistoriaOut, HistoriasPage, MovimientosPage, PersonalArchivoOut,
@@ -15,6 +17,38 @@ MODULO_CODIGO = "archivo_clinico"
 
 # La dependencia compartida delega en require_module_jwt y exige hospital del JWT.
 archivo_user = require_any_module_jwt(MODULO_CODIGO)
+
+
+@router.get("/historias/{record_id}/pdf", summary="Exportar ficha o expediente clínico en PDF")
+async def exportar_historia_pdf(
+    record_id: uuid.UUID,
+    request: Request,
+    alcance: Literal["completa", "ficha"] = "completa",
+    db: AsyncSession = Depends(get_db),
+    central: AsyncSession = Depends(get_db_central),
+    current_user: dict = Depends(archivo_user),
+):
+    from app.hospital.archivo_clinico.pdf import collect, render
+    from app.tenants.hospitales.models import Tenant
+    from app.admin.auditoria.models import AuditLog
+
+    tid = uuid.UUID(current_user["tenant_id"])
+    record, patient, entries, lookup = await collect(db, tid, record_id, alcance == "completa")
+    hospital = await central.get(Tenant, tid)
+    if hospital is None:
+        raise HTTPException(404, "Hospital no encontrado")
+    institution = {k: getattr(hospital, k) for k in ("name", "ruc", "address", "phone", "logo_url")}
+    pdf = await run_in_threadpool(render, record, patient, entries, lookup, institution, alcance == "completa")
+    central.add(AuditLog(user_id=uuid.UUID(current_user["sub"]), user_name=current_user.get("name"),
+        tenant_id=tid, tenant_name=hospital.name, action="hc_pdf_exportada", model="ClinicalRecord",
+        model_id=str(record_id), description=f"Exportación de HC: {alcance}",
+        ip_address=request.client.host if request.client else None))
+    await central.flush()
+    return Response(pdf, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="HC-{record_id}-{alcance}.pdf"',
+        "Cache-Control": "no-store, private", "Pragma": "no-cache",
+        "X-Content-Type-Options": "nosniff",
+    })
 
 
 @router.get("/historias", response_model=HistoriasPage)
